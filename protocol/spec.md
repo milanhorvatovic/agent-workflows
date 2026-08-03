@@ -284,6 +284,6 @@ The protocol version is `<major>.<minor>`, declared in every `metadata.workflow`
 
 - During `0.x`, any minor version MAY contain breaking changes; that is what the `0` major signals. Breaking changes are recorded in the repository changelog.
 - A client SHOULD warn when it encounters a `protocol` value newer than the version it implements, and MUST NOT silently misinterpret structures from a newer major version.
-- From `1.0.0`, semantic versioning applies in full: minor versions are backward-compatible additions; breaking changes require a major version.
+- From protocol version `1.0`, minor versions are backward-compatible additions; breaking changes require a major version.
 
-The repository's release tags version the whole surface — this specification, the schemas, roles, and workflows — together.
+The repository's release tags use full semantic versioning (`0.1.0`, `1.0.0`, …) and version the whole surface — this specification, the schemas, roles, and workflows — together; the `protocol` field tracks the major and minor components of that release line.
