@@ -1,0 +1,39 @@
+# Operating system cruft
+.DS_Store
+.AppleDouble
+._*
+Thumbs.db
+Desktop.ini
+
+# Editor and IDE local state
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Python reference driver (driver/) — bytecode, tool caches, virtual envs
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Local environment files — credentials never belong in a public repo
+.env
+.env.*
+
+# Skills installed by setup into a consuming project are generated copies;
+# this repo becomes its own consumer once it dogfoods itself
+.agents/
+
+# Run-scoped workflow artifacts ({artifacts}/runs/<run-id>/) are deliberately
+# NOT ignored: gate instrumentation from dogfooded runs is a deliverable
