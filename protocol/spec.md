@@ -198,6 +198,7 @@ A looping step or stage declares when it is allowed to exit and what to do when 
 ```yaml
 metadata:
   workflow:
+    protocol: "0.1"
     loop:
       exit_criteria: # ALL must hold
         - artifact: "{run}/phase-{N}-plan-validation.md"
@@ -224,6 +225,7 @@ A workflow entry point declares how it starts:
 ```yaml
 metadata:
   workflow:
+    protocol: "0.1"
     trigger:
       kind: interval # manual (default) | interval | cron | event
       every: 5m # interval kind
@@ -265,7 +267,7 @@ steps:
     stall_flags: []
 gates:
   - gate: plan-approval
-    blocking: true
+    transport: blocking # blocking | inbox
     outcome: revise # accept | revise | reject
     at: 2026-08-03T14:12:00Z
 instrumentation: # optional enrichment (tokens, duration) per step
