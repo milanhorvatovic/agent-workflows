@@ -2,7 +2,7 @@
 
 **Protocol version:** `0.1` (pre-release — see [Versioning](#11-versioning))
 
-This document is the normative surface of the agent-workflows protocol. The JSON Schemas in [`schemas/`](schemas/) are the normative definition of the structures described in sections 9 and 10; this prose defines their semantics. The two MUST NOT diverge — a divergence is a defect in one of them, to be fixed rather than resolved by precedence.
+This document is the normative surface of the agent-workflows protocol. The JSON Schemas in [`schemas/`](schemas/) normatively define the structures described in sections 9 and 10 once they land; until then, this prose is the sole normative source. The two MUST NOT diverge — a divergence is a defect in one of them, to be fixed rather than resolved by precedence.
 
 ## 1. Scope
 
@@ -140,7 +140,7 @@ Every gate decision has exactly one outcome: `accept`, `revise`, or `reject`. `r
 
 ### 8.1 Run-scoped directories
 
-Each run owns a directory, `{artifacts}/runs/<run-id>/`, referred to in metadata as `{run}`. Concurrent runs and re-runs MUST NOT share a run directory. All step inputs and outputs are addressed relative to `{run}`.
+Each run owns a directory, `{artifacts}/runs/<run-id>/`, referred to in metadata as `{run}`. `{artifacts}` is the consuming project's artifact root: where it lives is project configuration, and the executor MUST resolve it identically for every step of a run. Concurrent runs and re-runs MUST NOT share a run directory. All step inputs and outputs are addressed relative to `{run}`.
 
 ### 8.2 Manifest
 
