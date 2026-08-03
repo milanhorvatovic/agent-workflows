@@ -99,7 +99,7 @@ Two rules constrain the rubric:
 
 ### 5.3 Override and reclassification
 
-The human sees the classification at the intake gate and MAY override it; the override and its rationale are recorded in run state like any gate outcome. Mid-run, stall or scope-drift signals (see [Loop contracts](#92-loop-contracts)) MAY trigger reclassification upward, never downward. A reclassification updates `run.risk` in run state and applies the new class's defaults to all subsequent steps.
+The human sees the proposed classification at the intake gate ([6.2](#62-intake)) and MAY override it. The gate's decision is recorded in the `gates` record like any other outcome ([7](#7-gates)); the class the human accepts — overridden or not — is what `run.risk` and `risk_rationale` carry. Mid-run, stall or scope-drift signals (see [Loop contracts](#92-loop-contracts)) MAY trigger reclassification upward, never downward. A reclassification updates `run.risk` in run state and applies the new class's defaults to all subsequent steps.
 
 ## 6. Workflows and stages
 
@@ -115,10 +115,11 @@ Risk-class overlays — what each class skips or batches — are encoded once, p
 
 ### 6.2 Intake
 
-`intake` is the entry stage of every workflow. It has two parts, in order:
+`intake` is the entry stage of every workflow. It has three parts, in order:
 
 1. **Clarifying-question gate** — if the brief's ambiguity is above threshold, the run stops here and asks; one cheap question beats a full revision loop later.
-2. **Risk router** — applies the classification rubric ([5.2](#52-classification-rubric)).
+2. **Risk router** — applies the classification rubric ([5.2](#52-classification-rubric)) and proposes a class.
+3. **Intake gate** — the human sees the confirmed brief and the proposed class, and MAY override the class ([5.3](#53-override-and-reclassification)). Its transport follows the class defaults ([5.1](#51-the-four-classes)).
 
 Its outputs are a confirmed brief artifact and a risk class recorded in run state.
 
@@ -251,7 +252,7 @@ metadata:
 
 ## 10. Run state
 
-Runtime state lives in `{run}/workflow-state.yaml`. It is written by a single writer — the executor — and MUST NOT be authored by hand.
+Runtime state lives in `{run}/workflow-state.yaml`. It has exactly one writer — the executor, which MAY be a human acting as executor ([2](#2-conformance-language-and-terms)) — and MUST NOT be edited by anything else while a run is live. It is runtime state the executor maintains, never a hand-authored source document.
 
 ```yaml
 run:
