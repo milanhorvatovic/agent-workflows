@@ -228,8 +228,7 @@ metadata:
     protocol: "0.1"
     trigger:
       kind: interval # manual (default) | interval | cron | event
-      every: 5m # interval kind
-      cron: "0 9 * * 1" # cron kind
+      every: 5m # interval kind only
       until: # stop condition for recurring runs
         command: "gh pr view --json state -q .state"
         equals: MERGED
@@ -237,8 +236,9 @@ metadata:
 
 - `kind: manual` is the default and preserves plain on-demand behavior.
 - `interval` runs every `every`; authors SHOULD match the interval to the real change rate of the input being watched.
-- `cron` runs on a cron expression.
+- `cron` runs on a cron expression carried in a `cron` field (e.g. `"0 9 * * 1"`).
 - `event` runs on an executor-defined event.
+- `every` and `cron` are each valid only for their own kind; a trigger MUST NOT carry both.
 - `until` stops a recurring trigger when `command`'s output equals `equals`.
 
 ### 9.4 Degradation
