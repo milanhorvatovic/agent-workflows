@@ -190,7 +190,7 @@ metadata:
 
 - `inputs` is the handoff contract: each entry names an artifact and whether it is required. A required input that is missing blocks the step.
 - `output` names the artifact the step produces and, optionally, the template it is scaffolded from ([8.3](#83-templates)).
-- `on` maps each verdict to the next step or gate id. Every verdict a validation can produce MUST have an edge; an executor encountering a verdict with no edge MUST stop and escalate rather than guess.
+- `on` maps each verdict to the next step or gate id. The verdict that routes a step is produced by the validation of that step's output — a `validator` step or machine checks ([3.3](#33-verdicts)) — never by the producing role grading its own work; declaring `on` does not make the step emit verdicts itself. Every verdict the validation can produce MUST have an edge; an executor encountering a verdict with no edge MUST stop and escalate rather than guess.
 
 ### 9.2 Loop contracts
 
