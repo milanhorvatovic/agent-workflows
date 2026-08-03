@@ -2,7 +2,7 @@
 
 **Protocol version:** `0.1` (pre-release — see [Versioning](#11-versioning))
 
-This document is the normative surface of the agent-workflows protocol. The JSON Schemas in [`schemas/`](schemas/) are the normative definition of the structures described in sections 9 and 10; where prose and schema disagree, the schema wins and the disagreement is a defect to be fixed here.
+This document is the normative surface of the agent-workflows protocol. The JSON Schemas in [`schemas/`](schemas/) are the normative definition of the structures described in sections 9 and 10; this prose defines their semantics. The two MUST NOT diverge — a divergence is a defect in one of them, to be fixed rather than resolved by precedence.
 
 ## 1. Scope
 
@@ -182,7 +182,7 @@ metadata:
         artifact: "{run}/phase-{N}-plan.md"
         template: references/plan.template.md
       on:
-        PASS: plan-approval-gate
+        PASS: plan-approval
         PASS_WITH_CONDITIONS: plan-revise
         FAIL: plan-revise
 ```
