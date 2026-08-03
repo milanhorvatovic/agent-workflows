@@ -1,0 +1,27 @@
+name: conformance
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Stub: scaffold sanity only. The real conformance suite (schema validation,
+      # frontmatter checks, index consistency, token budgets) replaces this as
+      # the protocol content lands.
+      - name: Scaffold sanity
+        run: |
+          test -f AGENTS.md
+          [ ! -L CLAUDE.md ]
+          grep -qx '@AGENTS.md' CLAUDE.md
+          grep -q '\[Unreleased\]' CHANGELOG.md
+          for dir in protocol/schemas roles skills workflows/stages standards bindings driver setup; do
+            test -d "$dir" || { echo "missing directory: $dir"; exit 1; }
+          done
