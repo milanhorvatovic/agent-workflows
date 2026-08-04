@@ -102,6 +102,10 @@ metadata:
           required: false
         - artifact: "{run}/review-findings.md"
           required: true
+        - artifact: "{run}/phase-{N}-plan.md"
+          required: true
+        - artifact: "{run}/phase-{N}-impl-log.md"
+          required: true
       output:
         artifact: "{run}/phase-{N}-impl-log.md"
 ```

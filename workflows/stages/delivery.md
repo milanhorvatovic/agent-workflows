@@ -11,7 +11,7 @@ Closes the run: assemble what shipped, validate it against the brief one last ti
 
 ### deliver-prepare (analyst)
 
-Synthesize the delivery artifact from the run's evidence — brief, implementation log, validations — into a summary of what changed and why, verification evidence, and a ready-to-use change description for the project's normal shipping channel (for example, a pull request). The implementation log is required — implementation runs in every class where this step does; the review validation stays optional, review being skipped at R1.
+Synthesize the delivery artifact from the run's evidence — brief, implementation log, validations — into a summary of what changed and why, verification evidence, and a ready-to-use change description for the project's normal shipping channel (for example, a pull request). The implementation log is required — implementation runs in every class where this step does; the validation artifacts stay optional, validator steps being skipped at R1.
 
 ```yaml
 metadata:
@@ -24,6 +24,8 @@ metadata:
           required: true
         - artifact: "{run}/phase-{N}-impl-log.md"
           required: true
+        - artifact: "{run}/phase-{N}-impl-validation.md"
+          required: false
         - artifact: "{run}/review-validation.md"
           required: false
       output:
