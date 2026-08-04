@@ -1,0 +1,9 @@
+# INVALID on purpose — the conformance CI must fail this fixture:
+# - the exit criterion mixes the artifact form and the command form in one entry;
+#   a criterion is either an artifact carrying a verdict or a command (spec §9.2)
+# - max_iterations is missing (spec §9.2)
+protocol: "0.1"
+loop:
+  exit_criteria:
+    - artifact: "{run}/plan-validation.md"
+      command: "npm test"

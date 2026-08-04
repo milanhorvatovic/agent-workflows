@@ -1,0 +1,8 @@
+# INVALID on purpose — the conformance CI must fail this fixture:
+# a single trigger declares both `every` and `cron`; each is valid only for
+# its own kind and a trigger must never carry both (spec §9.3).
+protocol: "0.1"
+trigger:
+  kind: interval
+  every: 5m
+  cron: "0 9 * * 1"

@@ -1,0 +1,12 @@
+# Starter: loop contract for a looping step or stage.
+# Exit is a conjunction — every criterion must hold (spec §9.2).
+# Optional: `stall` (signal: no-artifact-delta, action: escalate) detects spinning
+# inside the cap; `scope` (declared_from + on_drift: flag | escalate) binds the loop
+# to its plan's declared file scope.
+protocol: "0.1"
+loop:
+  exit_criteria:
+    - artifact: "{run}/plan-validation.md"
+      verdict: PASS
+    - command: "npm test"
+  max_iterations: 4
