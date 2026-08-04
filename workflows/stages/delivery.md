@@ -62,3 +62,4 @@ metadata:
 ## Notes
 
 - Risk-class reductions of the delivery artifact — R1's minimal change-note content, R0's free-form exit note — are encoded once in [overlays](../overlays.md), never here.
+- At R1 `deliver-validate` is skipped and no verdict exists: `deliver-prepare`'s `on` edges are waived per the skip-resolution rules ([overlays](../overlays.md)), and the gate still fires in composition order.

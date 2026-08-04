@@ -40,6 +40,7 @@ Overlays decide how much of a workflow runs; workflow files never do (spec §6.1
 - A skipped stage's steps are recorded `status: skipped` in run state; skipped conditional steps likewise.
 - An edge or stage id targeting skipped content resolves to the next non-skipped point in composition order.
 - A loop exit criterion naming a skipped step's output artifact is waived; the remaining criteria still bind. At R1 the implementation loop therefore exits on machine checks alone.
+- A step whose validating step is skipped produces no verdict: its `on` edges are waived and it proceeds in composition order. At R1, `deliver-prepare` reaches `delivery-approval` this way — `deliver-validate` is skipped, so no verdict fires the edges.
 
 ## Substitutions
 
