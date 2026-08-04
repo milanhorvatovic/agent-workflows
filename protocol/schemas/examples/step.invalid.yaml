@@ -1,4 +1,4 @@
-# INVALID on purpose — the conformance CI must fail this fixture:
+# INVALID on purpose — schema validation MUST reject this fixture:
 # - step.role is not one of the six protocol roles (spec §3.1)
 # - step.output is missing (spec §9.1)
 # - step.on carries an unknown verdict key (spec §3.3)

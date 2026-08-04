@@ -1,4 +1,4 @@
-# INVALID on purpose — the conformance CI must fail this fixture:
+# INVALID on purpose — schema validation MUST reject this fixture:
 # - run.risk is not one of R0–R3 (spec §5.1)
 # - steps[0].status is not in the status enum (spec §10)
 # - gates[0] records a `blocking` boolean instead of the transport field (spec §7)

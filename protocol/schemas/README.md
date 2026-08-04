@@ -9,7 +9,7 @@ Normative JSON Schemas (draft 2020-12) for the four protocol structures defined 
 
 The step, loop, and trigger schemas validate the value of a skill's `metadata.workflow` frontmatter key. Each is strict within its own structure but tolerates sibling structures and unknown keys, per the 0.x degradation rules (spec §9.4) — one block may carry `step`, `loop`, and `trigger` together. The run-state schema validates the whole state file and rejects unknown keys; that format is protocol-owned.
 
-[`examples/`](examples/) carries one commented, minimal **starter** per schema (`*.valid.yaml` — copy, paste, adjust) and one deliberately broken counterpart (`*.invalid.yaml`) that conformance checks must reject. Validate with any standard JSON Schema validator, for example:
+[`examples/`](examples/) carries one commented, minimal **starter** per schema (`*.valid.yaml` — copy, paste, adjust) and one deliberately broken counterpart (`*.invalid.yaml`) that schema validation must reject. Validate with any standard JSON Schema validator, for example:
 
 ```sh
 uvx check-jsonschema --schemafile step.schema.json examples/step.valid.yaml

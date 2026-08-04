@@ -1,4 +1,4 @@
-# INVALID on purpose — the conformance CI must fail this fixture:
+# INVALID on purpose — schema validation MUST reject this fixture:
 # a single trigger declares both `every` and `cron`; each is valid only for
 # its own kind and a trigger must never carry both (spec §9.3).
 protocol: "0.1"
