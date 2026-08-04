@@ -381,6 +381,25 @@ class ValidateConformanceTest(unittest.TestCase):
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
 
+    def test_absolute_template_path_rejected_even_when_it_exists(self) -> None:
+        self.write("abs.template.md", "# exists outside the declaring dir\n")
+        absolute = str(self.root / "abs.template.md")
+        block = STEP_BLOCK.replace(
+            'artifact: "{run}/grounding.md"',
+            f'artifact: "{{run}}/grounding.md"\n        template: "{absolute}"',
+        )
+        self.write("workflows/stages/build.md", frontmatter("build") + "\n" + block)
+        self.assert_problem("declared template must be relative to the declaring file")
+
+    def test_template_escaping_declaring_directory_rejected(self) -> None:
+        self.write("workflows/shared.template.md", "# exists, but outside stages/\n")
+        block = STEP_BLOCK.replace(
+            'artifact: "{run}/grounding.md"',
+            'artifact: "{run}/grounding.md"\n        template: ../shared.template.md',
+        )
+        self.write("workflows/stages/build.md", frontmatter("build") + "\n" + block)
+        self.assert_problem("declared template escapes the declaring file's directory")
+
     def test_spec_example_templates_are_not_existence_checked(self) -> None:
         block = STEP_BLOCK.replace(
             'artifact: "{run}/grounding.md"',

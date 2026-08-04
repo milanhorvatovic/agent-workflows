@@ -192,6 +192,17 @@ def declared_template(workflow: dict) -> str | None:
     return template if isinstance(template, str) else None
 
 
+def template_problems(at: str, template: str, template_dir: Path) -> list[str]:
+    if Path(template).is_absolute():
+        return [f"{at}: declared template must be relative to the declaring file: {template}"]
+    resolved = (template_dir / template).resolve()
+    if not resolved.is_relative_to(template_dir.resolve()):
+        return [f"{at}: declared template escapes the declaring file's directory: {template}"]
+    if not resolved.is_file():
+        return [f"{at}: declared template not found: {template}"]
+    return []
+
+
 def validate_workflow_block(
     block: Block,
     workflow: Any,
@@ -209,8 +220,7 @@ def validate_workflow_block(
     problems += placeholder_problems(block.at, workflow)
     template = declared_template(workflow)
     if template_dir is not None and template is not None:
-        if not (template_dir / template).is_file():
-            problems.append(f"{block.at}: declared template not found: {template}")
+        problems += template_problems(block.at, template, template_dir)
     return problems
 
 
