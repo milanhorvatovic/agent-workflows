@@ -52,10 +52,10 @@
           }
         },
         "on": {
-          "description": "State-machine edges: maps each verdict the validation of this step's output can produce to the next step or gate id. The producing role never grades its own work (spec sections 3.3 and 9.1).",
+          "description": "State-machine edges: maps each verdict the validation of this step's output can produce to the next step or gate id. Omitted entirely when the output has no validation (the step then proceeds in composition order); when declared, PASS and FAIL are mandatory — every verdict source produces them — while PASS_WITH_CONDITIONS is needed wherever a validator is the source (spec sections 3.3 and 9.1).",
           "type": "object",
           "additionalProperties": false,
-          "minProperties": 1,
+          "required": ["PASS", "FAIL"],
           "properties": {
             "PASS": { "$ref": "#/$defs/target" },
             "PASS_WITH_CONDITIONS": { "$ref": "#/$defs/target" },
