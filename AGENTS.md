@@ -11,7 +11,12 @@ This file is the discovery surface: one line per role, skill, workflow, and stag
 
 ## Roles
 
-_Not yet populated — one line per role._
+- `roles/analyst.md` — grounding: codebase analysis and requirement parsing, evidence-backed, read-only
+- `roles/planner.md` — plans (high-level, detailed, bugfix) and their revisions; phases, dependencies, acceptance criteria
+- `roles/implementer.md` — code changes within the scope a plan declares; plan issues become structured feedback
+- `roles/reviewer.md` — code, security, and performance review of implementations; findings with severities and fixes
+- `roles/validator.md` — artifact validation with categorical verdicts (PASS / PASS_WITH_CONDITIONS / FAIL)
+- `roles/arbiter.md` — synthesis between review/validation and planning: dedupes, triages, resolves findings; refutation before acceptance
 
 ## Skills
 
