@@ -24,8 +24,22 @@ _Not yet populated — one line per skill._
 
 ## Workflows
 
-_Not yet populated — one line per workflow and per stage._
+- `workflows/feature.md` — end-to-end feature development: intake → ideation → planning → implementation → review → delivery
+- `workflows/bugfix.md` — bugfix without ideation: intake → planning → implementation → review → delivery
+- `workflows/plan.md` — planning only: intake → ideation → planning; ends with an approved plan
+- `workflows/overlays.md` — risk-class overlays R0–R3: what each class skips, batches, or substitutes, encoded once
+
+### Stages
+
+- `workflows/stages/intake.md` — entry stage of every workflow: clarifying question, risk router, intake gate; outputs brief + risk class
+- `workflows/stages/ideation.md` — grounding, distinct approaches with a recommendation, validated under a revise loop
+- `workflows/stages/planning.md` — phase plan created, validated, revised; blocking plan-approval gate
+- `workflows/stages/implementation.md` — build within the plan's declared scope; validation verdict + machine checks gate the loop
+- `workflows/stages/review.md` — fresh-context findings and verdict, arbiter on disagreement, fixes under a capped loop
+- `workflows/stages/delivery.md` — delivery artifact, final validation, delivery gate
 
 ## Routing
 
-_How to pick a workflow and classify risk — lands with the `intake` stage._
+- Pick the workflow by intent: a change to build → `feature`; a known bug to fix → `bugfix`; a plan without execution → `plan`.
+- Risk is not picked — the `intake` stage classifies every run (spec §5.2 rubric: blast radius, reversibility, security surface, decomposability, novelty, ambiguity) and the human confirms or overrides at the intake gate.
+- The class, not the workflow, decides depth: `workflows/overlays.md` says what R0–R3 skip, batch, or substitute.

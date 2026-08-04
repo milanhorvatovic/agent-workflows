@@ -190,7 +190,7 @@ metadata:
 
 - `inputs` is the handoff contract: each entry names an artifact and whether it is required. A required input that is missing blocks the step.
 - `output` names the artifact the step produces and, optionally, the template it is scaffolded from ([8.3](#83-templates)).
-- `on` maps each verdict to the next step or gate id. The verdict that routes a step is produced by the validation of that step's output — a `validator` step or machine checks ([3.3](#33-verdicts)) — never by the producing role grading its own work; declaring `on` does not make the step emit verdicts itself. A step MAY omit `on` when its output has no validation; it then proceeds to the next step in composition order, the same default that routes a gate's `accept` ([7](#7-gates)). A declared `on` MUST route at least `PASS` and `FAIL` — machine checks produce only those two — and every verdict its validation can actually produce MUST have an edge (`PASS_WITH_CONDITIONS` wherever a validator is the source); an executor encountering a verdict with no edge MUST stop and escalate rather than guess.
+- `on` maps each verdict to the next step or gate id. The verdict that routes a step is produced by the validation of that step's output — a `validator` step or machine checks ([3.3](#33-verdicts)) — never by the producing role grading its own work; declaring `on` does not make the step emit verdicts itself. A step MAY omit `on` when its output has no validation, or when a loop contract's exit criteria consume its validation verdict ([9.2](#92-loop-contracts)); it then proceeds to the next step in composition order, the same default that routes a gate's `accept` ([7](#7-gates)). A declared `on` MUST route at least `PASS` and `FAIL` — machine checks produce only those two — and every verdict its validation can actually produce MUST have an edge (`PASS_WITH_CONDITIONS` wherever a validator is the source); an executor encountering a verdict with neither an edge nor a consuming loop contract MUST stop and escalate rather than guess.
 
 ### 9.2 Loop contracts
 
@@ -214,7 +214,7 @@ metadata:
         on_drift: flag # flag | escalate
 ```
 
-- `exit_criteria` is a conjunction: every criterion must hold. A criterion is either an artifact carrying a required verdict or a command that must exit 0.
+- `exit_criteria` is a conjunction: every criterion must hold. A criterion is either an artifact carrying a required verdict or a command that must exit 0. Exit criteria are a verdict consumer: a verdict they name routes the loop — iterate or exit — instead of a step edge, so the producing step MAY omit `on` ([9.1](#91-step-and-handoff)); on exit, the loop's owner proceeds in composition order.
 - `max_iterations` caps the loop. Reaching the cap without exit escalates to the human.
 - `stall` detects spinning inside the cap: `no-artifact-delta` means no meaningful output change between iterations. The declared `action` (`escalate`) fires instead of burning remaining iterations.
 - `scope` binds the loop to the file scope its plan declared. On drift, `flag` records the signal; `escalate` stops for a human. Either way the signal feeds mid-run reclassification ([5.3](#53-override-and-reclassification)).
