@@ -52,7 +52,7 @@
           }
         },
         "on": {
-          "description": "State-machine edges: maps each verdict the validation of this step's output can produce to the next step or gate id. Omitted entirely when the output has no validation (the step then proceeds in composition order); when declared, PASS and FAIL are mandatory — every verdict source produces them — while PASS_WITH_CONDITIONS is needed wherever a validator is the source (spec sections 3.3 and 9.1).",
+          "description": "State-machine edges: maps each verdict the validation of this step's output can produce to the next step or gate id. Omitted entirely when the output has no validation (the step then proceeds in composition order); when declared, PASS and FAIL are mandatory — every verdict source produces them. The structure does not declare the verdict source, so this schema cannot conditionally require PASS_WITH_CONDITIONS; routing it wherever a validator is the source is an authoring rule the executor enforces by stopping and escalating on an edgeless verdict (spec sections 3.3 and 9.1).",
           "type": "object",
           "additionalProperties": false,
           "required": ["PASS", "FAIL"],
