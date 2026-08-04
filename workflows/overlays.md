@@ -14,7 +14,7 @@ Overlays decide how much of a workflow runs; workflow files never do (spec §6.1
 | `intake` | runs | runs | runs | runs |
 | `ideation` | skipped | skipped | runs | runs |
 | `planning` | skipped | skipped | runs | runs |
-| `implementation` | free work, no role split | `implement` only | all steps | all steps |
+| `implementation` | skipped — the work happens free-form, no role split | `implement` only | all steps | all steps |
 | `review` | skipped | skipped | runs; `review-security` conditional | runs; `review-security` and `review-arbitrate` mandatory |
 | `delivery` | exit note only | `deliver-prepare` only | runs | runs |
 
