@@ -1,0 +1,12 @@
+# INVALID on purpose — schema validation MUST reject this fixture:
+# - step.role is not one of the six protocol roles (spec §3.1)
+# - step.output is missing (spec §9.1)
+# - step.on carries an unknown verdict key (spec §3.3)
+# - step.on lacks the mandatory PASS and FAIL edges (spec §9.1)
+protocol: "0.1"
+step:
+  role: orchestrator
+  inputs:
+    - artifact: "{run}/brief.md"
+  on:
+    MAYBE: somewhere

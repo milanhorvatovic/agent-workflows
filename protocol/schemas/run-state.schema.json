@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "run-state.schema.json",
+  "title": "agent-workflows run state (protocol 0.1)",
+  "description": "Validates `{run}/workflow-state.yaml` — the runtime state with exactly one writer, the executor: run identity and risk, per-step status, the gate instrumentation record, optional enrichment, and the artifact manifest (spec section 10). The format is protocol-owned, so unknown keys are rejected.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["run", "steps", "gates", "artifacts"],
+  "properties": {
+    "run": {
+      "description": "Run identity: id, workflow, risk class with its mandatory rationale, and the protocol version the run executes under (spec sections 5 and 10).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "workflow", "risk", "risk_rationale", "protocol"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Run identifier; also names the run directory {artifacts}/runs/<run-id>/ (spec section 8.1)."
+        },
+        "workflow": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The workflow this run executes, e.g. feature, bugfix, plan (spec section 6.1)."
+        },
+        "risk": {
+          "enum": ["R0", "R1", "R2", "R3"],
+          "description": "The risk class recorded at intake; mid-run reclassification is upward only (spec sections 5.1 and 5.3)."
+        },
+        "risk_rationale": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The one-line classification rationale (spec section 5)."
+        },
+        "protocol": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+$",
+          "description": "Protocol version the run executes under, `<major>.<minor>` (spec section 11)."
+        }
+      }
+    },
+    "steps": {
+      "description": "Per-step execution record; resume = first step whose status is not done or skipped (spec sections 8.5 and 10).",
+      "type": "array",
+      "items": { "$ref": "#/$defs/stepRecord" }
+    },
+    "gates": {
+      "description": "The gate instrumentation record required by spec section 7: id, transport, outcome, timestamp for every gate decision.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/gateRecord" }
+    },
+    "instrumentation": {
+      "description": "Optional per-step enrichment such as token counts and durations (spec section 10).",
+      "type": ["object", "null"]
+    },
+    "artifacts": {
+      "description": "The run manifest: artifacts the run has produced, kept current by the executor (spec section 8.2).",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "$defs": {
+    "stepRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "status": {
+          "enum": ["pending", "active", "blocked", "done", "skipped"],
+          "description": "Step status (spec section 10)."
+        },
+        "iterations": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Iterations consumed against the loop cap (spec sections 9.2 and 10)."
+        },
+        "stall_flags": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Accumulated stall or drift signals (spec sections 9.2 and 10)."
+        }
+      }
+    },
+    "gateRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gate", "transport", "outcome", "at"],
+      "properties": {
+        "gate": { "type": "string", "minLength": 1, "description": "Gate id (spec section 7)." },
+        "transport": {
+          "enum": ["blocking", "inbox"],
+          "description": "How the decision was collected (spec section 7)."
+        },
+        "outcome": {
+          "enum": ["accept", "revise", "reject"],
+          "description": "The human decision (spec section 7)."
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the decision was recorded (spec section 7)."
+        }
+      }
+    }
+  }
+}

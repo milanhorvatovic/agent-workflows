@@ -1,0 +1,19 @@
+# INVALID on purpose — schema validation MUST reject this fixture:
+# - run.risk is not one of R0–R3 (spec §5.1)
+# - steps[0].status is not in the status enum (spec §10)
+# - gates[0] records a `blocking` boolean instead of the transport field (spec §7)
+run:
+  id: 2026-08-04-bad-run
+  workflow: bugfix
+  risk: high
+  risk_rationale: "invalid fixture"
+  protocol: "0.1"
+steps:
+  - id: implement
+    status: running
+gates:
+  - gate: delivery
+    blocking: true
+    outcome: accept
+    at: "2026-08-04T09:00:00Z"
+artifacts: []

@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "trigger.schema.json",
+  "title": "agent-workflows trigger (protocol 0.1)",
+  "description": "Validates a `metadata.workflow` block that declares a workflow entry point's trigger (spec section 9.3). kind defaults to manual; every and cron are each valid only for their own kind and never together. Sibling structures and unknown keys are tolerated per the 0.x degradation rules (spec section 9.4).",
+  "type": "object",
+  "required": ["protocol", "trigger"],
+  "properties": {
+    "protocol": { "$ref": "#/$defs/protocol" },
+    "trigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": ["manual", "interval", "cron", "event"],
+          "default": "manual",
+          "description": "How the workflow starts; manual is the default and preserves on-demand behavior (spec section 9.3)."
+        },
+        "every": {
+          "type": "string",
+          "pattern": "^[0-9]+(s|m|h|d)$",
+          "description": "interval kind only: the run cadence, matched to the real change rate of the watched input (spec section 9.3)."
+        },
+        "cron": {
+          "type": "string",
+          "minLength": 1,
+          "description": "cron kind only: a cron expression, e.g. \"0 9 * * 1\" (spec section 9.3)."
+        },
+        "until": {
+          "description": "Stop condition for the recurring kinds (interval, cron, event): stops when the command's output equals the value; forbidden on manual (spec section 9.3).",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["command", "equals"],
+          "properties": {
+            "command": { "type": "string", "minLength": 1 },
+            "equals": { "type": "string", "minLength": 1 }
+          }
+        }
+      },
+      "oneOf": [
+        {
+          "description": "interval kind: every required, cron forbidden (spec section 9.3).",
+          "properties": { "kind": { "const": "interval" } },
+          "required": ["kind", "every"],
+          "not": { "required": ["cron"] }
+        },
+        {
+          "description": "cron kind: cron required, every forbidden (spec section 9.3).",
+          "properties": { "kind": { "const": "cron" } },
+          "required": ["kind", "cron"],
+          "not": { "required": ["every"] }
+        },
+        {
+          "description": "event kind: recurring per occurrence, so until is allowed; neither every nor cron (spec section 9.3).",
+          "properties": { "kind": { "const": "event" } },
+          "required": ["kind"],
+          "allOf": [
+            { "not": { "required": ["every"] } },
+            { "not": { "required": ["cron"] } }
+          ]
+        },
+        {
+          "description": "manual kind (the default when kind is omitted): one-shot, so neither every, cron, nor until (spec section 9.3).",
+          "properties": { "kind": { "const": "manual" } },
+          "allOf": [
+            { "not": { "required": ["every"] } },
+            { "not": { "required": ["cron"] } },
+            { "not": { "required": ["until"] } }
+          ]
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "protocol": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$",
+      "description": "Protocol version this block was authored against, `<major>.<minor>` (spec sections 9 and 11)."
+    }
+  }
+}

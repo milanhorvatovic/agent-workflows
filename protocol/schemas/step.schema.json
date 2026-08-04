@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "step.schema.json",
+  "title": "agent-workflows step/handoff (protocol 0.1)",
+  "description": "Validates a `metadata.workflow` block that declares a step: the role that acts, the input handoff contract, the declared output, and the verdict-routed state-machine edges (spec section 9.1). Sibling structures (loop, trigger) and unknown keys are tolerated per the 0.x degradation rules (spec section 9.4).",
+  "type": "object",
+  "required": ["protocol", "step"],
+  "properties": {
+    "protocol": { "$ref": "#/$defs/protocol" },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "output"],
+      "properties": {
+        "role": {
+          "description": "The role that performs this step (spec section 3.1).",
+          "enum": ["analyst", "planner", "implementer", "reviewer", "validator", "arbiter"]
+        },
+        "inputs": {
+          "description": "The handoff contract: artifacts this step consumes. A required input that is missing blocks the step; an optional input may be satisfied from the grounding cache (spec sections 8.4 and 9.1).",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["artifact"],
+            "properties": {
+              "artifact": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Artifact path addressed relative to the run directory, e.g. \"{run}/brief.md\" (spec section 8.1)."
+              },
+              "required": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether the step blocks when the artifact is missing; false marks the input cacheable (spec section 8.4)."
+              }
+            }
+          }
+        },
+        "output": {
+          "description": "The artifact this step produces, optionally scaffolded from a template (spec sections 8.3 and 9.1).",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["artifact"],
+          "properties": {
+            "artifact": { "type": "string", "minLength": 1 },
+            "template": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Template path the output artifact is scaffolded from by script, never freehand (spec section 8.3)."
+            }
+          }
+        },
+        "on": {
+          "description": "State-machine edges: maps each verdict the validation of this step's output can produce to the next step or gate id. Omitted entirely when the output has no validation (the step then proceeds in composition order); when declared, PASS and FAIL are mandatory — every verdict source produces them. The structure does not declare the verdict source, so this schema cannot conditionally require PASS_WITH_CONDITIONS; routing it wherever a validator is the source is an authoring rule the executor enforces by stopping and escalating on an edgeless verdict (spec sections 3.3 and 9.1).",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["PASS", "FAIL"],
+          "properties": {
+            "PASS": { "$ref": "#/$defs/target" },
+            "PASS_WITH_CONDITIONS": { "$ref": "#/$defs/target" },
+            "FAIL": { "$ref": "#/$defs/target" }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "protocol": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$",
+      "description": "Protocol version this block was authored against, `<major>.<minor>` (spec sections 9 and 11)."
+    },
+    "target": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Id of the next step or gate."
+    }
+  }
+}

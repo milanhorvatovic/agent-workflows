@@ -1,0 +1,20 @@
+# Starter: step/handoff declaration for a task skill.
+# Paste under `metadata:` → `workflow:` in the skill's frontmatter, then adjust.
+# Optional: mark an input `required: false` to allow the grounding cache (spec §8.4);
+# `output.template` names the template the artifact is scaffolded from (spec §8.3).
+protocol: "0.1"
+step:
+  role: planner
+  inputs:
+    - artifact: "{run}/brief.md"
+      required: true
+    - artifact: "{run}/grounding.md"
+      required: false
+  output:
+    artifact: "{run}/plan.md"
+    template: references/plan.template.md
+  on:
+    # Edges route on the verdict of this output's validation (spec §9.1).
+    PASS: plan-approval
+    PASS_WITH_CONDITIONS: plan-revise
+    FAIL: plan-revise

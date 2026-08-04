@@ -1,0 +1,24 @@
+# Starter: the shape the executor maintains in {run}/workflow-state.yaml.
+# Runtime state with exactly one writer — never a hand-authored source document (spec §10).
+# Resume = first step whose status is not done or skipped (spec §8.5).
+run:
+  id: 2026-08-03-feature-slug
+  workflow: feature
+  risk: R2
+  risk_rationale: "single module, no security surface, one phase"
+  protocol: "0.1"
+steps:
+  - id: plan-create
+    status: done
+    iterations: 2
+    stall_flags: []
+  - id: plan-approval
+    status: pending
+gates:
+  - gate: intake
+    transport: inbox
+    outcome: accept
+    at: "2026-08-03T13:40:00Z"
+artifacts:
+  - "{run}/brief.md"
+  - "{run}/plan.md"

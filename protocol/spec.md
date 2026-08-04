@@ -2,7 +2,7 @@
 
 **Protocol version:** `0.1` (pre-release — see [Versioning](#11-versioning))
 
-This document is the normative surface of the agent-workflows protocol. The JSON Schemas in [`schemas/`](schemas/) normatively define the structures described in sections 9 and 10 once they land; until then, this prose is the sole normative source. The two MUST NOT diverge — a divergence is a defect in one of them, to be fixed rather than resolved by precedence.
+This document is the normative surface of the agent-workflows protocol. The JSON Schemas in [`schemas/`](schemas/) normatively define the structures described in sections 9 and 10; this prose defines their semantics. The two MUST NOT diverge — a divergence is a defect in one of them, to be fixed rather than resolved by precedence.
 
 ## 1. Scope
 
@@ -132,9 +132,9 @@ A gate is where the protocol collects a human decision. Gates come in two transp
 
 Which gates exist and which transport they default to is a property of the risk class ([5.1](#51-the-four-classes)). At R3, transports MAY be configured per gate.
 
-Every gate decision has exactly one outcome: `accept`, `revise`, or `reject`. `revise` routes the flow back per the state machine; `reject` ends the run or phase.
+Every gate decision has exactly one outcome: `accept`, `revise`, or `reject`. Unless a stage declares otherwise, outcomes route by default: `accept` proceeds to the next step in composition order; `revise` returns to the step that produced the gated artifact; `reject` ends the run — or the phase, where the workflow declares phases. A stage MAY override these defaults with explicit edges.
 
-**Instrumentation requirement:** every gate outcome MUST be recorded in run state with its gate id, transport, outcome, and timestamp. This record is not optional bookkeeping — accumulated gate outcomes are the evidence for tuning gate placement, and a client that skips recording does not conform.
+**Instrumentation requirement:** every gate outcome MUST be recorded in run state with its gate id, transport, outcome, and timestamp (the `at` field, [10](#10-run-state)). This record is not optional bookkeeping — accumulated gate outcomes are the evidence for tuning gate placement, and a client that skips recording does not conform.
 
 ## 8. Artifacts and runs
 
@@ -190,7 +190,7 @@ metadata:
 
 - `inputs` is the handoff contract: each entry names an artifact and whether it is required. A required input that is missing blocks the step.
 - `output` names the artifact the step produces and, optionally, the template it is scaffolded from ([8.3](#83-templates)).
-- `on` maps each verdict to the next step or gate id. The verdict that routes a step is produced by the validation of that step's output — a `validator` step or machine checks ([3.3](#33-verdicts)) — never by the producing role grading its own work; declaring `on` does not make the step emit verdicts itself. Every verdict the validation can produce MUST have an edge; an executor encountering a verdict with no edge MUST stop and escalate rather than guess.
+- `on` maps each verdict to the next step or gate id. The verdict that routes a step is produced by the validation of that step's output — a `validator` step or machine checks ([3.3](#33-verdicts)) — never by the producing role grading its own work; declaring `on` does not make the step emit verdicts itself. A step MAY omit `on` when its output has no validation; it then proceeds to the next step in composition order, the same default that routes a gate's `accept` ([7](#7-gates)). A declared `on` MUST route at least `PASS` and `FAIL` — machine checks produce only those two — and every verdict its validation can actually produce MUST have an edge (`PASS_WITH_CONDITIONS` wherever a validator is the source); an executor encountering a verdict with no edge MUST stop and escalate rather than guess.
 
 ### 9.2 Loop contracts
 
@@ -240,14 +240,14 @@ metadata:
 - `cron` runs on a cron expression carried in a `cron` field (e.g. `"0 9 * * 1"`).
 - `event` runs on an executor-defined event.
 - `every` and `cron` are each valid only for their own kind; a trigger MUST NOT carry both.
-- `until` stops a recurring trigger when `command`'s output equals `equals`.
+- `until` stops a recurring trigger when `command`'s output equals `equals`. It applies to the recurring kinds — `interval`, `cron`, and `event` (each occurrence starts a run) — and a `manual` trigger MUST NOT declare it.
 
 ### 9.4 Degradation
 
 `metadata.workflow` is a degradation-tolerant hint layer:
 
 - A client that does not understand `metadata.workflow` MUST be able to use the skill by ignoring the block entirely and running the body as prose, with the human as executor.
-- A client that understands the block partially SHOULD honor what it understands and ignore the rest; unknown keys under `workflow` MUST NOT be treated as errors during 0.x.
+- A client that understands the block partially SHOULD honor what it understands and ignore the rest; unknown top-level keys under `workflow` — siblings of the declared structures — MUST NOT be treated as errors during 0.x. Inside a declared structure (`step`, `loop`, `trigger`), unknown keys are authoring errors, and the schemas reject them.
 - Degradation works in both directions: a human or harness can replace a driver at any step, and a driver can pick up a run a human advanced, because all state is in artifacts and run state.
 
 ## 10. Run state
