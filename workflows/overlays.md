@@ -18,7 +18,7 @@ Overlays decide how much of a workflow runs; workflow files never do (spec §6.1
 | `review` | skipped | skipped | runs; `review-security` conditional | runs; `review-security` and `review-arbitrate` mandatory |
 | `delivery` | exit note only | `deliver-prepare` only | runs | runs |
 
-- **Intake precedes the class:** its analyst steps run for every run — classification happens there. The Roles row of spec §5.1 governs the stages after intake.
+- **Intake precedes the class:** its analyst steps run for every run — classification happens there. The Roles row of spec §5.1 names each class's substantive pipeline roles; a stage that runs still executes its steps under their declared roles, an `inline` session persona-switching as needed (spec §4).
 - **Mode:** `inline` at R0–R2, `isolated` per role at R3; `reviewer` and `validator` steps run fresh-context in every mode (spec §4).
 - **Machine checks:** optional at R0; required at R1–R3.
 - **Arbiter:** at R2 only on reviewer/validator disagreement; at R3 mandatory.
@@ -43,5 +43,5 @@ Overlays decide how much of a workflow runs; workflow files never do (spec §6.1
 
 ## Substitutions
 
-- **R0 delivery:** the deliverable is `{run}/exit-note.md` — what was tried, what was learned. All other artifacts live in a scratch directory and are discardable; no `delivery-approval` gate fires.
-- **R1 delivery:** the run's single implementer session executes `deliver-prepare` — the step's role follows the class's role set — writing the minimal change note `{run}/change-note.md` in place of `{run}/delivery.md`; `deliver-validate` is skipped — R1 has no validator, machine checks and the gate stand in — and `delivery-approval` reads the substitute.
+- **R0 delivery:** the deliverable is `{run}/exit-note.md` — what was tried, what was learned — written free-form by the agent, not by any declared step: R0 runs no structured steps after intake. All other artifacts live in a scratch directory and are discardable; no `delivery-approval` gate fires.
+- **R1 delivery:** `deliver-prepare` runs as declared — in `inline` mode the run's single session persona-switches into the step's analyst role (spec §4) — and writes `{run}/delivery.md` with minimal change-note content; `deliver-validate` is skipped — R1 has no validator, machine checks and the gate stand in — and `delivery-approval` reads the minimal artifact.

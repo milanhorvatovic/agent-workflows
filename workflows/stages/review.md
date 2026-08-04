@@ -11,7 +11,7 @@ Independent scrutiny of the implemented change. Reviewer and validator always ru
 
 ### review-code (reviewer)
 
-Review the full change — the diff, against the plan where one exists — for correctness, error handling, edge cases, performance, and standards adherence. Findings with severities and concrete fixes; no verdict.
+Review the full change — the diff, against the plan — for correctness, error handling, edge cases, performance, and standards adherence. Findings with severities and concrete fixes; no verdict. Both inputs are required: review only runs in classes where planning and implementation have produced them.
 
 ```yaml
 metadata:
@@ -21,9 +21,9 @@ metadata:
       role: reviewer
       inputs:
         - artifact: "{run}/phase-{N}-plan.md"
-          required: false
+          required: true
         - artifact: "{run}/phase-{N}-impl-log.md"
-          required: false
+          required: true
       output:
         artifact: "{run}/review-findings.md"
 ```
@@ -40,7 +40,7 @@ metadata:
       role: reviewer
       inputs:
         - artifact: "{run}/phase-{N}-impl-log.md"
-          required: false
+          required: true
       output:
         artifact: "{run}/security-findings.md"
 ```

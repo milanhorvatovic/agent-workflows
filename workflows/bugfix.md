@@ -25,4 +25,4 @@ metadata:
       kind: manual
 ```
 
-Deliverable: the fix, accepted at `delivery-approval` — at R1, with `{run}/change-note.md` as its minimal description.
+Deliverable: the fix, accepted at `delivery-approval` — at R1, `{run}/delivery.md` reduced to a minimal change note.

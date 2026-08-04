@@ -11,7 +11,7 @@ Builds the current phase within the scope its plan declares. The loop contract �
 
 ### implement (implementer)
 
-Execute the plan: make the code changes, keep machine checks green, and log what was done — decisions, deviations, evidence — in the implementation log. A plan defect discovered mid-work is structured feedback for `plan-revise` (what is wrong, where, suggested correction), never a license to improvise beyond the declared scope. A loop iteration re-enters this step with the validation findings.
+Execute the plan: make the code changes, keep machine checks green, and log what was done — decisions, deviations, evidence — in the implementation log. A plan defect discovered mid-work is structured feedback for `plan-revise` (what is wrong, where, suggested correction), never a license to improvise beyond the declared scope. A loop iteration re-enters this step with the validation findings — declared as an optional input, absent on the first pass.
 
 ```yaml
 metadata:
@@ -22,6 +22,8 @@ metadata:
       inputs:
         - artifact: "{run}/phase-{N}-plan.md"
           required: true
+        - artifact: "{run}/phase-{N}-impl-validation.md"
+          required: false
       output:
         artifact: "{run}/phase-{N}-impl-log.md"
 ```
