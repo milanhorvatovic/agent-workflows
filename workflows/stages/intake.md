@@ -42,7 +42,7 @@ metadata:
 
 ## Gates
 
-- **clarifying-question** — conditional: fires only when ambiguity is above threshold, before `risk-route`. Blocking whenever it fires, in every risk class — a question is waiting for its answer. Outcome vocabulary: record `accept` when the answer confirms the (possibly amended) brief; the answer's content lands in the brief artifact, never in the gate record. `reject` ends the run.
+- **clarifying-question** — conditional: fires only when ambiguity is above threshold, before `risk-route`. Blocking whenever it fires, in every risk class — a question is waiting for its answer. Outcome vocabulary: record `accept` when the answer confirms the (possibly amended) brief — the answer's content lands in the brief artifact, never in the gate record; record `revise` when the answer redirects the brief enough to need a re-draft, returning to `brief-confirm` per the spec §7 default; `reject` ends the run.
 - **intake-approval** — after `risk-route`: the human sees the confirmed brief and the proposed class, and MAY override the class (spec §5.3). Transport per risk class ([overlays](../overlays.md)). Outcomes: `accept` proceeds to the next stage in composition order; `revise` returns to `brief-confirm`; `reject` ends the run.
 
 ## Notes

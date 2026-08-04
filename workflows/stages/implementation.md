@@ -72,5 +72,5 @@ metadata:
 ## Notes
 
 - `implement` declares no `on`: its verdict is consumed by the loop contract's exit criteria (spec §9.2). In a multi-phase run, exit advances to the next phase's planning until the phase list is exhausted, then to the next stage in composition order.
-- A `FAIL` whose findings are plan defects, not implementation defects, re-enters planning at `plan-revise` with the implementer's structured feedback; the iteration still counts against this loop's cap.
+- A `FAIL` whose findings are plan defects, not implementation defects, is not fixable by iterating: the implementer records the structured feedback in the log, and the loop ends by escalation — stall once the feedback stops producing meaningful deltas, or the cap — putting the human in charge of re-entering planning at `plan-revise` with that feedback.
 - Scope drift is flagged, not fatal: the signal feeds mid-run reclassification upward (spec §5.3).

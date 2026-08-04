@@ -98,4 +98,4 @@ metadata:
 
 ## Gates
 
-- **plan-approval** — after a passing validation. Transport per risk class ([overlays](../overlays.md)); blocking wherever planning runs. Outcomes route by the spec §7 defaults: `accept` proceeds to the next stage in composition order (in the `plan` workflow, planning is the final stage, so `accept` completes the run); `revise` returns to `plan-create`, the step that produced the gated artifact; `reject` ends the run — or the phase, in multi-phase runs.
+- **plan-approval** — after a passing validation. Transport per risk class ([overlays](../overlays.md)); blocking wherever planning runs. Outcomes route by the spec §7 defaults: `accept` proceeds to the next stage in composition order (in the `plan` workflow, planning is the final stage, so `accept` completes the run); `revise` returns to the step that produced the gated artifact — `plan-create`, or `plan-revise` once revisions have run; `reject` ends the run — or the phase, in multi-phase runs.
