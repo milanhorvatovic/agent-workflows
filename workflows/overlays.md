@@ -44,4 +44,4 @@ Overlays decide how much of a workflow runs; workflow files never do (spec §6.1
 ## Substitutions
 
 - **R0 delivery:** the deliverable is `{run}/exit-note.md` — what was tried, what was learned. All other artifacts live in a scratch directory and are discardable; no `delivery-approval` gate fires.
-- **R1 delivery:** `deliver-prepare` writes the minimal change note `{run}/change-note.md` in place of `{run}/delivery.md`; `deliver-validate` is skipped — R1 has no validator, machine checks and the gate stand in — and `delivery-approval` reads the substitute.
+- **R1 delivery:** the run's single implementer session executes `deliver-prepare` — the step's role follows the class's role set — writing the minimal change note `{run}/change-note.md` in place of `{run}/delivery.md`; `deliver-validate` is skipped — R1 has no validator, machine checks and the gate stand in — and `delivery-approval` reads the substitute.

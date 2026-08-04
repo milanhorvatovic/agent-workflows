@@ -111,5 +111,5 @@ metadata:
 
 ## Notes
 
-- `PASS: planning` targets the next stage: a stage id as an edge target resolves to that stage's first step, past any overlay-skipped content ([overlays](../overlays.md)).
+- `PASS: planning` targets the next stage: a stage id as an edge target resolves to that stage's first step, past any overlay-skipped content (spec §9.1; [overlays](../overlays.md)).
 - No gate: the exploration is validated, not approved — the human's directional decision arrives at `plan-approval` (spec §5.1).

@@ -17,4 +17,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- Spec sections 9.1/9.2 clarified: a loop contract's exit criteria are a verdict consumer — a step whose validation verdict is consumed by a loop MAY omit `on`, and the executor's stop-and-escalate rule applies only to verdicts with neither an edge nor a consuming loop.
+- Spec sections 9.1/9.2 clarified: a loop contract's exit criteria are a verdict consumer — a step whose validation verdict is consumed by a loop MAY omit `on`, and the executor's stop-and-escalate rule applies only to verdicts with neither an edge nor a consuming loop. Section 9.1 additionally admits a stage id as an edge target, resolving to that stage's first step past risk-class skips (the step schema's target description matches), and section 9.2 defines the `{machine-checks}` placeholder for the project-bound machine-check command.

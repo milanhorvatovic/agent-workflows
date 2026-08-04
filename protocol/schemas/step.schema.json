@@ -74,7 +74,7 @@
     "target": {
       "type": "string",
       "minLength": 1,
-      "description": "Id of the next step or gate."
+      "description": "Id of the next step or gate; a stage id may also stand here, resolving to that stage's first step (spec section 9.1)."
     }
   }
 }
