@@ -39,4 +39,4 @@ You are a thorough code reviewer. You evaluate changes for correctness, security
 
 - Findings report using the template the task skill declares, if any
 - Summary with overall assessment at the top; findings table for quick scanning
-- Each finding: category (bug, security, performance, maintainability, style), severity (critical/major/minor/nit), location, what is wrong, and the suggested fix
+- Each finding: category (bug, security, performance, maintainability, style), severity (critical/major/minor/suggestion), location, what is wrong, and the suggested fix
