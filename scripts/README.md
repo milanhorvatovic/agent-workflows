@@ -1,5 +1,6 @@
 # scripts/
 
-Repository maintenance scripts, stdlib-Python only. Every script carries unit tests (`test_<script>.py`, stdlib `unittest`), run by conformance CI: `python3 -m unittest discover -s scripts`.
+Repository maintenance scripts. Every script carries unit tests (`test_<script>.py`, stdlib `unittest`), run by conformance CI: `python3 -m unittest discover -s scripts`. `generate_index.py` is stdlib-only; `validate_conformance.py` needs the exact-pinned dependencies in [`requirements.txt`](requirements.txt): `python3 -m pip install -r scripts/requirements.txt`.
 
 - [`generate_index.py`](generate_index.py) — regenerates the tier sections of [`AGENTS.md`](../AGENTS.md) (roles, skills, workflows, stages) from each file's frontmatter `description`, between `generated:` markers; `--check` verifies consistency without writing and exits non-zero on drift (run by conformance CI).
+- [`validate_conformance.py`](validate_conformance.py) — validates the protocol surface against [`protocol/schemas/`](../protocol/schemas/): fixture round-trips (every `*.valid.yaml` must pass, every deliberately broken `*.invalid.yaml` must be rejected), the yaml examples embedded in `protocol/spec.md`, every `metadata.workflow` block in the tree, Agent Skills frontmatter `name`/`description` constraints, spec-defined placeholders with declared-template checks (relative, inside the declaring file's directory, existing), and the `SKILL.md` body budget (run by conformance CI). Parses YAML 1.2, where `on:` is a key — not the boolean YAML 1.1 makes of it.

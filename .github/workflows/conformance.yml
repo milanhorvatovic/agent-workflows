@@ -13,9 +13,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # Stub: scaffold sanity only. The real conformance suite (schema validation,
-      # frontmatter checks, token budgets) replaces this as the protocol
-      # content lands.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
       - name: Scaffold sanity
         run: |
           test -f AGENTS.md
@@ -25,7 +25,11 @@ jobs:
           for dir in protocol/schemas roles skills workflows/stages standards bindings driver setup; do
             test -d "$dir" || { echo "missing directory: $dir"; exit 1; }
           done
+      - name: Install script dependencies
+        run: python3 -m pip install -r scripts/requirements.txt
       - name: Script unit tests
         run: python3 -m unittest discover -s scripts
       - name: Index consistency
         run: python3 scripts/generate_index.py --check
+      - name: Conformance validation
+        run: python3 scripts/validate_conformance.py
