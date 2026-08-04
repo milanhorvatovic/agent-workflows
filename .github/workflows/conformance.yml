@@ -14,8 +14,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Stub: scaffold sanity only. The real conformance suite (schema validation,
-      # frontmatter checks, index consistency, token budgets) replaces this as
-      # the protocol content lands.
+      # frontmatter checks, token budgets) replaces this as the protocol
+      # content lands.
       - name: Scaffold sanity
         run: |
           test -f AGENTS.md
@@ -25,3 +25,7 @@ jobs:
           for dir in protocol/schemas roles skills workflows/stages standards bindings driver setup; do
             test -d "$dir" || { echo "missing directory: $dir"; exit 1; }
           done
+      - name: Script unit tests
+        run: python3 -m unittest discover -s scripts
+      - name: Index consistency
+        run: python3 scripts/generate_index.py --check
