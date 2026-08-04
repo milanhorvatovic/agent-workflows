@@ -170,12 +170,19 @@ def strings_of(value: Any) -> Iterator[str]:
 
 def placeholder_problems(at: str, workflow: Any) -> list[str]:
     known = ", ".join("{" + name + "}" for name in sorted(PLACEHOLDERS))
-    return [
-        f'{at}: unknown placeholder "{{{token}}}" (spec defines: {known})'
-        for value in strings_of(workflow)
-        for token in PLACEHOLDER.findall(value)
-        if token not in PLACEHOLDERS
-    ]
+    problems = []
+    for value in strings_of(workflow):
+        for token in PLACEHOLDER.findall(value):
+            if token in PLACEHOLDERS:
+                continue
+            if token == "artifacts":
+                problems.append(
+                    f'{at}: "{{artifacts}}" is resolved by the executor, never authored — '
+                    "metadata addresses paths relative to {run} (spec §8.1)"
+                )
+            else:
+                problems.append(f'{at}: unknown placeholder "{{{token}}}" (spec defines: {known})')
+    return problems
 
 
 def declared_template(workflow: dict) -> str | None:

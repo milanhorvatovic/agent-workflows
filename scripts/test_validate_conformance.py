@@ -341,6 +341,12 @@ class ValidateConformanceTest(unittest.TestCase):
         )
         self.assert_problem('unknown placeholder "{phase}"')
 
+    def test_artifacts_placeholder_rejected_with_spec_pointer(self) -> None:
+        block = STEP_BLOCK.replace("{run}/brief.md", "{artifacts}/runs/x/brief.md")
+        self.write("workflows/stages/build.md", frontmatter("build") + "\n" + block)
+        output = self.assert_problem('"{artifacts}" is resolved by the executor')
+        self.assertIn("relative to {run}", output)
+
     def test_shell_parameter_expansion_is_not_a_placeholder(self) -> None:
         block = (
             "```yaml\n"
