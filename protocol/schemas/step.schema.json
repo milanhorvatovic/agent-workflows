@@ -74,7 +74,7 @@
     "target": {
       "type": "string",
       "minLength": 1,
-      "description": "Id of the next step or gate."
+      "description": "Id of the next step or gate; a stage id may also stand here, resolving to that stage's first step, past any content the run's risk class skips (spec section 9.1)."
     }
   }
 }
