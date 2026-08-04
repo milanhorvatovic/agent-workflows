@@ -25,5 +25,7 @@ jobs:
           for dir in protocol/schemas roles skills workflows/stages standards bindings driver setup; do
             test -d "$dir" || { echo "missing directory: $dir"; exit 1; }
           done
+      - name: Script unit tests
+        run: python3 -m unittest discover -s scripts
       - name: Index consistency
-        run: python3 scripts/generate-index.py --check
+        run: python3 scripts/generate_index.py --check

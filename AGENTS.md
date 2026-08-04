@@ -2,7 +2,7 @@
 
 A protocol, not a platform. Three tiers: **roles** (WHO), **skills** (WHAT), **workflows** (HOW). Markdown artifacts carry state between steps; any agent that can read a prompt can execute the protocol.
 
-This file is the discovery surface: one line per role, skill, workflow, and stage. Load a linked file only when the current step needs it. The lines between `generated:` markers are produced from each file's frontmatter `description` by `scripts/generate-index.py` — edit descriptions at their source, then regenerate; never edit those lines here.
+This file is the discovery surface: one line per role, skill, workflow, and stage. Load a linked file only when the current step needs it. The lines between `generated:` markers are produced from each file's frontmatter `description` by `scripts/generate_index.py` — edit descriptions at their source, then regenerate; never edit those lines here.
 
 ## Protocol
 

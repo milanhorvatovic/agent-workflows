@@ -8,8 +8,8 @@ so the index cannot drift from its sources. Only the regions between
 them is left untouched.
 
 Usage:
-    python3 scripts/generate-index.py           # rewrite AGENTS.md in place
-    python3 scripts/generate-index.py --check   # exit 1 if AGENTS.md is stale
+    python3 scripts/generate_index.py           # rewrite AGENTS.md in place
+    python3 scripts/generate_index.py --check   # exit 1 if AGENTS.md is stale
 """
 
 from __future__ import annotations
@@ -22,8 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import NoReturn
 
-ROOT = Path(__file__).resolve().parent.parent
-INDEX = ROOT / "AGENTS.md"
+DEFAULT_ROOT = Path(__file__).resolve().parent.parent
 
 FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 DESCRIPTION = re.compile(r"^description:[ \t]*(\S.*)$", re.MULTILINE)
@@ -65,17 +64,17 @@ def fail(message: str) -> NoReturn:
     sys.exit(f"generate-index: {message}")
 
 
-def description_of(path: Path) -> str:
+def description_of(path: Path, root: Path) -> str:
     text = path.read_text(encoding="utf-8")
     frontmatter = FRONTMATTER.match(text)
     if frontmatter is None:
-        fail(f"{path.relative_to(ROOT)}: no frontmatter block")
+        fail(f"{path.relative_to(root)}: no frontmatter block")
     found = DESCRIPTION.search(frontmatter.group(1))
     if found is None:
-        fail(f"{path.relative_to(ROOT)}: frontmatter has no description")
+        fail(f"{path.relative_to(root)}: frontmatter has no description")
     value = found.group(1).strip()
     if value[0] in ">|":
-        fail(f"{path.relative_to(ROOT)}: description must be a single-line scalar")
+        fail(f"{path.relative_to(root)}: description must be a single-line scalar")
     if len(value) > 1 and value[0] in "'\"" and value[-1] == value[0]:
         value = value[1:-1]
     return value
@@ -85,8 +84,8 @@ def slug_of(path: Path) -> str:
     return path.parent.name if path.name == "SKILL.md" else path.stem
 
 
-def section_lines(section: Section) -> list[str]:
-    paths = [p for p in ROOT.glob(section.pattern) if p.name != "README.md"]
+def section_lines(section: Section, root: Path) -> list[str]:
+    paths = [p for p in root.glob(section.pattern) if p.name != "README.md"]
     if not paths:
         if section.placeholder is None:
             fail(f"no files match {section.pattern}")
@@ -99,7 +98,8 @@ def section_lines(section: Section) -> list[str]:
 
     paths.sort(key=sort_key)
     return [
-        f"- `{p.relative_to(ROOT).as_posix()}` — {description_of(p)}" for p in paths
+        f"- `{p.relative_to(root).as_posix()}` — {description_of(p, root)}"
+        for p in paths
     ]
 
 
@@ -114,19 +114,33 @@ def replace_region(text: str, key: str, lines: list[str]) -> str:
     return region.sub(lambda _: replacement, text)
 
 
-def main() -> int:
+def regenerate(text: str, root: Path) -> str:
+    for section in SECTIONS:
+        text = replace_region(text, section.key, section_lines(section, root))
+    return text
+
+
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
         "--check",
         action="store_true",
         help="verify AGENTS.md matches its sources instead of rewriting it",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--root",
+        type=Path,
+        default=DEFAULT_ROOT,
+        help="repository root to operate on (default: this script's repository)",
+    )
+    args = parser.parse_args(argv)
+    root = args.root.resolve()
+    index = root / "AGENTS.md"
+    if not index.is_file():
+        fail(f"{index}: not found")
 
-    current = INDEX.read_text(encoding="utf-8")
-    regenerated = current
-    for section in SECTIONS:
-        regenerated = replace_region(regenerated, section.key, section_lines(section))
+    current = index.read_text(encoding="utf-8")
+    regenerated = regenerate(current, root)
 
     if regenerated == current:
         print("AGENTS.md: up to date")
@@ -140,9 +154,9 @@ def main() -> int:
                 tofile="AGENTS.md (regenerated)",
             )
         )
-        print("AGENTS.md: stale — run scripts/generate-index.py")
+        print("AGENTS.md: stale — run scripts/generate_index.py")
         return 1
-    INDEX.write_text(regenerated, encoding="utf-8")
+    index.write_text(regenerated, encoding="utf-8")
     print("AGENTS.md: regenerated")
     return 0
 
