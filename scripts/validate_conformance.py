@@ -121,7 +121,9 @@ def load_schemas(root: Path) -> dict[str, Draft202012Validator]:
             Draft202012Validator.check_schema(schema)
         except (json.JSONDecodeError, SchemaError) as error:
             fail(f"{rel}: not a valid schema: {first_line(error)}")
-        validators[path.name.removesuffix(".schema.json")] = Draft202012Validator(schema)
+        validators[path.name.removesuffix(".schema.json")] = Draft202012Validator(
+            schema, format_checker=Draft202012Validator.FORMAT_CHECKER
+        )
     missing = sorted({*STRUCTURES, RUN_STATE} - validators.keys())
     if missing:
         fail(f"{SCHEMA_DIR.as_posix()}: missing schemas: {', '.join(missing)}")
@@ -392,6 +394,14 @@ def main(argv: list[str] | None = None) -> int:
     root = args.root.resolve()
     if not (root / SCHEMA_DIR).is_dir():
         fail(f"{(root / SCHEMA_DIR)}: not found")
+    # jsonschema only asserts `format` for formats whose checker dependency is
+    # importable; without this guard a missing rfc3339-validator would silently
+    # stop enforcing the schemas' date-time constraints.
+    if "date-time" not in Draft202012Validator.FORMAT_CHECKER.checkers:
+        fail(
+            "date-time format assertion unavailable — "
+            "install rfc3339-validator (scripts/requirements.txt)"
+        )
     validators = load_schemas(root)
 
     fixtures, problems = check_fixtures(root, validators)

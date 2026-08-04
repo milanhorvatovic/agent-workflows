@@ -113,7 +113,7 @@ RUN_STATE_SCHEMA = {
                 "required": ["gate", "at"],
                 "properties": {
                     "gate": {"type": "string"},
-                    "at": {"type": "string"},
+                    "at": {"type": "string", "format": "date-time"},
                 },
             },
         },
@@ -314,6 +314,23 @@ class ValidateConformanceTest(unittest.TestCase):
         )
         output = self.assert_problem("protocol/spec.md")
         self.assertIn("[run-state]", output)
+
+    def test_invalid_timestamp_fails_date_time_format(self) -> None:
+        self.write(
+            "protocol/spec.md",
+            SPEC.replace("at: 2026-08-03T14:12:00Z", 'at: "not-a-timestamp"'),
+        )
+        output = self.assert_problem("[run-state]")
+        self.assertIn("not-a-timestamp", output)
+
+    def test_timezone_less_timestamp_fails_date_time_format(self) -> None:
+        # A naive YAML timestamp serializes without a UTC offset, which RFC
+        # 3339 date-time requires — run-state timestamps must carry a zone.
+        self.write(
+            "protocol/spec.md",
+            SPEC.replace("at: 2026-08-03T14:12:00Z", "at: 2026-08-03T14:12:00"),
+        )
+        self.assert_problem("[run-state]")
 
     def test_valid_fixture_failing_its_schema_reported(self) -> None:
         self.write(
