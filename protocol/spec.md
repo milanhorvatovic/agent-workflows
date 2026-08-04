@@ -132,7 +132,7 @@ A gate is where the protocol collects a human decision. Gates come in two transp
 
 Which gates exist and which transport they default to is a property of the risk class ([5.1](#51-the-four-classes)). At R3, transports MAY be configured per gate.
 
-Every gate decision has exactly one outcome: `accept`, `revise`, or `reject`. `revise` routes the flow back per the state machine; `reject` ends the run or phase.
+Every gate decision has exactly one outcome: `accept`, `revise`, or `reject`. Unless a stage declares otherwise, outcomes route by default: `accept` proceeds to the next step in composition order; `revise` returns to the step that produced the gated artifact; `reject` ends the run — or the phase, where the workflow declares phases. A stage MAY override these defaults with explicit edges.
 
 **Instrumentation requirement:** every gate outcome MUST be recorded in run state with its gate id, transport, outcome, and timestamp. This record is not optional bookkeeping — accumulated gate outcomes are the evidence for tuning gate placement, and a client that skips recording does not conform.
 
