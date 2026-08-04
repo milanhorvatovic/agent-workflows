@@ -1,0 +1,455 @@
+"""Unit tests for validate_conformance.py.
+
+Run from the repo root: python3 -m unittest discover -s scripts
+(requires scripts/requirements.txt installed)
+"""
+
+from __future__ import annotations
+
+import contextlib
+import io
+import json
+import tempfile
+import unittest
+from pathlib import Path
+
+import validate_conformance
+
+PROTOCOL = {"type": "string", "pattern": "^[0-9]+\\.[0-9]+$"}
+
+# Trimmed mirrors of the real schemas — enough structure to exercise every
+# validator path (required keys, enums, additionalProperties rejection, the
+# `on` key, string-typed timestamps) without coupling tests to schema content.
+STEP_SCHEMA = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "required": ["protocol", "step"],
+    "properties": {
+        "protocol": PROTOCOL,
+        "step": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["role", "output"],
+            "properties": {
+                "role": {"enum": ["analyst", "planner", "implementer", "validator"]},
+                "inputs": {"type": "array"},
+                "output": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["artifact"],
+                    "properties": {
+                        "artifact": {"type": "string"},
+                        "template": {"type": "string"},
+                    },
+                },
+                "on": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["PASS", "FAIL"],
+                    "properties": {
+                        "PASS": {"type": "string"},
+                        "PASS_WITH_CONDITIONS": {"type": "string"},
+                        "FAIL": {"type": "string"},
+                    },
+                },
+            },
+        },
+    },
+}
+
+LOOP_SCHEMA = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "required": ["protocol", "loop"],
+    "properties": {
+        "protocol": PROTOCOL,
+        "loop": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["exit_criteria", "max_iterations"],
+            "properties": {
+                "exit_criteria": {"type": "array"},
+                "max_iterations": {"type": "integer"},
+            },
+        },
+    },
+}
+
+TRIGGER_SCHEMA = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "required": ["protocol", "trigger"],
+    "properties": {
+        "protocol": PROTOCOL,
+        "trigger": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["kind"],
+            "properties": {
+                "kind": {"enum": ["manual", "interval"]},
+                "until": {"type": "object"},
+            },
+        },
+    },
+}
+
+RUN_STATE_SCHEMA = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["run", "gates"],
+    "properties": {
+        "run": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["id"],
+            "properties": {"id": {"type": "string"}},
+        },
+        "gates": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["gate", "at"],
+                "properties": {
+                    "gate": {"type": "string"},
+                    "at": {"type": "string"},
+                },
+            },
+        },
+    },
+}
+
+STEP_BLOCK = """\
+```yaml
+metadata:
+  workflow:
+    protocol: "0.1"
+    step:
+      role: analyst
+      inputs:
+        - artifact: "{run}/brief.md"
+      output:
+        artifact: "{run}/grounding.md"
+      on:
+        PASS: next-step
+        FAIL: revise-step
+```
+"""
+
+TRIGGER_BLOCK = """\
+```yaml
+metadata:
+  workflow:
+    protocol: "0.1"
+    trigger:
+      kind: manual
+```
+"""
+
+# The run-state example deliberately carries an unquoted timestamp: ruamel
+# resolves it to datetime, and validation succeeds only through jsonify().
+SPEC = f"""\
+# Spec
+
+A step example:
+
+{STEP_BLOCK}
+A run-state example:
+
+```yaml
+run:
+  id: 2026-08-03-demo
+gates:
+  - gate: intake
+    at: 2026-08-03T14:12:00Z
+```
+"""
+
+
+def frontmatter(name: str, description: str = "A description.") -> str:
+    return f"---\nname: {name}\ndescription: {description}\n---\n\n# {name}\n"
+
+
+class ValidateConformanceTest(unittest.TestCase):
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        for name, schema in (
+            ("step", STEP_SCHEMA),
+            ("loop", LOOP_SCHEMA),
+            ("trigger", TRIGGER_SCHEMA),
+            ("run-state", RUN_STATE_SCHEMA),
+        ):
+            self.write(f"protocol/schemas/{name}.schema.json", json.dumps(schema))
+        self.write(
+            "protocol/schemas/examples/step.valid.yaml",
+            'protocol: "0.1"\nstep:\n  role: analyst\n  output:\n    artifact: "{run}/a.md"\n',
+        )
+        self.write(
+            "protocol/schemas/examples/step.invalid.yaml",
+            'protocol: "0.1"\nstep:\n  role: orchestrator\n',
+        )
+        self.write(
+            "protocol/schemas/examples/loop.valid.yaml",
+            'protocol: "0.1"\nloop:\n  exit_criteria: []\n  max_iterations: 3\n',
+        )
+        self.write(
+            "protocol/schemas/examples/loop.invalid.yaml",
+            'protocol: "0.1"\nloop:\n  exit_criteria: []\n',
+        )
+        self.write(
+            "protocol/schemas/examples/trigger.valid.yaml",
+            'protocol: "0.1"\ntrigger:\n  kind: manual\n',
+        )
+        self.write(
+            "protocol/schemas/examples/trigger.invalid.yaml",
+            'protocol: "0.1"\ntrigger:\n  kind: quantum\n',
+        )
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            'run:\n  id: demo\ngates: []\n',
+        )
+        self.write(
+            "protocol/schemas/examples/run-state.invalid.yaml",
+            'run:\n  id: demo\ngates: []\nsurprise: true\n',
+        )
+        self.write("protocol/spec.md", SPEC)
+        self.write("roles/analyst.md", frontmatter("analyst"))
+        self.write("workflows/demo.md", frontmatter("demo") + "\n" + TRIGGER_BLOCK)
+        self.write("workflows/stages/build.md", frontmatter("build") + "\n" + STEP_BLOCK)
+
+    def write(self, relative: str, content: str) -> None:
+        path = self.root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+
+    def run_main(self) -> tuple[int, str]:
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            code = validate_conformance.main(["--root", str(self.root)])
+        return code, stdout.getvalue()
+
+    def run_main_expecting_exit(self) -> str:
+        with contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaises(SystemExit) as caught:
+                validate_conformance.main(["--root", str(self.root)])
+        return str(caught.exception.code)
+
+    def assert_problem(self, fragment: str) -> str:
+        code, output = self.run_main()
+        self.assertEqual(code, 1, output)
+        self.assertIn(fragment, output)
+        return output
+
+    # A fully valid tree passes, and the summary proves the checks matched
+    # real content. This is also the YAML 1.2 regression guard: the step
+    # blocks carry `on:` keys, which a YAML 1.1 loader would read as boolean
+    # true and fail against additionalProperties: false — and the spec's
+    # run-state example carries an unquoted timestamp that validates only
+    # after datetime-to-string conversion.
+    def test_valid_tree_passes_with_tallies(self) -> None:
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+        self.assertIn("conformance: OK", output)
+        self.assertIn("8 fixtures", output)
+        self.assertIn("2 spec examples", output)
+        self.assertIn("2 workflow blocks", output)
+        self.assertIn("3 frontmatter files", output)
+
+    def test_schema_violation_in_workflow_block_reported_with_location(self) -> None:
+        broken = STEP_BLOCK.replace("role: analyst", "role: analyst\n      rogue: true")
+        self.write("workflows/stages/build.md", frontmatter("build") + "\n" + broken)
+        output = self.assert_problem("workflows/stages/build.md:8")
+        self.assertIn("[step]", output)
+        self.assertIn("rogue", output)
+
+    def test_block_declaring_no_structure_reported(self) -> None:
+        self.write(
+            "workflows/demo.md",
+            frontmatter("demo") + '\n```yaml\nmetadata:\n  workflow:\n    protocol: "0.1"\n```\n',
+        )
+        self.assert_problem("declares none of: step, loop, trigger")
+
+    def test_non_mapping_workflow_value_reported(self) -> None:
+        self.write(
+            "workflows/demo.md",
+            frontmatter("demo") + "\n```yaml\nmetadata:\n  workflow: soon\n```\n",
+        )
+        self.assert_problem("metadata.workflow is not a mapping")
+
+    def test_unparseable_yaml_block_reported(self) -> None:
+        self.write(
+            "workflows/demo.md",
+            frontmatter("demo") + "\n```yaml\nmetadata: [unclosed\n```\n" + TRIGGER_BLOCK,
+        )
+        self.assert_problem("workflows/demo.md:8: yaml block does not parse")
+
+    def test_yaml_blocks_without_workflow_metadata_are_ignored(self) -> None:
+        self.write(
+            "workflows/demo.md",
+            frontmatter("demo") + "\n```yaml\n- just\n- a list\n```\n" + TRIGGER_BLOCK,
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_no_workflow_blocks_anywhere_reported(self) -> None:
+        self.write("workflows/demo.md", frontmatter("demo"))
+        self.write("workflows/stages/build.md", frontmatter("build"))
+        self.assert_problem("no metadata.workflow blocks found")
+
+    def test_unrecognized_spec_example_reported(self) -> None:
+        self.write("protocol/spec.md", SPEC + "\n```yaml\nnot: recognized\n```\n")
+        self.assert_problem("unrecognized example")
+
+    def test_spec_without_examples_reported(self) -> None:
+        self.write("protocol/spec.md", "# Spec\n\nNo examples.\n")
+        self.assert_problem("no embedded yaml examples found")
+
+    def test_invalid_spec_run_state_example_reported(self) -> None:
+        self.write(
+            "protocol/spec.md",
+            SPEC.replace("gate: intake", "gate: intake\n    rogue: true"),
+        )
+        output = self.assert_problem("protocol/spec.md")
+        self.assertIn("[run-state]", output)
+
+    def test_valid_fixture_failing_its_schema_reported(self) -> None:
+        self.write(
+            "protocol/schemas/examples/trigger.valid.yaml",
+            'protocol: "0.1"\ntrigger:\n  kind: quantum\n',
+        )
+        output = self.assert_problem("trigger.valid.yaml")
+        self.assertIn("[trigger]", output)
+
+    def test_invalid_fixture_passing_its_schema_reported(self) -> None:
+        self.write(
+            "protocol/schemas/examples/trigger.invalid.yaml",
+            'protocol: "0.1"\ntrigger:\n  kind: manual\n',
+        )
+        self.assert_problem("the negative test proves nothing")
+
+    def test_missing_fixture_reported(self) -> None:
+        (self.root / "protocol/schemas/examples/loop.invalid.yaml").unlink()
+        self.assert_problem("loop.invalid.yaml: fixture missing")
+
+    def test_unknown_placeholder_reported(self) -> None:
+        self.write(
+            "workflows/stages/build.md",
+            frontmatter("build") + "\n" + STEP_BLOCK.replace("{run}/brief.md", "{phase}/brief.md"),
+        )
+        self.assert_problem('unknown placeholder "{phase}"')
+
+    def test_shell_parameter_expansion_is_not_a_placeholder(self) -> None:
+        block = (
+            "```yaml\n"
+            "metadata:\n"
+            "  workflow:\n"
+            '    protocol: "0.1"\n'
+            "    loop:\n"
+            "      exit_criteria:\n"
+            '        - command: "echo ${HOME}"\n'
+            "      max_iterations: 2\n"
+            "```\n"
+        )
+        self.write("workflows/demo.md", frontmatter("demo") + "\n" + TRIGGER_BLOCK + "\n" + block)
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_missing_template_reported(self) -> None:
+        block = STEP_BLOCK.replace(
+            'artifact: "{run}/grounding.md"',
+            'artifact: "{run}/grounding.md"\n        template: references/g.template.md',
+        )
+        self.write("workflows/stages/build.md", frontmatter("build") + "\n" + block)
+        self.assert_problem("declared template not found: references/g.template.md")
+
+    def test_existing_template_passes(self) -> None:
+        block = STEP_BLOCK.replace(
+            'artifact: "{run}/grounding.md"',
+            'artifact: "{run}/grounding.md"\n        template: references/g.template.md',
+        )
+        self.write("workflows/stages/build.md", frontmatter("build") + "\n" + block)
+        self.write("workflows/stages/references/g.template.md", "# template\n")
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_spec_example_templates_are_not_existence_checked(self) -> None:
+        block = STEP_BLOCK.replace(
+            'artifact: "{run}/grounding.md"',
+            'artifact: "{run}/grounding.md"\n        template: references/nowhere.template.md',
+        )
+        self.write("protocol/spec.md", SPEC + "\nAnother example:\n\n" + block)
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_frontmatter_name_mismatching_slug_reported(self) -> None:
+        self.write("roles/analyst.md", frontmatter("analyzer"))
+        self.assert_problem("name 'analyzer' does not match the file slug 'analyst'")
+
+    def test_skill_name_uses_directory_slug(self) -> None:
+        self.write("skills/demo-skill/SKILL.md", frontmatter("demo-skill"))
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+        self.assertIn("1 skill bodies", output)
+
+    def test_uppercase_frontmatter_name_reported(self) -> None:
+        self.write("roles/analyst.md", frontmatter("Analyst"))
+        self.assert_problem("not lowercase-alphanumeric-with-hyphens")
+
+    def test_overlong_frontmatter_name_reported(self) -> None:
+        long_name = "a" * 65
+        self.write("roles/analyst.md", frontmatter(long_name))
+        self.assert_problem("name is 65 chars")
+
+    def test_missing_frontmatter_reported(self) -> None:
+        self.write("roles/analyst.md", "# no frontmatter\n")
+        self.assert_problem("roles/analyst.md: no frontmatter block")
+
+    def test_missing_description_reported(self) -> None:
+        self.write("roles/analyst.md", "---\nname: analyst\n---\n")
+        self.assert_problem("roles/analyst.md: frontmatter has no description")
+
+    def test_overlong_description_reported(self) -> None:
+        self.write("roles/analyst.md", frontmatter("analyst", "d" * 1025))
+        self.assert_problem("description is 1025 chars")
+
+    def test_readme_files_skip_frontmatter_checks(self) -> None:
+        self.write("roles/README.md", "# roles/\n")
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_skill_body_over_line_budget_reported(self) -> None:
+        body = "line\n" * 501
+        self.write("skills/big/SKILL.md", frontmatter("big") + body)
+        self.assert_problem("body is 503 lines, budget is 500")
+
+    def test_skill_body_over_token_budget_reported(self) -> None:
+        body = ("x" * 100 + "\n") * 210  # ~5300 tokens in ~211 lines
+        self.write("skills/dense/SKILL.md", frontmatter("dense") + body)
+        self.assert_problem("tokens, budget is 5000")
+
+    def test_missing_schema_file_exits(self) -> None:
+        (self.root / "protocol/schemas/trigger.schema.json").unlink()
+        message = self.run_main_expecting_exit()
+        self.assertIn("missing schemas: trigger", message)
+
+    def test_malformed_schema_file_exits(self) -> None:
+        self.write("protocol/schemas/step.schema.json", "{not json")
+        message = self.run_main_expecting_exit()
+        self.assertIn("step.schema.json: not a valid schema", message)
+
+    def test_missing_schema_directory_exits(self) -> None:
+        message = self.run_main_expecting_exit_with_root(self.root / "elsewhere")
+        self.assertIn("not found", message)
+
+    def run_main_expecting_exit_with_root(self, root: Path) -> str:
+        with contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaises(SystemExit) as caught:
+                validate_conformance.main(["--root", str(root)])
+        return str(caught.exception.code)
+
+
+if __name__ == "__main__":
+    unittest.main()
