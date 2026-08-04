@@ -134,7 +134,7 @@ Which gates exist and which transport they default to is a property of the risk 
 
 Every gate decision has exactly one outcome: `accept`, `revise`, or `reject`. Unless a stage declares otherwise, outcomes route by default: `accept` proceeds to the next step in composition order; `revise` returns to the step that produced the gated artifact; `reject` ends the run — or the phase, where the workflow declares phases. A stage MAY override these defaults with explicit edges.
 
-**Instrumentation requirement:** every gate outcome MUST be recorded in run state with its gate id, transport, outcome, and timestamp. This record is not optional bookkeeping — accumulated gate outcomes are the evidence for tuning gate placement, and a client that skips recording does not conform.
+**Instrumentation requirement:** every gate outcome MUST be recorded in run state with its gate id, transport, outcome, and timestamp (the `at` field, [10](#10-run-state)). This record is not optional bookkeeping — accumulated gate outcomes are the evidence for tuning gate placement, and a client that skips recording does not conform.
 
 ## 8. Artifacts and runs
 
@@ -247,7 +247,7 @@ metadata:
 `metadata.workflow` is a degradation-tolerant hint layer:
 
 - A client that does not understand `metadata.workflow` MUST be able to use the skill by ignoring the block entirely and running the body as prose, with the human as executor.
-- A client that understands the block partially SHOULD honor what it understands and ignore the rest; unknown keys under `workflow` MUST NOT be treated as errors during 0.x.
+- A client that understands the block partially SHOULD honor what it understands and ignore the rest; unknown top-level keys under `workflow` — siblings of the declared structures — MUST NOT be treated as errors during 0.x. Inside a declared structure (`step`, `loop`, `trigger`), unknown keys are authoring errors, and the schemas reject them.
 - Degradation works in both directions: a human or harness can replace a driver at any step, and a driver can pick up a run a human advanced, because all state is in artifacts and run state.
 
 ## 10. Run state
