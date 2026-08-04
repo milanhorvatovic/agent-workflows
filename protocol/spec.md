@@ -240,7 +240,7 @@ metadata:
 - `cron` runs on a cron expression carried in a `cron` field (e.g. `"0 9 * * 1"`).
 - `event` runs on an executor-defined event.
 - `every` and `cron` are each valid only for their own kind; a trigger MUST NOT carry both.
-- `until` stops a recurring trigger when `command`'s output equals `equals`.
+- `until` stops a recurring trigger when `command`'s output equals `equals`. It applies to the recurring kinds — `interval`, `cron`, and `event` (each occurrence starts a run) — and a `manual` trigger MUST NOT declare it.
 
 ### 9.4 Degradation
 

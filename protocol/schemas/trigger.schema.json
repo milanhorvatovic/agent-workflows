@@ -27,7 +27,7 @@
           "description": "cron kind only: a cron expression, e.g. \"0 9 * * 1\" (spec section 9.3)."
         },
         "until": {
-          "description": "Stop condition for recurring runs: stops when the command's output equals the value (spec section 9.3).",
+          "description": "Stop condition for the recurring kinds (interval, cron, event): stops when the command's output equals the value; forbidden on manual (spec section 9.3).",
           "type": "object",
           "additionalProperties": false,
           "required": ["command", "equals"],
@@ -51,11 +51,21 @@
           "not": { "required": ["every"] }
         },
         {
-          "description": "manual (default when kind is omitted) or event kind: neither every nor cron (spec section 9.3).",
-          "properties": { "kind": { "enum": ["manual", "event"] } },
+          "description": "event kind: recurring per occurrence, so until is allowed; neither every nor cron (spec section 9.3).",
+          "properties": { "kind": { "const": "event" } },
+          "required": ["kind"],
           "allOf": [
             { "not": { "required": ["every"] } },
             { "not": { "required": ["cron"] } }
+          ]
+        },
+        {
+          "description": "manual kind (the default when kind is omitted): one-shot, so neither every, cron, nor until (spec section 9.3).",
+          "properties": { "kind": { "const": "manual" } },
+          "allOf": [
+            { "not": { "required": ["every"] } },
+            { "not": { "required": ["cron"] } },
+            { "not": { "required": ["until"] } }
           ]
         }
       ]
