@@ -76,7 +76,9 @@ def description_of(path: Path, root: Path) -> str:
     if value[0] in ">|":
         fail(f"{path.relative_to(root)}: description must be a single-line scalar")
     if len(value) > 1 and value[0] in "'\"" and value[-1] == value[0]:
-        value = value[1:-1]
+        value = value[1:-1].strip()
+    if not value:
+        fail(f"{path.relative_to(root)}: description is empty")
     return value
 
 

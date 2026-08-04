@@ -177,6 +177,13 @@ class GenerateIndexTest(unittest.TestCase):
         message = self.run_main_expecting_failure()
         self.assertIn("roles/broken.md: frontmatter has no description", message)
 
+    def test_quoted_empty_or_blank_description_fails(self) -> None:
+        for raw in ('""', '" "', "''"):
+            with self.subTest(raw=raw):
+                self.write("roles/broken.md", f"---\nname: broken\ndescription: {raw}\n---\n")
+                message = self.run_main_expecting_failure()
+                self.assertIn("roles/broken.md: description is empty", message)
+
     def test_block_scalar_description_fails(self) -> None:
         self.write("roles/broken.md", "---\nname: broken\ndescription: >-\n  wrapped\n---\n")
         message = self.run_main_expecting_failure()
