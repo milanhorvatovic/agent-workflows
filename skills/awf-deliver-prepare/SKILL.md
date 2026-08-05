@@ -58,4 +58,4 @@ At R1 the artifact is a minimal change note per the risk-class overlays — summ
 
 Write the artifact to `{run}/delivery.md`, scaffolded from `references/delivery.template.md` (spec §8.3; load it before assembling, since it fixes the section order and the evidence tables). Every claim in it traces to the brief, a log entry, a validation verdict, or the diff.
 
-No verdict is rendered here — `deliver-validate` judges this artifact against the brief, and the `delivery-approval` gate collects the human decision with that verdict in view. A `revise` outcome at the gate returns here with the human's direction.
+No verdict is rendered here — `deliver-validate` judges this artifact against the brief where the risk class runs it, and the `delivery-approval` gate collects the human decision with that verdict in view, or with the artifact alone at R1, where the validator is skipped. A `revise` outcome at the gate returns here with the human's direction.
