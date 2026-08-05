@@ -21,9 +21,9 @@
 
 [Ordering respects every dependency. Within a tier, what reduces risk or resolves uncertainty comes first.]
 
-## Tickets
+---
 
-[In implementation order. Where the project declares a ticket-format standard, each ticket takes that standard's shape and the block below is not used — only these surrounding sections are. Where it does not, the block below is the format.]
+*The tickets follow, one `##` block each, in implementation order. Where the project declares a ticket-format standard, every ticket takes that standard's shape and the block below is not used — the sections above and the ordering still apply. Where it does not, the block below is the format.*
 
 ## [TICKET-001] [Action-oriented title, starting with a verb]
 
