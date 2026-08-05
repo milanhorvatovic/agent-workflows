@@ -55,7 +55,7 @@
 
 ## Revision log
 
-[Empty at creation — awf-ideate-revise appends one row per finding it decided, accept, reject, or defer, with what changed or why it did not.]
+[Empty at creation — awf-ideate-revise appends one row per finding or question it decided, accept, reject, or defer, with what changed or why nothing did.]
 
-| Iteration | Finding | Decision | What changed |
+| Iteration | Finding or question | Decision | What changed |
 | --- | --- | --- | --- |
