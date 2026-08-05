@@ -47,7 +47,7 @@ metadata:
 
 ### review-validate (validator)
 
-Independent verdict on the change in light of the findings: does it meet the brief and plan, and do any open findings block? Renders the verdict the loop contract consumes.
+Independent verdict on the change in light of the findings: does it meet the brief and plan, and do any open findings block? Renders the verdict the loop contract consumes. The plan is a declared input because the verdict judges against its acceptance criteria and file scope — an executor materializing only declared inputs must still provide it.
 
 ```yaml
 metadata:
@@ -61,6 +61,8 @@ metadata:
         - artifact: "{run}/security-findings.md"
           required: false
         - artifact: "{run}/phase-{N}-impl-log.md"
+          required: true
+        - artifact: "{run}/phase-{N}-plan.md"
           required: true
       output:
         artifact: "{run}/review-validation.md"
@@ -89,7 +91,7 @@ metadata:
 
 ### review-fix (implementer)
 
-Runs when the loop has not exited: applies the resolved findings (the arbiter's list where one exists, the reviewer's otherwise) within the plan's declared scope, updates the implementation log, and keeps machine checks green; otherwise recorded `skipped`. The next iteration re-reviews the updated change.
+Runs when the loop has not exited: applies the resolved findings (the arbiter's list where one exists, both review passes' findings otherwise — the security pass's included where it ran) within the plan's declared scope, updates the implementation log, and keeps machine checks green; otherwise recorded `skipped`. The next iteration re-reviews the updated change.
 
 ```yaml
 metadata:
@@ -102,6 +104,8 @@ metadata:
           required: false
         - artifact: "{run}/review-findings.md"
           required: true
+        - artifact: "{run}/security-findings.md"
+          required: false
         - artifact: "{run}/phase-{N}-plan.md"
           required: true
         - artifact: "{run}/phase-{N}-impl-log.md"

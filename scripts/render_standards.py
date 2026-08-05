@@ -50,9 +50,14 @@ WELL_FORMED = re.compile(r"\{\{([A-Z][A-Z0-9_]*)\}\}")
 # mapped to every skill-side copy generated from it. A new consumer is added
 # here first; --render-shared then writes its copy and --check enforces it.
 SHARED_TEMPLATES: dict[str, tuple[str, ...]] = {
+    "review-report.template.md": (
+        "skills/awf-review-code/references/review-report.template.md",
+        "skills/awf-review-security/references/review-report.template.md",
+    ),
     "validation-report.template.md": (
         "skills/awf-implement-validate/references/validation-report.template.md",
         "skills/awf-plan-validate/references/validation-report.template.md",
+        "skills/awf-review-validate/references/validation-report.template.md",
     ),
 }
 
