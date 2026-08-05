@@ -64,7 +64,7 @@ SHARED_TEMPLATES: dict[str, tuple[str, ...]] = {
 
 SHARED_DIR = "standards/templates"
 
-SKILL_REFERENCES = "skills/*/references/*.md"
+SKILL_FILES = "skills/*/**/*.md"
 
 SHARED_MARKER = "<!-- GENERATED TEMPLATE COPY"
 
@@ -161,17 +161,18 @@ def shared_copy_problems(root: Path) -> list[str]:
 
 
 def unregistered_copy_problems(root: Path) -> list[str]:
-    """Findings for generated copies the registry does not own. A skill that
-    hand-copies a shared template — header and all — from a neighbouring skill
-    is never re-rendered and never drift-checked, so it diverges from its source
-    silently; that is the failure the registry exists to prevent."""
+    """Findings for header-carrying generated copies the registry does not own.
+    A skill that hand-copies a shared template — header and all — from a
+    neighbouring skill is never re-rendered and never drift-checked, so it
+    diverges from its source silently. A copy whose header was stripped is
+    indistinguishable from an authored file and stays out of scope."""
     registered = {copy for copies in SHARED_TEMPLATES.values() for copy in copies}
     problems = []
-    for path in sorted(root.glob(SKILL_REFERENCES)):
+    for path in sorted(root.glob(SKILL_FILES)):
         rel = path.relative_to(root).as_posix()
         if rel in registered:
             continue
-        if path.read_text(encoding="utf-8").startswith(SHARED_MARKER):
+        if path.read_text(encoding="utf-8").lstrip("﻿ \t\r\n").startswith(SHARED_MARKER):
             problems.append(
                 f"{rel}: carries the generated-copy header but no SHARED_TEMPLATES "
                 "entry owns it — register the copy or it drifts unnoticed"

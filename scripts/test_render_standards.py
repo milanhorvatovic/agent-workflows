@@ -318,6 +318,29 @@ class RenderStandardsTest(unittest.TestCase):
         )
         self.assertNotIn(f"{SHARED_COPY}: carries", err)
 
+    def test_check_flags_unregistered_copy_outside_references(self) -> None:
+        for relative in (
+            "skills/fourth-skill/report.template.md",
+            "skills/fifth-skill/references/nested/report.template.md",
+        ):
+            with self.subTest(relative=relative):
+                path = self.write(
+                    relative, render_standards.shared_copy_text(self.root, SHARED_NAME)
+                )
+                code, _, err = self.run_main("--check")
+                self.assertEqual(code, 1)
+                self.assertIn(f"{relative}: carries the generated-copy header", err)
+                path.unlink()
+
+    def test_check_flags_copy_behind_leading_whitespace(self) -> None:
+        self.write(
+            "skills/fourth-skill/references/report.template.md",
+            "\n  " + render_standards.shared_copy_text(self.root, SHARED_NAME),
+        )
+        code, _, err = self.run_main("--check")
+        self.assertEqual(code, 1)
+        self.assertIn("carries the generated-copy header", err)
+
     def test_check_ignores_authored_reference(self) -> None:
         self.write(
             "skills/fourth-skill/references/checklist.md",
