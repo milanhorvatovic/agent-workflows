@@ -12,7 +12,7 @@
 
 ## Checklist
 
-[Every row marked pass or fail; a failing row points at the finding(s) that fail it. Rows the task skill adds append below the core eight.]
+[Checked means the row passes. A failing row stays unchecked and appends "— FAIL:" with the id(s) of the finding(s) that fail it. Rows the task skill adds append below the core eight.]
 
 - [ ] **Completeness** — everything the requirements ask for is addressed; nothing is missing
 - [ ] **Consistency** — no internal contradictions or conflicting statements

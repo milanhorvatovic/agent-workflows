@@ -229,7 +229,7 @@ class RenderStandardsTest(unittest.TestCase):
 
     def test_render_shared_writes_header_plus_source(self) -> None:
         copy = (self.root / SHARED_COPY).read_text(encoding="utf-8")
-        self.assertTrue(copy.startswith("<!-- GENERATED FILE - DO NOT EDIT."))
+        self.assertTrue(copy.startswith("<!-- GENERATED TEMPLATE COPY"))
         self.assertIn(f"Source: standards/templates/{SHARED_NAME}", copy)
         self.assertIn("--render-shared", copy)
         self.assertTrue(copy.endswith(SHARED_TEXT))
