@@ -2,10 +2,8 @@
 
 > **Run:** [run id]
 > **Brief:** [path of the brief this delivers against]
-> **Risk class:** [R0 | R1 | R2 | R3]
+> **Risk class:** [R1 | R2 | R3]
 > **Phases:** [phase numbers covered by this delivery, and their state]
-
-[Sections marked *(R2+)* are omitted at R1, where the artifact is the minimal change note — summary, what changed, the verification that ran, and the change description the shipping channel needs.]
 
 ## Summary
 
@@ -17,13 +15,13 @@
 
 - **[change]** — [what it does] · [why, traced to the brief or a recorded decision] · [where: paths or modules]
 
-### Deviations from the plan *(R2+)*
+### Deviations from the plan
 
-[Deviations the implementation logs declared, each with its rationale and its effect on the brief's criteria. "None" where the plans were followed as written.]
+[Deviations the implementation logs declared, each with its rationale and its effect on the brief's criteria. "None" where the plans were followed as written. Omitted at R1, where the artifact is the minimal change note.]
 
-## Acceptance criteria *(R2+)*
+## Acceptance criteria
 
-[Every criterion from the brief, with its state and the evidence behind it. Unverified is a state, not an omission — never report a criterion as met without evidence.]
+[Every criterion from the brief, with its state and the evidence behind it. Unverified is a state, not an omission — never report a criterion as met without evidence. Omitted at R1, where the artifact is the minimal change note.]
 
 | # | Criterion | State | Evidence |
 | --- | --- | --- | --- |
@@ -41,7 +39,7 @@
 
 ### Validation verdicts
 
-[Each validator that ran, its verdict, and any conditions or findings left open under an accepted verdict. A step skipped for the risk class is listed as skipped — an absent verdict is a fact about the run, not a gap.]
+[The verdicts on this change — implementation validation per phase, and the review validation where the review stage ran — each with any conditions or findings left open under an accepted verdict. A step skipped for the risk class is listed as skipped: an absent verdict is a fact about the run, not a gap. Verdicts on upstream artifacts (the plan, the ideation) are not verdicts on the change and do not belong here.]
 
 | Step | Verdict | Conditions / open findings |
 | --- | --- | --- |
@@ -57,10 +55,10 @@
 
 [Summary, changes, testing, and any links the standard requires.]
 
-## Risks and rollback *(R2+)*
+## Risks and rollback
 
-[What could go wrong after this ships, what signals would show it, and how to undo it — the revert path, migrations that need reversing, flags to flip.]
+[What could go wrong once the change is live, what signals would show it, and how to undo it — the revert path, migrations that need reversing, flags to flip. Omitted at R1, where the artifact is the minimal change note.]
 
-## Follow-ups *(R2+)*
+## Follow-ups
 
-[Work this run deliberately left: deferred findings with their ids, open questions, known gaps, and where each is recorded. "None" when nothing was deferred.]
+[Work this run deliberately left, from the sources this step reads: findings-for-planning the implementation logs raised, findings left open under an accepted validation verdict, and gaps the logs record — each with its id and where it is recorded. "None" when nothing was deferred. Omitted at R1, where the artifact is the minimal change note.]

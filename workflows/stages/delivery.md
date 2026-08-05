@@ -38,7 +38,7 @@ metadata:
 
 ### deliver-validate (validator)
 
-Runs with fresh context in every mode (spec §4). The run's final validation: are the brief's acceptance criteria met, is the delivery artifact accurate about what shipped, is any claimed verification actually evidenced? Renders the verdict presented at the gate. The validation artifacts stay optional for the same reason they do in `deliver-prepare` — validator steps are skipped at R1 — but where they exist they are the sources the artifact's quoted verdicts and conditions are checked against, which the step cannot do on the artifact's own word.
+Runs with fresh context in every mode (spec §4). The run's final validation: are the brief's acceptance criteria met, is the delivery artifact accurate about what shipped, is any claimed verification actually evidenced? Renders the verdict presented at the gate. The implementation log is required — delivery composes only into workflows that implement, so the log the artifact's evidence claims come from always exists. The validation artifacts stay optional for the same reason they do in `deliver-prepare` — validator steps are skipped at R1 — but where they exist they are the sources the artifact's quoted verdicts and conditions are checked against, which the step cannot do on the artifact's own word.
 
 ```yaml
 metadata:
@@ -50,6 +50,8 @@ metadata:
         - artifact: "{run}/delivery.md"
           required: true
         - artifact: "{run}/brief.md"
+          required: true
+        - artifact: "{run}/phase-{N}-impl-log.md"
           required: true
         - artifact: "{run}/phase-{N}-impl-validation.md"
           required: false
@@ -65,5 +67,6 @@ metadata:
 
 ## Notes
 
+- `{N}` ranges over every completed phase in this stage's inputs, rather than naming the current phase as it does in the per-phase stages ([planning](planning.md)): delivery closes the run, so a multi-phase run's artifact and its validation cover every phase's log and verdicts, not just the last one's.
 - Risk-class reductions of the delivery artifact — R1's minimal change-note content, R0's free-form exit note — are encoded once in [overlays](../overlays.md), never here.
 - At R1 `deliver-validate` is skipped and no verdict exists: `deliver-prepare`'s `on` edges are waived per the skip-resolution rules ([overlays](../overlays.md)), and the gate still fires in composition order.

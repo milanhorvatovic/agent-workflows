@@ -73,4 +73,4 @@
 
 **[PASS | PASS_WITH_CONDITIONS | FAIL]**
 
-[Explanation. PASS_WITH_CONDITIONS lists the exact conditions to meet; FAIL summarizes the critical findings and blocking questions that must be resolved. Exactly one verdict — it routes the loop (spec §9.2), so it must be unambiguous.]
+[Explanation. PASS_WITH_CONDITIONS lists the exact conditions to meet; FAIL summarizes the critical findings and blocking questions that must be resolved. Exactly one verdict — it routes the loop that consumes it, or the gate where no loop does (spec §9.2), so it must be unambiguous.]

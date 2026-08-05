@@ -1,6 +1,6 @@
 ---
 name: awf-deliver-validate
-description: Adversarially validates the run's delivery artifact against the brief — are the acceptance criteria actually met by the shipped change, is the artifact accurate about what shipped and honest about what did not, is every claimed verification evidenced rather than asserted? — and renders exactly one verdict, PASS, PASS_WITH_CONDITIONS, or FAIL, as the run's last, in a structured validation report. Triggers as the delivery stage's deliver-validate step, fresh-context in every mode, after awf-deliver-prepare writes the artifact; the risk-class overlays skip it at R0 and R1, where the gate and machine checks stand in. It identifies issues and never fixes them — correcting the artifact is awf-deliver-prepare's on a gate revise outcome — and its verdict does not gate the run, every verdict routing instead to the delivery-approval gate where the human decides with it in view.
+description: Adversarially validates the run's delivery artifact against the brief — are the acceptance criteria actually met by the shipped change, is the artifact accurate about what shipped and honest about what did not, is every claimed verification evidenced rather than asserted? — and renders exactly one verdict, PASS, PASS_WITH_CONDITIONS, or FAIL, as the run's last, in a structured validation report. Triggers as the delivery stage's deliver-validate step, fresh-context in every mode, after awf-deliver-prepare writes the artifact; the risk-class overlays skip it at R1, where machine checks and the gate stand in, and at R0, where the stage is a free-form exit note with no gate at all. It identifies issues and never fixes them — correcting the artifact is awf-deliver-prepare's on a gate revise outcome — and its verdict does not gate the run, every verdict routing instead to the delivery-approval gate where the human decides with it in view.
 license: MIT
 metadata:
   workflow:
@@ -11,6 +11,8 @@ metadata:
         - artifact: "{run}/delivery.md"
           required: true
         - artifact: "{run}/brief.md"
+          required: true
+        - artifact: "{run}/phase-{N}-impl-log.md"
           required: true
         - artifact: "{run}/phase-{N}-impl-validation.md"
           required: false
@@ -33,7 +35,8 @@ The step runs as the validator, always with fresh context (spec §4): profession
 
 - `{run}/delivery.md` (required) — the artifact under validation, read in full before judging: its summary, change list, acceptance-criteria table, verification evidence, and change description.
 - `{run}/brief.md` (required) — the bar. Its goal, constraints, and acceptance criteria are what "delivered" means; criteria are walked one by one, never sampled.
-- `{run}/phase-{N}-impl-validation.md` and `{run}/review-validation.md` (optional) — the verdicts the artifact quotes, absent where their steps were skipped for the risk class. Where they exist, they are what the artifact's verdict claims and conditions are checked against; the artifact's own word is never the source.
+- `{run}/phase-{N}-impl-log.md` (required) — where the artifact's evidence claims come from: machine-check results, commits, declared deviations. A claim sourced from the log is checked against the log and then against the diff.
+- `{run}/phase-{N}-impl-validation.md` and `{run}/review-validation.md` (optional) — the verdicts the artifact quotes, absent because their steps were skipped for the risk class, never satisfied from another run (the grounding cache of spec §8.4 does not apply to a record of this run). Where they exist, they are what the artifact's verdict claims and conditions are checked against; the artifact's own word is never the source.
 - The change itself, read directly — the diff, its tests, and the machine-check evidence are ground truth for every claim the artifact makes. Where the diff and the artifact disagree, the diff wins and the disagreement is a finding.
 
 ## Method
@@ -52,4 +55,4 @@ The checklist appends rows for acceptance-criteria coverage, artifact accuracy a
 
 Write the report to `{run}/delivery-validation.md`, scaffolded from `references/validation-report.template.md` (spec §8.3; a generated copy — the source lives in `standards/templates/`). Every finding carries a stable id, severity, location, issue, impact, and recommendation; questions are separated from findings, blocking from non-blocking.
 
-Exactly one verdict — PASS, PASS_WITH_CONDITIONS, or FAIL (spec §3.3) — with an unmet acceptance criterion or an unevidenced verification claim forcing at least PASS_WITH_CONDITIONS, and a change that misses the brief forcing FAIL. Every verdict routes to the `delivery-approval` gate: `accept` completes the run, `revise` returns to `deliver-prepare` with the human's direction, `reject` ends it.
+Exactly one verdict — PASS, PASS_WITH_CONDITIONS, or FAIL (spec §3.3). The line runs on evidence strength: a criterion the evidence cannot confirm, or a verification claim nothing supports, forces at least PASS_WITH_CONDITIONS with each one a named condition; a criterion the change demonstrably fails forces FAIL. Every verdict routes to the `delivery-approval` gate: `accept` completes the run, `revise` returns to `deliver-prepare` with the human's direction, `reject` ends it.
