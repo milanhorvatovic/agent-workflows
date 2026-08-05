@@ -318,7 +318,7 @@ class RenderStandardsTest(unittest.TestCase):
         )
         self.assertNotIn(f"{SHARED_COPY}: carries", err)
 
-    def test_check_flags_unregistered_copy_outside_references(self) -> None:
+    def test_check_flags_unregistered_copy_anywhere_under_skills(self) -> None:
         for relative in (
             "skills/fourth-skill/report.template.md",
             "skills/fifth-skill/references/nested/report.template.md",
