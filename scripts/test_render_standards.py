@@ -54,7 +54,8 @@ class RenderStandardsTest(unittest.TestCase):
         registry.start()
         self.addCleanup(registry.stop)
         self.write(f"standards/templates/{SHARED_NAME}", SHARED_TEXT)
-        self.run_main("--render-shared")
+        code, _, err = self.run_main("--render-shared")
+        self.assertEqual(code, 0, f"fixture --render-shared failed: {err}")
 
     def write(self, relative: str, text: str) -> Path:
         path = self.root / relative
