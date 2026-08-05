@@ -33,6 +33,7 @@ The step runs as the arbiter, the skeptical synthesist: every accepted finding r
 - `{run}/review-validation.md` (required) — the validator's verdict, dispositions, contested findings, and own `F-…` findings.
 - `{run}/security-findings.md` (optional) — the security pass's findings, `S-…` ids, where that step ran.
 - The change itself, for spot-checking citations — read where a finding is contested or its evidence is in doubt, not wholesale.
+- The project's coding, architecture, and testing standards, and its review checklist where one exists — what a finding that invokes a standard is refuted or accepted against. A refutation attempt that cannot check the rule the finding cites is not an attempt.
 
 ## Method
 

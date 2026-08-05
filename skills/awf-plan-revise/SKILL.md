@@ -32,6 +32,7 @@ The step runs as the planner: answer each finding with reasoning, keep the plan 
 
 - `{run}/phase-{N}-plan.md` (required) — the current plan, revised in place.
 - `{run}/phase-{N}-plan-validation.md` (required) — the validation report whose findings and questions drive the revision; its stable finding and question ids are what the decisions reference.
+- The project's coding and architecture standards, where they exist — revisions stay inside them, and a revision that must depart from one records the departure with its reasoning rather than making it quietly. A finding that asks for a change contradicting a standard is answered on the record — accepted with the departure argued, or rejected citing the standard — never split the difference in silence.
 - Depending on the entry point, the driving feedback also includes: the human's decisions and answers from the plan-approval gate's `revise` outcome; the implementation log's structured plan-defect feedback (what is wrong, where, suggested correction) when implementation escalated back into planning; the triggering phase's revised plan in a cross-phase cascade.
 
 ## Method

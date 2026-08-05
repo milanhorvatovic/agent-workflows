@@ -29,6 +29,7 @@ The step runs as the validator, always with fresh context (spec §4): profession
 
 - `{run}/phase-{N}-plan.md` (required) — the plan under validation, read in its entirety before judging.
 - `{run}/brief.md` (required) — the requirements source: its goal, constraints, and acceptance criteria are the bar. Requirements coverage is checked line by line — a plan that misses requirements is fundamentally flawed regardless of its other qualities.
+- The project's coding, architecture, and testing standards, where they exist — the other bar, and what makes the report's Standards checklist row mean something. A plan whose steps, file scope, or test requirements contradict a standard without saying why is a finding; an argued departure is judged on the argument, not on the departure.
 
 ## Method
 

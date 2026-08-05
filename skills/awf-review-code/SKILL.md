@@ -30,7 +30,7 @@ The step runs as the reviewer, always with fresh context (spec §4) — fresh ey
 - `{run}/phase-{N}-plan.md` (required) — what was supposed to be built: the steps, the acceptance criteria, and the file-scope declaration the change is bound to.
 - `{run}/phase-{N}-impl-log.md` (required) — the implementer's account: deviations declared, issues hit, machine-check evidence, commits.
 - The change itself, read directly — the diff of this phase's work and its tests. The diff is the subject; the plan and log are the context it is judged in.
-- The project's coding and testing standards, and its review checklist where one exists — the rules the review enforces, read before reviewing any code.
+- The project's coding, architecture, and testing standards, and its review checklist where one exists — the rules the review enforces, read before reviewing any code. The architecture standard is what makes a structural finding more than a matter of taste: a change that crosses a boundary the project has declared is a finding against the standard, not against the reviewer's preference.
 
 ## Method
 

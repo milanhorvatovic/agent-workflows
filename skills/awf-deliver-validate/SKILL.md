@@ -38,6 +38,7 @@ The step runs as the validator, always with fresh context (spec §4): profession
 - `{run}/phase-{N}-impl-log.md` (required) — where the artifact's evidence claims come from: machine-check results, commits, declared deviations. A multi-phase run has one log per phase and every one is read; a claim sourced from a log is checked against that log and then against the diff.
 - `{run}/phase-{N}-impl-validation.md` and `{run}/review-validation.md` (optional) — the verdicts the artifact quotes. Optional not because this step ever runs without a validator upstream by design, but because reclassification applies the new class's defaults to subsequent steps only (spec §5.3): a run bumped upward mid-implementation reaches this step with no implementation validation behind it. Absent is therefore a fact to check the artifact against, and never satisfied from another run — the grounding cache of spec §8.4 does not apply to a record of this run. Where they exist, they are what the artifact's verdict claims and conditions are checked against; the artifact's own word is never the source.
 - The change itself, read directly — the diff, its tests, and the machine-check evidence are ground truth for every claim the artifact makes. Where the diff and the artifact disagree, the diff wins and the disagreement is a finding.
+- The project's rendered PR or change-note standard, where one exists — the shape the change description is held to, and what the report's Standards checklist row is checked against; the same standard `deliver-prepare` wrote against.
 
 ## Method
 
