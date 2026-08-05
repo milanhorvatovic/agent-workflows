@@ -163,7 +163,7 @@ def shared_copy_problems(root: Path) -> list[str]:
 def unregistered_copy_problems(root: Path) -> list[str]:
     """Findings for header-carrying generated copies the registry does not own.
     A skill that hand-copies a shared template — header and all — from a
-    neighbouring skill is never re-rendered and never drift-checked, so it
+    neighboring skill is never re-rendered and never drift-checked, so it
     diverges from its source silently. A copy whose header was stripped is
     indistinguishable from an authored file and stays out of scope."""
     registered = {copy for copies in SHARED_TEMPLATES.values() for copy in copies}
