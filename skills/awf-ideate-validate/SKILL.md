@@ -29,6 +29,7 @@ The step runs as the validator, always with fresh context (spec §4): profession
 
 - `{run}/ideation.md` (required) — the artifact under validation, read in full before judging.
 - `{run}/brief.md` (required) — the requirements source: its goal, constraints, and acceptance criteria are the bar the approach set is measured against.
+- The project's architecture standard, where one exists — the boundaries, layering, and technology direction approaches are held to, read before scoring alignment. A departure from it is a finding only when the artifact leaves it unargued; an argued departure is judged on the argument.
 
 The grounding is deliberately not an input. Feasibility and impact claims are verified against the codebase itself, which is stronger than checking them against a sibling artifact: the question is whether a claim is true, not whether it was faithfully copied.
 

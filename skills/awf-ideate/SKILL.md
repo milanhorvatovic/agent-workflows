@@ -33,6 +33,7 @@ The step runs as the planner: explore breadth before depth, state risks and assu
 
 - `{run}/brief.md` (required) — the confirmed brief: its goal, constraints, and acceptance criteria bound the space. An approach that cannot satisfy a stated criterion belongs in the discarded set with that reason, not in the candidate set.
 - `{run}/grounding.md` (optional, cacheable) — the verified codebase analysis: its patterns, dependencies, and constraints-on-the-solution-space are what make impact claims concrete. When absent, read the relevant code directly before claiming impact — an approach resting on a module, extension point, or dependency that does not exist is a fabrication `ideate-validate` verifies against the codebase and fails.
+- The project's architecture standard, where one exists — the boundaries, layering, and technology direction every approach must respect, read before generating them. An approach that departs from it is legitimate but must say so and argue the departure; an approach that departs from it silently is the one that dies at `plan-approval`.
 
 ## Method
 

@@ -7,7 +7,7 @@
 
 ## Problem
 
-[The problem in the planner's own words, with the brief's constraints and acceptance criteria carried here. This section is what makes the artifact stand alone: revision works from it, and the reader at plan-approval sees what the approaches answer.]
+[The problem in the planner's own words, with the brief's constraints and acceptance criteria carried here, plus any constraint from the project's architecture standard that every approach must respect. This section is what makes the artifact stand alone: revision works from it, and the reader at plan-approval sees what the approaches answer.]
 
 ## Approaches
 

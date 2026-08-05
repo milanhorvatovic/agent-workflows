@@ -7,7 +7,7 @@ The working method for comparing candidate approaches. Load before comparing; th
 - **Feasibility** — buildable with this codebase, these dependencies, and this team's constraints, as the approach actually describes it. Scored against what was verified in the code, not against what the artifact asserts.
 - **Complexity** — the effort, coordination, and technical difficulty the approach demands, relative to this project's current state. Never an absolute time estimate.
 - **Risk** — the likelihood and impact of what could go wrong, including what only appears after shipping: migration, operational burden, reversal cost.
-- **Architectural alignment** — fit with the codebase's existing patterns, boundaries, and technical direction. A deliberate departure is not automatically a low score, but it must be argued for in the artifact.
+- **Architectural alignment** — fit with the project's architecture standard where one exists, and with the codebase's existing patterns, boundaries, and technical direction otherwise. A deliberate departure is not automatically a low score, but it must be argued for in the artifact; an unargued one scores low and carries a finding.
 - **Scalability** — whether it holds as users, data, or features grow to the scale the brief implies. Where the brief implies no growth, score it as not applicable rather than inventing a scale.
 - **Maintainability** — how easy it will be to understand, modify, and debug a year from now, by someone who was not here for this exploration.
 
