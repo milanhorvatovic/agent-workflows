@@ -109,6 +109,25 @@ class RenderStandardsTest(unittest.TestCase):
         self.assertTrue((self.out / "architecture.md").exists())
         self.assertFalse((self.out / "coding.md").exists())
 
+    def test_only_rejects_trailing_comma(self) -> None:
+        code, _, err = self.run_main(
+            "--config", str(self.config_file(CONFIG)),
+            "--out", str(self.out),
+            "--only", "coding,",
+        )
+        self.assertNotEqual(code, 0)
+        self.assertIn("empty standard name", err)
+        self.assertFalse(self.out.exists())
+
+    def test_only_rejects_empty_value(self) -> None:
+        code, _, err = self.run_main(
+            "--config", str(self.config_file(CONFIG)),
+            "--out", str(self.out),
+            "--only", "",
+        )
+        self.assertNotEqual(code, 0)
+        self.assertIn("empty standard name", err)
+
     def test_only_rejects_unknown_name(self) -> None:
         code, _, err = self.run_main(
             "--config", str(self.config_file(CONFIG)),

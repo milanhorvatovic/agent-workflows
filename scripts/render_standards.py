@@ -181,7 +181,11 @@ def main(argv: list[str] | None = None) -> int:
         return check(root)
     if not args.config or not args.out:
         fail("rendering needs --config and --out (or use --check)")
-    only = [name.strip() for name in args.only.split(",")] if args.only else None
+    only = None
+    if args.only is not None:
+        only = [name.strip() for name in args.only.split(",")]
+        if "" in only:
+            fail("--only contains an empty standard name (check for stray commas)")
     return render(root, load_config(args.config), args.out.resolve(), only)
 
 
