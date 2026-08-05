@@ -3,7 +3,7 @@
 > **Run:** [run id]
 > **Plan:** [phase-{N}-plan.md]
 > **Iteration:** [loop iteration, 1-based]
-> **Status:** [Complete | Partial | Blocked]
+> **Status:** [Done | Partial | Blocked]
 
 ## Summary
 
