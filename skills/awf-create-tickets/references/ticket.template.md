@@ -16,7 +16,7 @@
 
 | # | Ticket | Depends on | Why here |
 | --- | --- | --- | --- |
-| 1 | [TICKET-001 — title] | [none] | [unblocks TICKET-003 and TICKET-004] |
+| 1 | [TICKET-001 — title] | None | [unblocks TICKET-003 and TICKET-004] |
 | 2 | [TICKET-002 — title] | [TICKET-001] | [consumes the API TICKET-001 introduces] |
 
 [Ordering respects every dependency. Within a tier, what reduces risk or resolves uncertainty comes first.]
@@ -31,7 +31,7 @@
 **Priority:** critical | high | medium | low
 **Size:** S | M | L | XL
 **Labels:** [label-1, label-2]
-**Dependencies:** [TICKET-NNN, TICKET-NNN — or "None"]
+**Depends on:** [TICKET-NNN, TICKET-NNN — or "None"]
 **Source item:** [WI-NNN]
 
 ### Description

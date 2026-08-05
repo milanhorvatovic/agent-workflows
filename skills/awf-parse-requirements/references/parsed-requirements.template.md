@@ -17,7 +17,7 @@
 **Type:** feature | bug | chore | spike
 **Size:** S | M | L | XL
 **Group:** [theme or component label]
-**Depends on:** [WI-NNN, WI-NNN — or "nothing"]
+**Depends on:** [WI-NNN, WI-NNN — or "None"]
 
 [Detailed description: what the item entails, the context it sits in, and why it is wanted. Self-contained — a reader does not go back to the source text to understand it.]
 

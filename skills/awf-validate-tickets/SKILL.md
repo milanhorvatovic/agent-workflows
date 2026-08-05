@@ -53,4 +53,6 @@ Write the report to `{run}/tickets-validation.md`, scaffolded from `references/v
 
 Append three rows to the core eight, for what a ticket set can fail that the shared rows do not reach: **Self-containment** — every ticket is actionable by someone who has read nothing else; **Duplication** — no two tickets describe the same work; **Calibration** — priority and size are consistent across the set. Coverage needs no row of its own: its two directions are exactly the core **Completeness** and **Scope** rows, and the dependency chain is the core **Dependencies** row.
 
+Append one section, **Coverage**, above the findings: the item-by-item mapping of work items to the tickets that address them, with gaps and orphans marked in place. It is a table rather than a row because coverage is the one check whose result is not a boolean — the **Completeness** and **Scope** rows record *whether* it holds, and this is the evidence for how that was established. A reader disputing a coverage finding checks it here; a reader disputing the verdict starts here, since a gap this table makes visible is the cheapest finding in the report to confirm.
+
 Render exactly one verdict in the spec §3.3 vocabulary — `PASS`, `PASS_WITH_CONDITIONS`, `FAIL` — and state the conditions exactly where the verdict carries them. Critical findings force `FAIL` on their own.
