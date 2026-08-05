@@ -171,6 +171,26 @@ def frontmatter(name: str, description: str = "A description.") -> str:
     return f"---\nname: {name}\ndescription: {description}\n---\n\n# {name}\n"
 
 
+def skill_frontmatter(name: str, extra: str = "license: MIT\n") -> str:
+    return f"---\nname: {name}\ndescription: A description.\n{extra}---\n\n# {name}\n"
+
+
+# A step block declared in Agent Skills frontmatter — the skill-tier
+# counterpart of STEP_BLOCK, template included (skills own their templates).
+SKILL_WORKFLOW = """\
+metadata:
+  workflow:
+    protocol: "0.1"
+    step:
+      role: analyst
+      inputs:
+        - artifact: "{run}/brief.md"
+      output:
+        artifact: "{run}/grounding.md"
+        template: references/g.template.md
+"""
+
+
 class ValidateConformanceTest(unittest.TestCase):
     def setUp(self) -> None:
         tmp = tempfile.TemporaryDirectory()
@@ -431,10 +451,60 @@ class ValidateConformanceTest(unittest.TestCase):
         self.assert_problem("name 'analyzer' does not match the file slug 'analyst'")
 
     def test_skill_name_uses_directory_slug(self) -> None:
-        self.write("skills/demo-skill/SKILL.md", frontmatter("demo-skill"))
+        self.write("skills/demo-skill/SKILL.md", skill_frontmatter("demo-skill"))
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
         self.assertIn("1 skill bodies", output)
+
+    def test_skill_missing_license_reported(self) -> None:
+        self.write("skills/demo-skill/SKILL.md", skill_frontmatter("demo-skill", extra=""))
+        self.assert_problem("skills/demo-skill/SKILL.md: frontmatter has no license")
+
+    def test_skill_blank_license_reported(self) -> None:
+        self.write("skills/demo-skill/SKILL.md", skill_frontmatter("demo-skill", 'license: ""\n'))
+        self.assert_problem("skills/demo-skill/SKILL.md: frontmatter has no license")
+
+    def test_frontmatter_workflow_block_validated_and_tallied(self) -> None:
+        self.write(
+            "skills/demo-skill/SKILL.md",
+            skill_frontmatter("demo-skill", "license: MIT\n" + SKILL_WORKFLOW),
+        )
+        self.write("skills/demo-skill/references/g.template.md", "# template\n")
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+        self.assertIn("3 workflow blocks", output)
+
+    def test_frontmatter_workflow_schema_violation_reported_at_line_one(self) -> None:
+        broken = SKILL_WORKFLOW.replace("role: analyst", "role: analyst\n      rogue: true")
+        self.write(
+            "skills/demo-skill/SKILL.md",
+            skill_frontmatter("demo-skill", "license: MIT\n" + broken),
+        )
+        self.write("skills/demo-skill/references/g.template.md", "# template\n")
+        output = self.assert_problem("skills/demo-skill/SKILL.md:1")
+        self.assertIn("[step]", output)
+        self.assertIn("rogue", output)
+
+    def test_frontmatter_workflow_template_missing_reported(self) -> None:
+        self.write(
+            "skills/demo-skill/SKILL.md",
+            skill_frontmatter("demo-skill", "license: MIT\n" + SKILL_WORKFLOW),
+        )
+        self.assert_problem("declared template not found: references/g.template.md")
+
+    def test_frontmatter_workflow_template_escaping_skill_directory_rejected(self) -> None:
+        self.write("skills/shared.template.md", "# exists, but outside the skill directory\n")
+        escaped = SKILL_WORKFLOW.replace("references/g.template.md", "../shared.template.md")
+        self.write(
+            "skills/demo-skill/SKILL.md",
+            skill_frontmatter("demo-skill", "license: MIT\n" + escaped),
+        )
+        self.assert_problem("declared template escapes the declaring file's directory")
+
+    def test_unparseable_frontmatter_reported_once_by_frontmatter_check(self) -> None:
+        self.write("skills/demo-skill/SKILL.md", "---\nname: [unclosed\n---\n\n# demo\n")
+        output = self.assert_problem("frontmatter does not parse")
+        self.assertEqual(output.count("skills/demo-skill/SKILL.md"), 1, output)
 
     def test_uppercase_frontmatter_name_reported(self) -> None:
         self.write("roles/analyst.md", frontmatter("Analyst"))
