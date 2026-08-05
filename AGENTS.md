@@ -23,7 +23,8 @@ This file is the discovery surface: one line per role, skill, workflow, and stag
 ## Skills
 
 <!-- generated:skills -->
-_Not yet populated — one line per skill._
+- `skills/awf-analyze-report/SKILL.md` — Distills an existing grounding artifact into a polished, prioritized codebase report for humans — executive summary, architecture and module map, dependency and testing health, technical debt ranked by impact, actionable recommendations, and a developer quick reference — optionally answering specific questions with evidence. Standalone (no stage binds it); triggers when a completed grounding needs a readable deliverable, such as onboarding material, an architecture review, or a codebase health check. It does not explore the codebase itself — producing the grounding first is awf-ground.
+- `skills/awf-ground/SKILL.md` — Analyzes the codebase areas a brief touches — structure, patterns, dependencies, constraints — into the run's evidence-backed grounding artifact, which downstream steps consume and may reuse across runs as a cached input. Triggers as the ideation stage's ground step, and whenever a task needs verified codebase context before approaches are explored or a plan is written. Produces the raw grounding, not a human deliverable — distilling an existing grounding into a polished report is awf-analyze-report.
 <!-- /generated:skills -->
 
 ## Workflows

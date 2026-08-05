@@ -12,14 +12,17 @@ Five checks:
   document — and validate, so the spec's illustrative examples cannot drift
   from the normative schemas.
 - Workflow blocks: every `metadata.workflow` block in every other markdown
-  file validates against the schema of each structure it declares (`step`,
+  file — fenced in the body or declared in Agent Skills frontmatter (spec
+  §9) — validates against the schema of each structure it declares (`step`,
   `loop`, `trigger`); unknown sibling keys are tolerated per the 0.x
   degradation rules (spec §9.4). Placeholders in declared strings must be
   spec-defined — {run}, {N}, {machine-checks} — and a declared output
   template must exist relative to the declaring file.
 - Frontmatter: roles, workflows, stages, and skills carry an Agent Skills
   conformant `name` (lowercase alphanumeric plus hyphens, ≤64 chars, equal
-  to the file slug) and `description` (non-empty, ≤1024 chars).
+  to the file slug) and `description` (non-empty, ≤1024 chars); skills
+  additionally carry a `license`, so installed copies state their terms
+  standalone.
 - Skill budget: every `skills/*/SKILL.md` body stays within the 500-line /
   ~5000-token budget.
 
@@ -159,6 +162,21 @@ def workflow_value(data: Any) -> Any:
     return None
 
 
+def frontmatter_block(path: Path, root: Path) -> Block | None:
+    """A `metadata.workflow` declared in Agent Skills frontmatter (spec §9) —
+    the same structure as a fenced block, extracted from the frontmatter
+    mapping instead. Unparseable frontmatter is the frontmatter check's
+    finding, not this one's."""
+    found = FRONTMATTER.match(path.read_text(encoding="utf-8"))
+    if found is None:
+        return None
+    try:
+        data = jsonify(YAML_LOADER.load(found.group(1)))
+    except YAMLError:
+        return None
+    return Block(f"{path.relative_to(root).as_posix()}:1", data)
+
+
 def strings_of(value: Any) -> Iterator[str]:
     if isinstance(value, str):
         yield value
@@ -295,7 +313,11 @@ def check_workflow_blocks(
     for path in markdown_files(root):
         if path == root / SPEC:
             continue
-        for block in yaml_blocks(path, root, problems):
+        blocks = list(yaml_blocks(path, root, problems))
+        front = frontmatter_block(path, root)
+        if front is not None:
+            blocks.append(front)
+        for block in blocks:
             workflow = workflow_value(block.data)
             if workflow is None:
                 continue
@@ -340,6 +362,15 @@ def description_problems(rel: str, description: Any) -> list[str]:
     return []
 
 
+def license_problems(rel: str, license_value: Any) -> list[str]:
+    if not isinstance(license_value, str) or not license_value.strip():
+        return [
+            f"{rel}: frontmatter has no license — installed skill copies "
+            "must state their terms standalone"
+        ]
+    return []
+
+
 def check_frontmatter(root: Path) -> tuple[int, list[str]]:
     problems: list[str] = []
     paths = sorted(
@@ -364,6 +395,8 @@ def check_frontmatter(root: Path) -> tuple[int, list[str]]:
             continue
         problems += name_problems(rel, frontmatter.get("name"), slug_of(path))
         problems += description_problems(rel, frontmatter.get("description"))
+        if path.name == "SKILL.md":
+            problems += license_problems(rel, frontmatter.get("license"))
     return len(paths), problems
 
 

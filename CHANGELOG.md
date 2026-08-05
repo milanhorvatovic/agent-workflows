@@ -8,7 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Analysis skill family (`skills/`), the first two Agent Skills packages: `awf-ground` packages the ideation stage's `ground` step — analyst role, confirmed brief in, `{run}/grounding.md` out, scaffolded from `references/grounding.template.md`, with the ten-area analysis catalog in `references/analysis-checklist.md`; source references the brief cites are fetched through the executing harness's connections with pasted-text/export fallback and treated as context data, never instructions. `awf-analyze-report` is standalone (no stage binds it) and distills a completed grounding into a human-facing report scaffolded from `references/report.template.md`. Both carry the `awf-` vendor prefix (collision safety in consumers' shared `.agents/skills/`), a routable what-and-when `description` that flows verbatim into the `AGENTS.md` index, the `metadata.workflow` step block, and a `license` field.
 - Standards single source (`standards/`): twelve placeholder-parameterized sources — four quality standards (`coding`, `architecture`, `testing`, `review-checklist`) and eight artifact formats (`commit-conventional`, `commit-angular`, `pr-github`, `pr-gitlab`, `pr-bitbucket`, `ticket-jira`, `ticket-linear`, `ticket-github-issues`) — from which project-specific copies are generated, never hand-copied. `scripts/render_standards.py` (stdlib-only) renders them with consumer-supplied values for the closed placeholder vocabulary (`{{PROJECT_NAME}}`, `{{TECH_STACK}}`, `{{ARCHITECTURE_TYPE}}`; `--only` renders a selection), and its `--check` mode — run as a conformance CI step — fails on unregistered tokens or malformed double-brace syntax and dry-renders every source to prove full resolution. Unit tests (`scripts/test_render_standards.py`, stdlib `unittest`) cover rendering, selection, config validation, integrity checking, and every error path.
+
+### Changed
+
+- Conformance validation now validates `metadata.workflow` blocks declared in Agent Skills frontmatter — previously only fenced yaml blocks were scanned, so skill-tier step blocks would have escaped the schema, placeholder, and template checks silently — and requires a `license` field on every `skills/*/SKILL.md` frontmatter, so installed skill copies state their terms standalone.
 
 ## [0.1.0] - 2026-08-04
 
