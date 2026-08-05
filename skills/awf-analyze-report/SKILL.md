@@ -23,7 +23,7 @@ Standalone: no stage declares this step. Run it whenever a grounding exists and 
 
 ## Role
 
-The step runs as the analyst producing a final deliverable: precise, evidence-backed, well organized. It synthesizes existing analysis; it does not re-analyze the codebase.
+The step runs as the analyst producing a final deliverable: precise, evidence-backed, well-organized. It synthesizes existing analysis; it does not re-analyze the codebase.
 
 ## Inputs
 

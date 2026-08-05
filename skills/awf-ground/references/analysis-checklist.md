@@ -11,7 +11,7 @@ What a grounding establishes per area. Work through the areas the brief makes re
 ## 2. Tech stack
 
 - Primary language(s) and their relative usage.
-- Frameworks and libraries in use — from manifests, build files, and import statements, not assumption.
+- Frameworks and libraries in use — from manifests, build files, and import statements, not assumptions.
 - Build tools, task runners, bundlers, package manager(s); language or runtime version constraints where declared.
 
 ## 3. Architecture
