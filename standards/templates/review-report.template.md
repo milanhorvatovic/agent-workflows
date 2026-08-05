@@ -35,17 +35,17 @@
 
 ## Findings
 
-[Every finding gets a table row; details below for findings that need more than a row. Stable ids — R-001, R-002, … in review-findings.md; S-001, S-002, … in security-findings.md — because downstream steps resolve, dispute, and fix findings by id. Severities: critical (must fix), major (should fix), minor (should fix soon), suggestion (optional improvement).]
+[Every finding gets a table row; details below for findings that need more than a row. Stable ids, prefixed per artifact — R-001, R-002, … in review-findings.md; S-001, S-002, … in security-findings.md — because downstream steps resolve, dispute, and fix findings by id. Severities: critical (must fix), major (should fix), minor (should fix soon), suggestion (optional improvement). Categories map to the dimensions above; standards-adherence issues carry category style.]
 
 | Id | Severity | Category | Location | Finding | Suggested fix |
 | --- | --- | --- | --- | --- | --- |
-| R-001 | [critical / major / minor / suggestion] | [bug / security / performance / maintainability / style] | [file:line] | [what is wrong] | [how to fix it] |
+| [id] | [critical / major / minor / suggestion] | [bug / security / performance / maintainability / style] | [file:line] | [what is wrong] | [how to fix it] |
 
 ### Details
 
 [One subsection per finding whose issue or fix needs more than a table row, id in the heading.]
 
-#### R-00N: [title]
+#### [id]: [title]
 
 - **Location:** [file and line range]
 - **Issue:** [what is wrong, with the evidence — the code as it is]
