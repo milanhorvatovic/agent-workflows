@@ -5,7 +5,7 @@ description: Closes the run — analyst assembles the delivery artifact from the
 
 # Stage: delivery
 
-Closes the run: assemble what shipped, validate it against the brief one last time, and collect the human decision. The delivery gate is the run's last checkpoint and always sees the final validation verdict.
+Closes the run: assemble what shipped, validate it against the brief one last time, and collect the human decision. The delivery gate is the run's last checkpoint, and no verdict reaches a human anywhere else — wherever `deliver-validate` runs, the gate sees its verdict. Where the risk class skips the validator there is no verdict to see: at R1 the gate reads the artifact alone, and at R0 neither step nor gate fires ([overlays](../overlays.md)).
 
 ## Steps
 
