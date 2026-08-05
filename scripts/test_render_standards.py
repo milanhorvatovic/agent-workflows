@@ -23,6 +23,7 @@ CONFIG = {
 
 SHARED_NAME = "report.template.md"
 SHARED_COPY = "skills/sample-skill/references/report.template.md"
+SECOND_COPY = "skills/other-skill/references/report.template.md"
 SHARED_TEXT = "# Report: [subject]\n\nSingle braces pass through: `{run}/report.md`.\n"
 
 
@@ -241,6 +242,31 @@ class RenderStandardsTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("1 shared-template cop(y/ies) rendered", out)
         self.assertEqual(first, (self.root / SHARED_COPY).read_text(encoding="utf-8"))
+
+    def test_render_shared_writes_every_registered_copy(self) -> None:
+        with unittest.mock.patch.dict(
+            render_standards.SHARED_TEMPLATES,
+            {SHARED_NAME: (SHARED_COPY, SECOND_COPY)},
+        ):
+            code, out, _ = self.run_main("--render-shared")
+            self.assertEqual(code, 0)
+            self.assertIn("2 shared-template cop(y/ies) rendered", out)
+            first = (self.root / SHARED_COPY).read_text(encoding="utf-8")
+            second = (self.root / SECOND_COPY).read_text(encoding="utf-8")
+            self.assertEqual(first, second)
+
+    def test_check_names_only_the_drifted_copy(self) -> None:
+        with unittest.mock.patch.dict(
+            render_standards.SHARED_TEMPLATES,
+            {SHARED_NAME: (SHARED_COPY, SECOND_COPY)},
+        ):
+            self.run_main("--render-shared")
+            path = self.root / SECOND_COPY
+            path.write_text(path.read_text(encoding="utf-8") + "hand edit\n", encoding="utf-8")
+            code, _, err = self.run_main("--check")
+            self.assertEqual(code, 1)
+            self.assertIn(f"{SECOND_COPY}: drifted", err)
+            self.assertNotIn(f"{SHARED_COPY}: drifted", err)
 
     def test_check_flags_drifted_copy(self) -> None:
         path = self.root / SHARED_COPY
