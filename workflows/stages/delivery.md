@@ -38,7 +38,7 @@ metadata:
 
 ### deliver-validate (validator)
 
-Runs with fresh context in every mode (spec §4). The run's final validation: are the brief's acceptance criteria met, is the delivery artifact accurate about what shipped, is any claimed verification actually evidenced? Renders the verdict presented at the gate. The implementation log is required — delivery composes only into workflows that implement, so the log the artifact's evidence claims come from always exists. The validation artifacts stay optional for the same reason they do in `deliver-prepare` — validator steps are skipped at R1 — but where they exist they are the sources the artifact's quoted verdicts and conditions are checked against, which the step cannot do on the artifact's own word.
+Runs with fresh context in every mode (spec §4). The run's final validation: are the brief's acceptance criteria met, is the delivery artifact accurate about what shipped, is any claimed verification actually evidenced? Renders the verdict presented at the gate. The implementation logs are required — delivery composes only into workflows that implement, so the logs the artifact's evidence claims come from always exist, one per completed phase. The validation artifacts stay optional for the same reason they do in `deliver-prepare` — validator steps are skipped at R1 — but where they exist they are the sources the artifact's quoted verdicts and conditions are checked against, which the step cannot do on the artifact's own word.
 
 ```yaml
 metadata:
