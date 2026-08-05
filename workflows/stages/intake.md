@@ -27,6 +27,8 @@ metadata:
 
 Apply the classification rubric (spec §5.2) to the confirmed brief and propose exactly one risk class with a one-line rationale, appended to the brief as a `## Routing` section. Two rubric rules bind: any security-surface signal proposes at least R2 with security review enabled, and ambiguity above threshold routes back to the clarifying question rather than inflating the class. The executor transcribes the accepted class into `run.risk` and `run.risk_rationale`; the router only proposes.
 
+Three of the six signals — blast radius, decomposability, novelty — are claims about the codebase rather than about the brief, so a grounding is a cacheable optional input (spec §8.4): intake precedes the ideation stage's `ground` step, and a first run in a codebase has none.
+
 ```yaml
 metadata:
   workflow:
@@ -36,13 +38,15 @@ metadata:
       inputs:
         - artifact: "{run}/brief.md"
           required: true
+        - artifact: "{run}/grounding.md"
+          required: false
       output:
         artifact: "{run}/brief.md"
 ```
 
 ## Gates
 
-- **clarifying-question** — conditional: fires only when ambiguity is above threshold, before `risk-route`. Blocking whenever it fires, in every risk class — a question is waiting for its answer. Outcome vocabulary: record `accept` when the answer confirms the (possibly amended) brief — the answer's content lands in the brief artifact, never in the gate record; record `revise` when the answer redirects the brief enough to need a re-draft, returning to `brief-confirm` per the spec §7 default; `reject` ends the run.
+- **clarifying-question** — conditional: fires only when ambiguity is above threshold, and sits before `risk-route`, so `accept` resumes at classification whichever step raised it. Either step can: `brief-confirm` when the brief cannot be restated with confidence, `risk-route` when the rubric's ambiguity signal is above threshold, which routes here instead of inflating the class (spec §5.2) and proposes no class until the answer lands. Blocking whenever it fires, in every risk class — a question is waiting for its answer. Outcome vocabulary: record `accept` when the answer confirms the (possibly amended) brief — the answer's content lands in the brief artifact, never in the gate record; record `revise` when the answer redirects the brief enough to need a re-draft, returning to `brief-confirm` per the spec §7 default; `reject` ends the run.
 - **intake-approval** — after `risk-route`: the human sees the confirmed brief and the proposed class, and MAY override the class (spec §5.3). Transport per risk class ([overlays](../overlays.md)). Outcomes: `accept` proceeds to the next stage in composition order; `revise` returns to `brief-confirm`; `reject` ends the run.
 
 ## Notes
