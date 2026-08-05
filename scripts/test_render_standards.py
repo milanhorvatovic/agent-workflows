@@ -304,6 +304,51 @@ class RenderStandardsTest(unittest.TestCase):
             self.assertIn(f"{SECOND_COPY}: drifted", err)
             self.assertNotIn(f"{SHARED_COPY}: drifted", err)
 
+    def test_check_flags_unregistered_generated_copy(self) -> None:
+        self.write(
+            "skills/fourth-skill/references/report.template.md",
+            render_standards.shared_copy_text(self.root, SHARED_NAME),
+        )
+        code, _, err = self.run_main("--check")
+        self.assertEqual(code, 1)
+        self.assertIn(
+            "skills/fourth-skill/references/report.template.md: carries the "
+            "generated-copy header but no SHARED_TEMPLATES entry owns it",
+            err,
+        )
+        self.assertNotIn(f"{SHARED_COPY}: carries", err)
+
+    def test_check_flags_unregistered_copy_anywhere_under_skills(self) -> None:
+        for relative in (
+            "skills/fourth-skill/report.template.md",
+            "skills/fifth-skill/references/nested/report.template.md",
+        ):
+            with self.subTest(relative=relative):
+                path = self.write(
+                    relative, render_standards.shared_copy_text(self.root, SHARED_NAME)
+                )
+                code, _, err = self.run_main("--check")
+                self.assertEqual(code, 1)
+                self.assertIn(f"{relative}: carries the generated-copy header", err)
+                path.unlink()
+
+    def test_check_flags_copy_behind_leading_whitespace(self) -> None:
+        self.write(
+            "skills/fourth-skill/references/report.template.md",
+            "\n  " + render_standards.shared_copy_text(self.root, SHARED_NAME),
+        )
+        code, _, err = self.run_main("--check")
+        self.assertEqual(code, 1)
+        self.assertIn("carries the generated-copy header", err)
+
+    def test_check_ignores_authored_reference(self) -> None:
+        self.write(
+            "skills/fourth-skill/references/checklist.md",
+            "# Checklist\n\nAuthored in the skill, not copied from anywhere.\n",
+        )
+        code, _, err = self.run_main("--check")
+        self.assertEqual(code, 0, err)
+
     def test_check_flags_drifted_copy(self) -> None:
         path = self.root / SHARED_COPY
         path.write_text(path.read_text(encoding="utf-8") + "hand edit\n", encoding="utf-8")
