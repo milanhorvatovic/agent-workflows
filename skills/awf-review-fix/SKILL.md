@@ -1,6 +1,6 @@
 ---
 name: awf-review-fix
-description: Applies the review's resolved findings within the plan's declared file scope — the arbiter's resolution list where one exists, the reviewer's findings otherwise — fixing finding by finding with tests where a finding exposed a gap, keeping machine checks green, and recording each fix in the phase's implementation log for the next iteration to re-review. Triggers as the review stage's review-fix step on every loop iteration that has not exited. A finding whose fix would touch undeclared files becomes a structured finding-for-planning escalated toward awf-plan-revise, never silent scope expansion; executing the plan's own steps is awf-implement, and addressing implementation-validation findings belongs to that stage's loop, not this skill.
+description: Applies the review's resolved findings within the plan's declared file scope — the arbiter's resolution list where one exists, both review passes' findings otherwise — fixing finding by finding with tests where a finding exposed a gap, keeping machine checks green, and recording each fix in the phase's implementation log for the next iteration to re-review. Triggers as the review stage's review-fix step on every loop iteration that has not exited. A finding whose fix would touch undeclared files becomes a structured finding-for-planning escalated toward awf-plan-revise, never silent scope expansion; executing the plan's own steps is awf-implement, and addressing implementation-validation findings belongs to that stage's loop, not this skill.
 license: MIT
 metadata:
   workflow:
@@ -12,6 +12,8 @@ metadata:
           required: false
         - artifact: "{run}/review-findings.md"
           required: true
+        - artifact: "{run}/security-findings.md"
+          required: false
         - artifact: "{run}/phase-{N}-plan.md"
           required: true
         - artifact: "{run}/phase-{N}-impl-log.md"
@@ -22,7 +24,7 @@ metadata:
 
 # Skill: awf-review-fix
 
-Closes the review loop's iteration: the findings the review settled on, applied to the code. The fix list is already decided — the arbiter's resolution where one exists, the reviewer's findings otherwise — so implementer judgment goes into fixing well, not into re-litigating what the review concluded.
+Closes the review loop's iteration: the findings the review settled on, applied to the code. The fix list is already decided — the arbiter's resolution where one exists, both review passes' findings otherwise — so implementer judgment goes into fixing well, not into re-litigating what the review concluded.
 
 ## Role
 
@@ -31,7 +33,8 @@ The step runs as the implementer: minimal, focused changes that fix what the fin
 ## Inputs
 
 - `{run}/review-resolution.md` (optional) — the arbiter's resolved list; where present it is authoritative, refutation and triage having already happened.
-- `{run}/review-findings.md` (required) — the reviewer's findings: the working list when no resolution exists, the traceability behind it when one does.
+- `{run}/review-findings.md` (required) — the code review's findings: part of the working list when no resolution exists, the traceability behind it when one does.
+- `{run}/security-findings.md` (optional) — the security pass's findings, where that step ran: the rest of the working list when no resolution folded them in.
 - `{run}/phase-{N}-plan.md` (required) — the file-scope declaration every fix is bound to (spec §9.2).
 - `{run}/phase-{N}-impl-log.md` (required) — the log this step appends its record to.
 

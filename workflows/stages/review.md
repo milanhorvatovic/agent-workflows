@@ -91,7 +91,7 @@ metadata:
 
 ### review-fix (implementer)
 
-Runs when the loop has not exited: applies the resolved findings (the arbiter's list where one exists, the reviewer's otherwise) within the plan's declared scope, updates the implementation log, and keeps machine checks green; otherwise recorded `skipped`. The next iteration re-reviews the updated change.
+Runs when the loop has not exited: applies the resolved findings (the arbiter's list where one exists, both review passes' findings otherwise — the security pass's included where it ran) within the plan's declared scope, updates the implementation log, and keeps machine checks green; otherwise recorded `skipped`. The next iteration re-reviews the updated change.
 
 ```yaml
 metadata:
@@ -104,6 +104,8 @@ metadata:
           required: false
         - artifact: "{run}/review-findings.md"
           required: true
+        - artifact: "{run}/security-findings.md"
+          required: false
         - artifact: "{run}/phase-{N}-plan.md"
           required: true
         - artifact: "{run}/phase-{N}-impl-log.md"

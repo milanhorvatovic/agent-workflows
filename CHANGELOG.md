@@ -18,7 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- The review stage's `review-validate` step declares `{run}/phase-{N}-plan.md` as a required input: the verdict judges the change against the plan's acceptance criteria and file-scope declaration, so an executor that materializes only declared inputs must be guaranteed to provide the plan — previously it was reachable only through the implementation log's link.
+- The review stage's step declarations gained two inputs their prose already implied, because an executor that materializes only declared inputs must be guaranteed them: `review-validate` requires `{run}/phase-{N}-plan.md` (the verdict judges the change against its acceptance criteria and file-scope declaration; previously reachable only through the implementation log's link), and `review-fix` optionally takes `{run}/security-findings.md` (where the security pass ran without arbitration, its findings are part of the working list — otherwise a FAIL forced by security findings would iterate into a fix step that cannot see them).
 - Conformance validation now validates `metadata.workflow` blocks declared in Agent Skills frontmatter — previously only fenced yaml blocks were scanned, so skill-tier step blocks would have escaped the schema, placeholder, and template checks silently — and requires a `license` field on every `skills/*/SKILL.md` frontmatter, so installed skill copies state their terms standalone.
 
 ## [0.1.0] - 2026-08-04
