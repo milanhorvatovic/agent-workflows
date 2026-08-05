@@ -26,6 +26,10 @@ SHARED_COPY = "skills/sample-skill/references/report.template.md"
 SECOND_COPY = "skills/other-skill/references/report.template.md"
 SHARED_TEXT = "# Report: [subject]\n\nSingle braces pass through: `{run}/report.md`.\n"
 
+SECOND_NAME = "resolution.template.md"
+SECOND_SOURCE_COPY = "skills/third-skill/references/resolution.template.md"
+SECOND_TEXT = "# Resolution: [subject]\n\nA different shared template.\n"
+
 
 class RenderStandardsTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -254,6 +258,38 @@ class RenderStandardsTest(unittest.TestCase):
             first = (self.root / SHARED_COPY).read_text(encoding="utf-8")
             second = (self.root / SECOND_COPY).read_text(encoding="utf-8")
             self.assertEqual(first, second)
+
+    def test_render_shared_renders_every_source(self) -> None:
+        with unittest.mock.patch.dict(
+            render_standards.SHARED_TEMPLATES,
+            {SECOND_NAME: (SECOND_SOURCE_COPY,)},
+        ):
+            self.write(f"standards/templates/{SECOND_NAME}", SECOND_TEXT)
+            code, out, _ = self.run_main("--render-shared")
+            self.assertEqual(code, 0)
+            self.assertIn("2 shared-template cop(y/ies) rendered", out)
+            first = (self.root / SHARED_COPY).read_text(encoding="utf-8")
+            second = (self.root / SECOND_SOURCE_COPY).read_text(encoding="utf-8")
+            self.assertIn(f"Source: standards/templates/{SHARED_NAME}", first)
+            self.assertTrue(first.endswith(SHARED_TEXT))
+            self.assertIn(f"Source: standards/templates/{SECOND_NAME}", second)
+            self.assertTrue(second.endswith(SECOND_TEXT))
+
+    def test_check_attributes_drift_to_the_right_source(self) -> None:
+        with unittest.mock.patch.dict(
+            render_standards.SHARED_TEMPLATES,
+            {SECOND_NAME: (SECOND_SOURCE_COPY,)},
+        ):
+            self.write(f"standards/templates/{SECOND_NAME}", SECOND_TEXT)
+            self.run_main("--render-shared")
+            path = self.root / SECOND_SOURCE_COPY
+            path.write_text(path.read_text(encoding="utf-8") + "hand edit\n", encoding="utf-8")
+            code, _, err = self.run_main("--check")
+            self.assertEqual(code, 1)
+            self.assertIn(
+                f"{SECOND_SOURCE_COPY}: drifted from standards/templates/{SECOND_NAME}", err
+            )
+            self.assertNotIn(f"{SHARED_COPY}: drifted", err)
 
     def test_check_names_only_the_drifted_copy(self) -> None:
         with unittest.mock.patch.dict(
