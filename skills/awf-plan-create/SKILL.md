@@ -36,6 +36,7 @@ The step runs as the planner: decompose into ordered, verifiable work, sequence 
 - `{run}/brief.md` (required) — the confirmed brief: its goal, constraints, and acceptance criteria are the requirements the plan must fully cover, and the bar `plan-validate` will hold it to.
 - `{run}/grounding.md` (optional, cacheable) — the verified codebase analysis; its constraints-on-the-solution-space section is the planning input. When absent, read the relevant code directly before planning — a plan referencing unverified paths or patterns will fail validation.
 - `{run}/ideation.md` (optional) — where ideation ran, the recommended approach is the plan's starting point, not a suggestion to re-litigate; the plan turns it into steps.
+- The project's coding, architecture, and testing standards, where they exist — the rules the steps, their test requirements, and the phase's testing approach must conform to, so the implementer inherits them instead of rediscovering them mid-work. A step that must depart from a standard says so and why; a plan that contradicts one silently is a `plan-validate` finding.
 
 ## Method
 
