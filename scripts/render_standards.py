@@ -51,6 +51,7 @@ WELL_FORMED = re.compile(r"\{\{([A-Z][A-Z0-9_]*)\}\}")
 # here first; --render-shared then writes its copy and --check enforces it.
 SHARED_TEMPLATES: dict[str, tuple[str, ...]] = {
     "validation-report.template.md": (
+        "skills/awf-implement-validate/references/validation-report.template.md",
         "skills/awf-plan-validate/references/validation-report.template.md",
     ),
 }
