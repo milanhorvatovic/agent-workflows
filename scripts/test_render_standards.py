@@ -10,6 +10,7 @@ import io
 import json
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 import render_standards
@@ -20,13 +21,17 @@ CONFIG = {
     "ARCHITECTURE_TYPE": "modular monolith",
 }
 
+SHARED_NAME = "report.template.md"
+SHARED_COPY = "skills/sample-skill/references/report.template.md"
+SHARED_TEXT = "# Report: [subject]\n\nSingle braces pass through: `{run}/report.md`.\n"
+
 
 class RenderStandardsTest(unittest.TestCase):
     def setUp(self) -> None:
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
-        (self.root / "standards").mkdir()
+        (self.root / "standards" / "templates").mkdir(parents=True)
         self.out = self.root / "rendered"
         self.write(
             "standards/coding.md",
@@ -41,9 +46,20 @@ class RenderStandardsTest(unittest.TestCase):
             "Pattern: {{ARCHITECTURE_TYPE}}.\n",
         )
         self.write("standards/README.md", "# standards/\n\nNot a source.\n{{NOT_CHECKED}}\n")
+        registry = unittest.mock.patch.dict(
+            render_standards.SHARED_TEMPLATES,
+            {SHARED_NAME: (SHARED_COPY,)},
+            clear=True,
+        )
+        registry.start()
+        self.addCleanup(registry.stop)
+        self.write(f"standards/templates/{SHARED_NAME}", SHARED_TEXT)
+        code, _, err = self.run_main("--render-shared")
+        self.assertEqual(code, 0, f"fixture --render-shared failed: {err}")
 
     def write(self, relative: str, text: str) -> Path:
         path = self.root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
         return path
 
@@ -182,6 +198,7 @@ class RenderStandardsTest(unittest.TestCase):
         code, out, _ = self.run_main("--check")
         self.assertEqual(code, 0)
         self.assertIn("2 source(s) clean", out)
+        self.assertIn("1 shared-template cop(y/ies) fresh", out)
 
     def test_check_flags_unknown_placeholder(self) -> None:
         self.write("standards/coding.md", "Uses {{UNREGISTERED_TOKEN}}.\n")
@@ -207,7 +224,62 @@ class RenderStandardsTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("BAD_ONE", err)
         self.assertIn("BAD_TWO", err)
-        self.assertIn("2 placeholder problem(s)", err)
+        self.assertIn("2 problem(s)", err)
+
+    # --- shared report templates ---
+
+    def test_render_shared_writes_header_plus_source(self) -> None:
+        copy = (self.root / SHARED_COPY).read_text(encoding="utf-8")
+        self.assertTrue(copy.startswith("<!-- GENERATED TEMPLATE COPY"))
+        self.assertIn(f"Source: standards/templates/{SHARED_NAME}", copy)
+        self.assertIn("--render-shared", copy)
+        self.assertTrue(copy.endswith(SHARED_TEXT))
+
+    def test_render_shared_is_idempotent(self) -> None:
+        first = (self.root / SHARED_COPY).read_text(encoding="utf-8")
+        code, out, _ = self.run_main("--render-shared")
+        self.assertEqual(code, 0)
+        self.assertIn("1 shared-template cop(y/ies) rendered", out)
+        self.assertEqual(first, (self.root / SHARED_COPY).read_text(encoding="utf-8"))
+
+    def test_check_flags_drifted_copy(self) -> None:
+        path = self.root / SHARED_COPY
+        path.write_text(path.read_text(encoding="utf-8") + "hand edit\n", encoding="utf-8")
+        code, _, err = self.run_main("--check")
+        self.assertEqual(code, 1)
+        self.assertIn(f"{SHARED_COPY}: drifted from standards/templates/{SHARED_NAME}", err)
+        self.assertIn("--render-shared", err)
+
+    def test_check_flags_missing_copy(self) -> None:
+        (self.root / SHARED_COPY).unlink()
+        code, _, err = self.run_main("--check")
+        self.assertEqual(code, 1)
+        self.assertIn(f"{SHARED_COPY}: generated copy missing", err)
+
+    def test_check_flags_missing_shared_source(self) -> None:
+        (self.root / "standards" / "templates" / SHARED_NAME).unlink()
+        code, _, err = self.run_main("--check")
+        self.assertEqual(code, 1)
+        self.assertIn("registered shared template not found", err)
+        self.assertNotIn("generated copy missing", err)
+
+    def test_check_flags_placeholder_syntax_in_shared_source(self) -> None:
+        self.write(f"standards/templates/{SHARED_NAME}", "Uses {{PROJECT_NAME}}.\n")
+        self.run_main("--render-shared")  # refuses; the stale copy then also drifts
+        code, _, err = self.run_main("--check")
+        self.assertEqual(code, 1)
+        self.assertIn("copied verbatim, never rendered", err)
+
+    def test_render_shared_refuses_broken_source(self) -> None:
+        self.write(f"standards/templates/{SHARED_NAME}", "Unclosed {{TOKEN} here.\n")
+        code, _, err = self.run_main("--render-shared")
+        self.assertNotEqual(code, 0)
+        self.assertIn("not rendering", err)
+
+    def test_render_shared_rejects_other_flags(self) -> None:
+        code, _, err = self.run_main("--render-shared", "--check")
+        self.assertNotEqual(code, 0)
+        self.assertIn("--render-shared takes no", err)
 
     def test_render_refuses_broken_sources(self) -> None:
         self.write("standards/coding.md", "{{UNREGISTERED_TOKEN}}\n")

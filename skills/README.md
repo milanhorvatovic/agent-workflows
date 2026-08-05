@@ -1,3 +1,3 @@
 # skills/
 
-Agent Skills–conformant skill packages: `skills/<name>/SKILL.md` (+ `references/`, `scripts/`). Authored here, installed into a consuming project's `.agents/skills/` by `setup/`. Not yet populated.
+Agent Skills–conformant skill packages: `skills/<name>/SKILL.md` (+ `references/`, `scripts/`). Authored here, installed into a consuming project's `.agents/skills/` by `setup/`. Names carry the `awf-` vendor prefix; a step-bound skill binds to its stage step via the declared `metadata.workflow.step`, never name equality. The generated index in [`AGENTS.md`](../AGENTS.md) lists every skill with its routable description. `references/` files marked as generated copies are copied verbatim from [`standards/templates/`](../standards/templates/) — edit the source and run `scripts/render_standards.py --render-shared`, never the copy.
