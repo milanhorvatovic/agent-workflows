@@ -19,6 +19,10 @@ Artifact formats, selected per project — one commit format, one PR format, one
 
 A tool not listed here needs no framework change: a consuming project writes its own rendered-standard file (e.g. `ticket-format.md` for another tracker) and skills honor it the same way.
 
+## Shared report templates
+
+[`templates/`](templates/) holds report templates that several skills share — currently [`templates/validation-report.template.md`](templates/validation-report.template.md), the verdict report every validator skill declares. Each is authored once here and copied verbatim, under a generated-do-not-edit header, into every consuming skill's `references/` directory by `render_standards.py --render-shared`; the copies are committed, and conformance CI's `--check` fails on a copy that is missing or has drifted from its source. Unlike the sources above, shared templates never render for a consumer and carry no placeholders — edit the source, regenerate, commit both.
+
 ## Placeholders
 
 The vocabulary is closed — sources may use only these tokens, and conformance CI fails on anything else (`render_standards.py --check`):

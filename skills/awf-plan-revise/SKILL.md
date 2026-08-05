@@ -1,0 +1,53 @@
+---
+name: awf-plan-revise
+description: Revises a phase plan against validation findings, human direction from the plan-approval gate, structured implementation feedback, or another phase's cascading changes — deciding accept, reject, or defer per finding with an auditable feedback trail, preserving unaffected content, and logging every revision in the plan's changelog. Triggers as the planning stage's plan-revise step whenever a plan-validate verdict, a gate revise outcome, or escalated implementation feedback routes back into planning. Creating a plan from scratch is awf-plan-create; rendering the verdict on the revised plan is awf-plan-validate.
+license: MIT
+metadata:
+  workflow:
+    protocol: "0.1"
+    step:
+      role: planner
+      inputs:
+        - artifact: "{run}/phase-{N}-plan.md"
+          required: true
+        - artifact: "{run}/phase-{N}-plan-validation.md"
+          required: true
+      output:
+        artifact: "{run}/phase-{N}-plan.md"
+      on:
+        PASS: plan-approval
+        PASS_WITH_CONDITIONS: plan-revise
+        FAIL: plan-revise
+---
+
+# Skill: awf-plan-revise
+
+Rewrites the phase plan to address what came back: validation findings, a human's direction from the plan-approval gate, structured feedback escalated from implementation, or the ripple of another phase's revision. Every finding gets an explicit decision with reasoning, every revision leaves an audit trail, and unaffected content survives untouched — a revision is surgery, not a rewrite from scratch.
+
+## Role
+
+The step runs as the planner: answer each finding with reasoning, keep the plan specific enough to implement without guessing, and flag remaining uncertainty instead of burying it. The output is the revised plan, not a rebuttal — but rejecting a finding with justification is legitimate; silently ignoring one is not.
+
+## Inputs
+
+- `{run}/phase-{N}-plan.md` (required) — the current plan, revised in place.
+- `{run}/phase-{N}-plan-validation.md` (required) — the validation report whose findings and questions drive the revision; its stable finding and question ids are what the decisions reference.
+- Depending on the entry point, the driving feedback also includes: the human's decisions and answers from the plan-approval gate's `revise` outcome; the implementation log's structured plan-defect feedback (what is wrong, where, suggested correction) when implementation escalated back into planning; the triggering phase's revised plan in a cross-phase cascade.
+
+## Method
+
+Determine the entry point from what arrived — a fresh validation report (the revise loop), human direction from the gate, implementation feedback, or a cascade — then process every finding and question to a decision: **accept** (revise accordingly), **reject** (disagree, with reasoning), or **defer** (address later, recorded in the plan's risks or open questions). Human decisions, where provided, are followed, not re-argued; the planner decides the rest itself and documents each decision per `references/feedback-format.md` — load it before recording decisions, and whenever a feedback YAML arrives as input.
+
+For implementation feedback, revise around the work already done: address the defect the implementer hit without invalidating completed steps, and prefer the correction that disturbs the fewest untouched steps. For a cross-phase cascade, first establish which of this plan's assumptions and dependencies the other phase's change actually breaks, and revise only that.
+
+Apply accepted changes surgically: modify the affected steps, add or remove steps where the correction requires it, and update the file scope, testing plan, rollback, and technical decisions wherever a change touches them — a revised step whose file-scope entry or test requirement still describes the old version is the classic revision defect, and `plan-validate` checks for exactly that.
+
+Respect the phase list. When a revision cannot stay within it — scope must move between phases, the list needs a new phase, a boundary must shift — stop and escalate explicitly: state what the revision requires and why it breaks the list the phase-1 plan fixed. That decision belongs to the human at a gate, never to a revision quietly rewriting the run's shape.
+
+Questions that remain unresolved go to the plan's open questions section, never answered by a guessed default. Iteration caps and stall detection live in the stage's loop contract, not here — reaching them is the executor's escalation, and the revision simply leaves the plan in its honest current state.
+
+## Output
+
+The revised plan, written back to `{run}/phase-{N}-plan.md`: same structure, unaffected content preserved, and one new changelog row — iteration, date, what changed, and which trigger drove it (validation, gate, implementation feedback, cascade).
+
+Alongside it, the decision audit: `{run}/phase-{N}-plan-feedback-{iteration}.yaml` per `references/feedback-format.md`, recording every decision and question resolution of this iteration. The revised plan is re-validated by `plan-validate` under the loop contract.
