@@ -47,7 +47,7 @@ metadata:
 
 ### review-validate (validator)
 
-Independent verdict on the change in light of the findings: does it meet the brief and plan, and do any open findings block? Renders the verdict the loop contract consumes.
+Independent verdict on the change in light of the findings: does it meet the brief and plan, and do any open findings block? Renders the verdict the loop contract consumes. The plan is a declared input because the verdict judges against its acceptance criteria and file scope — an executor materializing only declared inputs must still provide it.
 
 ```yaml
 metadata:
@@ -61,6 +61,8 @@ metadata:
         - artifact: "{run}/security-findings.md"
           required: false
         - artifact: "{run}/phase-{N}-impl-log.md"
+          required: true
+        - artifact: "{run}/phase-{N}-plan.md"
           required: true
       output:
         artifact: "{run}/review-validation.md"
