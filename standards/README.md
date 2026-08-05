@@ -1,3 +1,50 @@
 # standards/
 
-Single source of truth for coding and artifact standards; templates are generated from these files, never hand-copied. Not yet populated.
+Single source of truth for coding and artifact standards. Every file here is a placeholder-parameterized source; project-specific copies are **generated** from these files by [`scripts/render_standards.py`](../scripts/render_standards.py), never hand-copied — one authored source, rendered variants, no drift.
+
+## Sources
+
+Quality standards, internalized by task skills before executing:
+
+- [`coding.md`](coding.md) — naming, code organization, error handling, documentation
+- [`architecture.md`](architecture.md) — architecture pattern, module boundaries, dependency direction, API design
+- [`testing.md`](testing.md) — test organization, naming, assertion style, coverage expectations
+- [`review-checklist.md`](review-checklist.md) — systematic checklist applied during code review
+
+Artifact formats, selected per project — one commit format, one PR format, one tracker format:
+
+- [`commit-conventional.md`](commit-conventional.md) / [`commit-angular.md`](commit-angular.md) — commit message standards
+- [`pr-github.md`](pr-github.md) / [`pr-gitlab.md`](pr-gitlab.md) / [`pr-bitbucket.md`](pr-bitbucket.md) — pull/merge request standards
+- [`ticket-jira.md`](ticket-jira.md) / [`ticket-linear.md`](ticket-linear.md) / [`ticket-github-issues.md`](ticket-github-issues.md) — ticket/issue standards
+
+A tool not listed here needs no framework change: a consuming project writes its own rendered-standard file (e.g. `ticket-format.md` for another tracker) and skills honor it the same way.
+
+## Placeholders
+
+The vocabulary is closed — sources may use only these tokens, and conformance CI fails on anything else (`render_standards.py --check`):
+
+| Placeholder | Meaning |
+| --- | --- |
+| `{{PROJECT_NAME}}` | the consuming project's name |
+| `{{TECH_STACK}}` | the project's primary language/framework stack |
+| `{{ARCHITECTURE_TYPE}}` | the project's architecture pattern |
+
+Single-brace text (`/users/{id}`, JSON examples) is ordinary content, not placeholder syntax.
+
+## Rendering
+
+```sh
+python3 scripts/render_standards.py --config project.json --out .ai/config/standards
+```
+
+where `project.json` supplies the placeholder values:
+
+```json
+{
+  "PROJECT_NAME": "acme-shop",
+  "TECH_STACK": "TypeScript/Node",
+  "ARCHITECTURE_TYPE": "modular monolith"
+}
+```
+
+`--only coding,testing,commit-conventional,pr-github,ticket-jira` renders a selection. Rendered copies are the project's to customize further — the HTML comments inside mark the sections meant to evolve with the project (valid scopes, stack-specific conventions).

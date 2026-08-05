@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Standards single source (`standards/`): twelve placeholder-parameterized sources — four quality standards (`coding`, `architecture`, `testing`, `review-checklist`) and eight artifact formats (`commit-conventional`, `commit-angular`, `pr-github`, `pr-gitlab`, `pr-bitbucket`, `ticket-jira`, `ticket-linear`, `ticket-github-issues`) — from which project-specific copies are generated, never hand-copied. `scripts/render_standards.py` (stdlib-only) renders them with consumer-supplied values for the closed placeholder vocabulary (`{{PROJECT_NAME}}`, `{{TECH_STACK}}`, `{{ARCHITECTURE_TYPE}}`; `--only` renders a selection), and its `--check` mode — run as a conformance CI step — fails on unregistered tokens or malformed double-brace syntax and dry-renders every source to prove full resolution. Unit tests (`scripts/test_render_standards.py`, stdlib `unittest`) cover rendering, selection, config validation, integrity checking, and every error path.
+
 ## [0.1.0] - 2026-08-04
 
 ### Added
