@@ -31,7 +31,7 @@ The step runs as the validator, always with fresh context (spec §4): profession
 
 - `{run}/review-findings.md` (required) — the code review's findings, `R-…` ids.
 - `{run}/security-findings.md` (optional) — the security pass's findings, `S-…` ids, present in the classes and conditions where that step runs.
-- `{run}/phase-{N}-impl-log.md` (required) — the implementer's account, including machine-check evidence and the plan it links to.
+- `{run}/phase-{N}-impl-log.md` (required) — the implementer's account: machine-check evidence, commits, and the log's plan link, the declared path to `{run}/phase-{N}-plan.md` and through it the brief. The plan is not a separate step input — the stage routes it through the log — but its acceptance criteria and file scope are still the bar the change is judged against.
 - The change itself, read directly — the diff is ground truth for every claim weighed here, the findings' claims included.
 
 ## Method
