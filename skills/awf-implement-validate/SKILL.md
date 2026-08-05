@@ -30,6 +30,7 @@ The step runs as the validator, always with fresh context (spec §4): profession
 - `{run}/phase-{N}-impl-log.md` (required) — the implementer's account of what was done.
 - `{run}/phase-{N}-plan.md` (required) — the approved plan: what should have been done.
 - The change itself, read directly — the diff of this phase's work and the tests it added. The diff is ground truth: the plan says what should happen, the log says what the implementer claims happened, and where either disagrees with the code, the code decides.
+- The project's coding and testing standards, where they exist — what the report's Standards checklist row is checked against, alongside the plan's own requirements.
 
 ## Method
 

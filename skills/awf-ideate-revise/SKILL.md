@@ -32,6 +32,7 @@ The step runs as the planner: answer each finding with reasoning, keep the explo
 
 - `{run}/ideation.md` (required) — the current exploration, revised in place. It carries the problem, the brief's constraints, and the acceptance criteria in its own words, which is why the brief is not a separate input here: the artifact restates what it was written against, and findings cite the brief where they rest on it.
 - `{run}/ideation-validation.md` (required) — the report whose findings and questions drive the revision; its stable `F-…` and `Q-…` ids are what the revision log's decisions reference.
+- The project's architecture standard, where one exists — the same bar `ideate` generated against. An approach added or reshaped in revision meets it or argues its departure; a revision is not a route around a standard the original exploration respected.
 
 ## Method
 

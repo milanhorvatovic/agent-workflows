@@ -29,6 +29,7 @@ The step runs as the implementer: read the whole plan before writing anything, f
 
 - `{run}/phase-{N}-plan.md` (required) — the approved plan: ordered steps with files, changes, test requirements, and acceptance criteria, plus the file-scope declaration that bounds every change this step may make (spec §9.2).
 - `{run}/phase-{N}-impl-validation.md` (optional) — present on loop iterations only: the previous iteration's validation findings, addressed before anything else.
+- The project's coding and testing standards, where they exist — read before writing code, not consulted after a finding cites them; where they are silent, the codebase's own practice stands in.
 
 ## Method
 

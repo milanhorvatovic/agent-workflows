@@ -36,6 +36,7 @@ The step runs as the validator, always with fresh context (spec §4): profession
 - `{run}/phase-{N}-impl-log.md` (required) — the implementer's account: machine-check evidence, commits, deviations declared.
 - `{run}/phase-{N}-plan.md` (required) — the acceptance criteria and file-scope declaration the change is judged against, and through its brief link the run's intent.
 - The change itself, read directly — the diff is ground truth for every claim weighed here, the findings' claims included.
+- The project's coding, architecture, and testing standards, and its review checklist where one exists — what the report's Standards checklist row is checked against, and what separates a real standards violation from a reviewer's stylistic preference when weighing a finding's claim. An argued departure is judged on the argument; a silent one stands as a violation.
 
 ## Method
 
