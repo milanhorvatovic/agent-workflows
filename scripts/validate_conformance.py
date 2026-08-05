@@ -140,9 +140,7 @@ def schema_problems(
     return [f"{at}: [{name}] {error.json_path}: {error.message}" for error in errors]
 
 
-def yaml_blocks(path: Path, root: Path, problems: list[str]) -> list[Block]:
-    text = path.read_text(encoding="utf-8")
-    rel = path.relative_to(root).as_posix()
+def yaml_blocks(text: str, rel: str, problems: list[str]) -> list[Block]:
     blocks: list[Block] = []
     for match in YAML_BLOCK.finditer(text):
         line = text.count("\n", 0, match.start()) + 1
@@ -162,19 +160,19 @@ def workflow_value(data: Any) -> Any:
     return None
 
 
-def frontmatter_block(path: Path, root: Path) -> Block | None:
+def frontmatter_block(text: str, rel: str) -> Block | None:
     """A `metadata.workflow` declared in Agent Skills frontmatter (spec §9) —
     the same structure as a fenced block, extracted from the frontmatter
     mapping instead. Unparseable frontmatter is the frontmatter check's
     finding, not this one's."""
-    found = FRONTMATTER.match(path.read_text(encoding="utf-8"))
+    found = FRONTMATTER.match(text)
     if found is None:
         return None
     try:
         data = jsonify(YAML_LOADER.load(found.group(1)))
     except YAMLError:
         return None
-    return Block(f"{path.relative_to(root).as_posix()}:1", data)
+    return Block(f"{rel}:1", data)
 
 
 def strings_of(value: Any) -> Iterator[str]:
@@ -280,7 +278,7 @@ def check_spec_examples(
     if not path.is_file():
         return 0, [f"{SPEC.as_posix()}: not found"]
     problems: list[str] = []
-    blocks = yaml_blocks(path, root, problems)
+    blocks = yaml_blocks(path.read_text(encoding="utf-8"), SPEC.as_posix(), problems)
     for block in blocks:
         workflow = workflow_value(block.data)
         if workflow is not None:
@@ -313,8 +311,10 @@ def check_workflow_blocks(
     for path in markdown_files(root):
         if path == root / SPEC:
             continue
-        blocks = list(yaml_blocks(path, root, problems))
-        front = frontmatter_block(path, root)
+        rel = path.relative_to(root).as_posix()
+        text = path.read_text(encoding="utf-8")
+        blocks = yaml_blocks(text, rel, problems)
+        front = frontmatter_block(text, rel)
         if front is not None:
             blocks.append(front)
         for block in blocks:
