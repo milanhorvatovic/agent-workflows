@@ -60,6 +60,7 @@ SHARED_TEMPLATES: dict[str, tuple[str, ...]] = {
         "skills/awf-implement-validate/references/validation-report.template.md",
         "skills/awf-plan-validate/references/validation-report.template.md",
         "skills/awf-review-validate/references/validation-report.template.md",
+        "skills/awf-validate-tickets/references/validation-report.template.md",
     ),
 }
 
