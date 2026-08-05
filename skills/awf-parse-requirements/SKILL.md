@@ -7,6 +7,9 @@ metadata:
     protocol: "0.1"
     step:
       role: analyst
+      inputs:
+        - artifact: "{run}/grounding.md"
+          required: false
       output:
         artifact: "{run}/parsed-requirements.md"
         template: references/parsed-requirements.template.md
