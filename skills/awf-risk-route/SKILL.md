@@ -18,7 +18,7 @@ metadata:
 
 # Skill: awf-risk-route
 
-Decides how much protocol a run gets: the class that sets its execution mode, which roles split out, which gates fire and how, and whether security review runs (spec §5.1).
+Proposes how much protocol a run gets: the class that sets its execution mode, which roles split out, which gates fire and how, and whether security review runs (spec §5.1).
 
 The second and last step of intake, in every workflow and every risk class (spec §6.2). The class it proposes is what every later stage reads before deciding how much of itself to run — which is why this step proposes and the human decides.
 
@@ -48,7 +48,7 @@ Weigh all six rubric signals (spec §5.2) and classify on the whole reading rath
 
 **Requirement ambiguity** — how confidently the brief can be restated. Binding, and in the other direction: this signal never inflates the class (spec §5.2). A brief too vague to classify is a brief that needs its clarifying question, so route back to the `clarifying-question` gate rather than proposing R3 to buy process against uncertainty.
 
-Then propose exactly one class. A proposal that hedges between two has not classified — "R2, possibly R3" hands the decision back to the human it was made for. Where the reading genuinely sits near a boundary, propose the class and say in the rationale which way it leans and what would move it: an override at the gate is a designed outcome (spec §5.3), and a stated boundary is what makes it cheap.
+Otherwise propose exactly one class. A proposal that hedges between two has not classified — "R2, possibly R3" hands the decision back to the human it was made for. Where the reading genuinely sits near a boundary, propose the class and say in the rationale which way it leans and what would move it: an override at the gate is a designed outcome (spec §5.3), and a stated boundary is what makes it cheap.
 
 Where the two candidates are genuinely balanced, lean upward. Reclassification runs one way — a class may be raised mid-run and never lowered (spec §5.3) — so a class proposed too low is corrected only after the drift or stall signal that exposes it, by which point steps have already run under the wrong defaults.
 
