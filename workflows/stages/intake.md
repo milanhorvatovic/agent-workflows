@@ -25,7 +25,7 @@ metadata:
 
 ### risk-route (analyst)
 
-Apply the classification rubric (spec §5.2) to the confirmed brief and propose exactly one risk class with a one-line rationale, appended to the brief as a `## Routing` section. Two rubric rules bind: any security-surface signal proposes at least R2 with security review enabled, and ambiguity above threshold routes back to the clarifying question rather than inflating the class. The executor transcribes the accepted class into `run.risk` and `run.risk_rationale`; the router only proposes.
+Apply the classification rubric (spec §5.2) to the confirmed brief and propose at most one risk class with a one-line rationale, appended to the brief as a `## Routing` section. Two rubric rules bind: any security-surface signal proposes at least R2 with security review enabled, and ambiguity above threshold withholds the class and routes back to the clarifying question rather than inflating it — at most, because that is the case where no class is proposed at all. The executor transcribes the accepted class into `run.risk` and `run.risk_rationale`; the router only proposes.
 
 Three of the six signals — blast radius, decomposability, novelty — are claims about the codebase rather than about the brief, so a grounding is a cacheable optional input (spec §8.4): intake precedes the ideation stage's `ground` step, and a first run in a codebase has none.
 
