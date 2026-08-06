@@ -16,7 +16,7 @@ metadata:
 
 Turns whatever started the run into the document the rest of the run is measured against: what it is for, what bounds it, what would make it done, and what it deliberately is not.
 
-The first step of every workflow, in every risk class (spec §6.2). Nothing upstream produced an artifact — the input is the request itself, and this step is where it stops being a message and becomes a contract.
+The first step of every workflow, in every risk class (spec §6.2). Nothing upstream produced an artifact — the input is the request itself, and this step is where it stops being a message and becomes a contract. The brief is also written before the class exists, so it cannot be tailored to one: a request that turns out to be R0 gets the same restatement as one that turns out to be R3.
 
 ## Role
 
@@ -41,6 +41,8 @@ Record the constraints that bound the solution rather than describe it — compa
 Write acceptance criteria someone could check without asking what you meant: conditions on the finished work, each specific enough that two readers would agree on whether it holds. `awf-plan-validate` traces every one to a plan step and `awf-deliver-validate` walks them one at a time at the end of the run, so a criterion that is really the goal restated is one no plan step can be traced to and no delivery check can settle.
 
 State what is out of scope, and state only what a reasonable reader might otherwise assume is in it. This list is the cheapest scope control the protocol has — a boundary costs one line here and costs a loop iteration when it surfaces as drift during implementation — but an inventory of everything the run is not buries the two or three boundaries that matter.
+
+Where the request points at particular parts of the system, name them as focus areas. `awf-ground` reads them as its instruction to go file- and function-deep there instead of evenly everywhere, so an area named that the request never pointed at buys depth in the wrong place. Naming none is a legitimate answer, and the grounding records it as a general pass.
 
 The ambiguity test is whether the brief can be restated with confidence, not whether anything is unclear; something always is. Ask when the answer would change the goal, a constraint, or an acceptance criterion, and take a stated assumption when it would not. An assumption recorded in the brief is one the human overturns at the intake gate cheaply; the same assumption made silently is discovered at delivery. The flagging method is `awf-parse-requirements`' — name the part of the request that caused it, say what it leaves open, and give either the question or the default taken — used here rather than restated, with one difference: a brief cannot carry an open flag forward. Intake ends in a *confirmed* brief, so every ambiguity leaves as an answered question or a recorded assumption.
 

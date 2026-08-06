@@ -3,6 +3,7 @@
 > **Run:** [run id]
 > **Workflow:** [feature | bugfix | plan]
 > **Source:** [where the request arrived from — a ticket key, an issue link, a document reference, or "direct request"]
+> **Focus:** [codebase areas the request points at, or "general"]
 
 ## Goal
 
