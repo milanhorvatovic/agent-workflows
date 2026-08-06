@@ -15,7 +15,7 @@
 
 ## Review fixes
 
-[Review-loop iterations only — omit otherwise. This section belongs to `review-fix`, which appends to this log rather than scaffolding an artifact of its own; one heading per review iteration where the loop ran more than once. Per finding acted on: the source id — `R-…`, `S-…`, or the resolution entry's — what changed in response, and the tests added or strengthened where the finding exposed an untested path. A finding disputed rather than fixed states why, with the evidence, and stays here for the next iteration's review to see. Machine-check evidence and commits are refreshed in their own sections below rather than duplicated here; a fix whose scope would leave the plan's file scope is a finding for planning, also below.]
+[Review-loop iterations only — omit otherwise. This section belongs to `review-fix`, which appends to this log rather than scaffolding an artifact of its own; one heading per review iteration where the loop ran more than once. Per finding acted on: the source id — `R-…` or `S-…`, as the resolution list carries it where one exists, a resolution entry keeping the id of its strongest source rather than minting one of its own — what changed in response, and the tests added or strengthened where the finding exposed an untested path. A finding disputed rather than fixed states why, with the evidence, and stays here for the next iteration's review to see. Machine-check evidence and commits are refreshed in their own sections below rather than duplicated here; a fix whose scope would leave the plan's file scope is a finding for planning, also below.]
 
 - **[R-001]** — [what changed, and the tests with it] | [disputed: why, with the evidence]
 
