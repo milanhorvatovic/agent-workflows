@@ -35,6 +35,6 @@
 
 [Filled by risk-route; left as scaffolded until then.]
 
-**Proposed class:** [R0 | R1 | R2 | R3]
-**Rationale:** [one line naming the signals that decided it — transcribed verbatim into `run.risk_rationale`]
+**Proposed class:** [R0 | R1 | R2 | R3 — or "withheld", where ambiguity above threshold routed back to the clarifying question instead]
+**Rationale:** [one line naming the signals that decided it — transcribed verbatim into `run.risk_rationale`; where the class is withheld, what could not be pinned down]
 **Security surface:** [yes — what triggers it; security review is enabled | no]
