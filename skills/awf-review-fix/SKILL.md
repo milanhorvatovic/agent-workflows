@@ -49,6 +49,6 @@ A finding that cannot be applied as resolved — the fix breaks something the re
 
 ## Output
 
-The primary output is the fixed change: code and tests in the working tree, committed. The secondary output is the updated `{run}/phase-{N}-impl-log.md` — this iteration's record appended under a review-fixes heading, parallel to the log's existing sections: each finding id with what changed in response, disputed findings with why, refreshed machine-check evidence, and the new commits. The log stays the honest account the next review iteration re-reads.
+The primary output is the fixed change: code and tests in the working tree, committed. The secondary output is the updated `{run}/phase-{N}-impl-log.md` — this iteration's record written to the log's **Review fixes** section, which the log's template defines for this step: each finding id with what changed in response and the tests that came with it, and disputed findings with the evidence for the dispute. Machine-check evidence and commits are refreshed in the log's own sections for them rather than restated under the fixes, so the next iteration reads one current answer to "do the checks pass" instead of one per loop. The log stays the honest account the next review iteration re-reads.
 
 The loop contract consumes what follows: the next iteration re-reviews the updated change, and the stage exits on a PASS verdict with green machine checks or escalates at the cap (spec §9.2).

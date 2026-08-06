@@ -46,6 +46,8 @@ Attribute every finding: an implementation defect is fixable by iterating the lo
 
 ## Output
 
-Write the report to `{run}/phase-{N}-impl-validation.md`, scaffolded from `references/validation-report.template.md` (spec §8.3; a generated copy — the source lives in `standards/templates/`). Every finding carries a stable id, severity, location, issue, impact, and recommendation, plan-defect findings labeled as such; the checklist appends rows for scope adherence and machine-check evidence below the core eight; questions are separated from findings, blocking from non-blocking.
+Write the report to `{run}/phase-{N}-impl-validation.md`, scaffolded from `references/validation-report.template.md` (spec §8.3; a generated copy — the source lives in `standards/templates/`). Every finding carries a stable id, severity, location, issue, impact, and recommendation; the checklist appends rows for scope adherence and machine-check evidence below the core eight; questions are separated from findings, blocking from non-blocking.
+
+Every finding also carries an **Attribution** field the shared block does not define — `implementation defect` or `plan defect` — appended to its other fields. It is part of the finding rather than commentary because it routes the run: an implementation defect is fixable by iterating this loop, a plan defect is not, and the loop escalates that one toward `plan-revise` instead. A finding whose attribution can only be inferred from its prose is one the loop has to guess at, which is the guess this field exists to remove.
 
 Exactly one verdict — PASS, PASS_WITH_CONDITIONS, or FAIL (spec §3.3). The loop contract consumes it together with green machine checks: both green exits the stage, anything else iterates within the cap or escalates per the stage contract.

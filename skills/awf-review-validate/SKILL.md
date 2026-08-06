@@ -50,6 +50,8 @@ The checklist appends rows for findings disposition and machine-check evidence b
 
 ## Output
 
-Write the report to `{run}/review-validation.md`, scaffolded from `references/validation-report.template.md` (spec §8.3; a generated copy — the source lives in `standards/templates/`). Every disposition and every own finding carries its id and evidence; questions are separated from findings, blocking from non-blocking.
+Write the report to `{run}/review-validation.md`, scaffolded from `references/validation-report.template.md` (spec §8.3; a generated copy — the source lives in `standards/templates/`). Every own finding carries its `F-…` id and evidence; questions are separated from findings, blocking from non-blocking.
+
+Append one section, **Dispositions**, above the findings: one row per open `R-…` and `S-…` finding weighed here — the source id, whether the diff upheld or contested it, the evidence either way, and whether it blocks. It is a table rather than a checklist row because a disposition is a per-finding result and not a boolean: the appended disposition row records that the pass happened, this records what it concluded. `review-arbitrate` declares this artifact as its input for exactly these dispositions and contested findings, so a contest recorded only in prose is one the arbiter has no reliable place to read — and a contested critical is precisely the disagreement that fires that step.
 
 Exactly one verdict — PASS, PASS_WITH_CONDITIONS, or FAIL (spec §3.3). The loop contract consumes it together with green machine checks: both green exits the stage toward delivery, anything else routes through `review-arbitrate` where the disagreement conditions hold, and into `review-fix` within the iteration cap.
