@@ -1,6 +1,6 @@
 ---
 name: awf-plan-revise
-description: Revises a phase plan against validation findings, human direction from the plan-approval gate, structured implementation feedback, or another phase's cascading changes — deciding accept, reject, or defer per finding with an auditable feedback trail, preserving unaffected content, and logging every revision in the plan's changelog. Triggers as the planning stage's plan-revise step whenever a plan-validate verdict, a gate revise outcome, or escalated implementation feedback routes back into planning. Creating a plan from scratch is awf-plan-create; rendering the verdict on the revised plan is awf-plan-validate.
+description: Revises a phase plan against validation findings, human direction from the plan-approval gate, structured implementation feedback, or another phase's cascading changes — deciding accept, reject, or defer per finding with an auditable feedback trail, preserving unaffected content, and logging every revision in the plan's changelog, while escalating rather than revising wherever a change would break the phase list the phase-1 plan fixed. Triggers as the planning stage's plan-revise step whenever a plan-validate verdict, a gate revise outcome, or escalated implementation feedback routes back into planning. Creating a plan from scratch is awf-plan-create; rendering the verdict on the revised plan is awf-plan-validate.
 license: MIT
 metadata:
   workflow:
@@ -11,6 +11,8 @@ metadata:
         - artifact: "{run}/phase-{N}-plan.md"
           required: true
         - artifact: "{run}/phase-{N}-plan-validation.md"
+          required: true
+        - artifact: "{run}/phase-1-plan.md"
           required: true
       output:
         artifact: "{run}/phase-{N}-plan.md"
@@ -32,6 +34,7 @@ The step runs as the planner: answer each finding with reasoning, keep the plan 
 
 - `{run}/phase-{N}-plan.md` (required) — the current plan, revised in place.
 - `{run}/phase-{N}-plan-validation.md` (required) — the validation report whose findings and questions drive the revision; its stable finding and question ids are what the decisions reference.
+- `{run}/phase-1-plan.md` (required) — the fixed phase list this revision must stay inside: moving scope between phases, adding one, or shifting a boundary breaks it, and this is what says whether an accepted finding would. Without it the escalation below has nothing to test against, so the list gets broken silently by a revision that looks local. Required rather than optional because it always exists wherever this step runs, the same availability argument `plan-validate` makes for the same input: revising phase 1 or a single-phase run, `{N}` is 1 and this resolves to the plan under revision; revising a later phase, phase 1 was planned before that phase could exist. Never satisfied from another run, the guard `plan-validate` states for the same artifact: §8.4's cache does not reach a required input, and a decomposition made for a different run would be the wrong list even if it did — so check the plan's `Run` header.
 - The project's coding and architecture standards, where they exist — revisions stay inside them, and a revision that must depart from one records the departure with its reasoning rather than making it quietly. A finding that asks for a change contradicting a standard is answered on the record — accepted with the departure argued, or rejected citing the standard — never split the difference in silence.
 - Depending on the entry point, the driving feedback also includes: the human's decisions and answers from the plan-approval gate's `revise` outcome; the implementation log's structured plan-defect feedback (what is wrong, where, suggested correction) when implementation escalated back into planning; the triggering phase's revised plan in a cross-phase cascade.
 
@@ -43,7 +46,7 @@ For implementation feedback, revise around the work already done: address the de
 
 Apply accepted changes surgically: modify the affected steps, add or remove steps where the correction requires it, and update the file scope, testing plan, rollback, and technical decisions wherever a change touches them — a revised step whose file-scope entry or test requirement still describes the old version is the classic revision defect, and `plan-validate` checks for exactly that.
 
-Respect the phase list. When a revision cannot stay within it — scope must move between phases, the list needs a new phase, a boundary must shift — stop and escalate explicitly: state what the revision requires and why it breaks the list the phase-1 plan fixed. That decision belongs to the human at a gate, never to a revision quietly rewriting the run's shape.
+Respect the phase list, read from `{run}/phase-1-plan.md`. When a revision cannot stay within it — scope must move between phases, the list needs a new phase, a boundary must shift — stop and escalate explicitly: state what the revision requires and why it breaks the list the phase-1 plan fixed. That decision belongs to the human at a gate, never to a revision quietly rewriting the run's shape.
 
 Questions that remain unresolved go to the plan's open questions section, never answered by a guessed default. Iteration caps and stall detection live in the stage's loop contract, not here — reaching them is the executor's escalation, and the revision simply leaves the plan in its honest current state.
 
