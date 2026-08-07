@@ -30,7 +30,7 @@ metadata:
 
 ### review-security (reviewer)
 
-Security-focused pass: auth, crypto, input handling, dependency changes, data exposure, error paths. Participation per risk class ([overlays](../overlays.md)); recorded `skipped` where it does not run.
+Security-focused pass: auth, crypto, input handling, dependency changes, data exposure, error paths. Participation per risk class ([overlays](../overlays.md)); recorded `skipped` where it does not run. The brief is a declared input because this step also settles the security-surface reading `risk-route` recorded there: spec §5.2 makes any such signal propose at least R2 *and* enable security review, and this is the step that holds that reading against the code rather than against the brief it was made from.
 
 ```yaml
 metadata:
@@ -40,6 +40,8 @@ metadata:
       role: reviewer
       inputs:
         - artifact: "{run}/phase-{N}-impl-log.md"
+          required: true
+        - artifact: "{run}/brief.md"
           required: true
       output:
         artifact: "{run}/security-findings.md"
