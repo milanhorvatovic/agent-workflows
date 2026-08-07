@@ -542,6 +542,83 @@ class ValidateConformanceTest(unittest.TestCase):
         self.write("skills/dense/SKILL.md", frontmatter("dense") + body)
         self.assert_problem("tokens, budget is 5000")
 
+
+    # A step-bound skill restates its stage's step block; the two copies are
+    # one contract and must agree (spec §9.1).
+
+    STAGE = """---
+name: demo
+description: A stage.
+---
+
+# Stage: demo
+
+### thing (analyst)
+
+Prose.
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.1"
+    step:
+      role: analyst
+      inputs:
+        - artifact: "{run}/a.md"
+          required: true
+      output:
+        artifact: "{run}/b.md"
+```
+"""
+
+    SKILL = """---
+name: awf-thing
+description: A description.
+license: MIT
+metadata:
+  workflow:
+    protocol: "0.1"
+    step:
+      role: analyst
+      inputs:
+        - artifact: "{run}/a.md"
+          required: %s
+      output:
+        artifact: "{run}/b.md"
+        template: references/t.template.md
+---
+
+# awf-thing
+"""
+
+    def write_pair(self, required: str = "true") -> None:
+        self.write("workflows/stages/demo.md", self.STAGE)
+        self.write("skills/awf-thing/SKILL.md", self.SKILL % required)
+        self.write("skills/awf-thing/references/t.template.md", "# t\n")
+
+    def test_matching_step_blocks_pass(self) -> None:
+        self.write_pair()
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+        self.assertIn("step-bound skills", output)
+
+    def test_step_input_drift_reported(self) -> None:
+        self.write_pair(required="false")
+        self.assert_problem("step `inputs` differs from the one")
+
+    def test_skill_template_is_not_drift(self) -> None:
+        """The stage cannot carry a skill-relative template path, so the
+        skill declaring one is structure rather than drift."""
+        self.write_pair()
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_standalone_skill_without_a_stage_is_skipped(self) -> None:
+        self.write("skills/awf-loner/SKILL.md", self.SKILL.replace("awf-thing", "awf-loner") % "true")
+        self.write("skills/awf-loner/references/t.template.md", "# t\n")
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
     def test_missing_schema_file_exits(self) -> None:
         (self.root / "protocol/schemas/trigger.schema.json").unlink()
         message = self.run_main_expecting_exit()
