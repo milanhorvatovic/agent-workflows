@@ -16,6 +16,8 @@ metadata:
           required: false
         - artifact: "{run}/review-validation.md"
           required: false
+        - artifact: "{run}/phase-{N}-plan.md"
+          required: false
       output:
         artifact: "{run}/delivery.md"
         template: references/delivery.template.md
@@ -39,6 +41,7 @@ The step runs as the analyst assembling a final deliverable from evidence: preci
 - `{run}/phase-{N}-impl-log.md` (required) — the implementer's record for every phase of the run: steps, decisions, declared deviations, commits, and machine-check evidence. Implementation runs wherever this step does, so this input always exists; a multi-phase run has one log per phase and all of them are read.
 - `{run}/phase-{N}-impl-validation.md` (optional) — the implementation verdicts, absent at R1 where the validator is skipped. Optional here means possibly skipped, never satisfied from an earlier run: the grounding cache of spec §8.4 does not apply to a record of this run.
 - `{run}/review-validation.md` (optional) — the review verdict and the conditions attached to it, absent where the review stage's validator did not run.
+- `{run}/phase-{N}-plan.md` (optional) — each phase's validated **Rollback** section, which is where the reverse migrations, the configuration to restore, and the integrations to disconnect were actually worked out; the logs do not carry them, and an executor materializing only declared inputs would otherwise leave this step inventing a rollback path or omitting one. Optional because planning is skipped at R0 and R1, where the artifact is an exit note or a minimal change note and omits the rollback section entirely. Where it is absent at R2 or R3, the path back is only what the diff and the logs support, said as much rather than filled in from assumption.
 - The change itself, read directly — the diff is what the artifact describes, and it settles any disagreement with the logs: a change the diff carries and no log mentions still shipped and still belongs in the summary.
 - The project's rendered PR or change-note standard, where one exists — it fixes the shape of the change description this step writes, over any ordering suggested here.
 
