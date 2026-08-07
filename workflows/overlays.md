@@ -24,6 +24,8 @@ Overlays decide how much of a workflow runs; workflow files never do (spec §6.1
 - **Arbiter:** at R2 only on reviewer/validator disagreement; at R3 mandatory.
 - **Security review:** never at R0/R1; at R2 when the brief's `## Routing` section records a security surface; at R3 always. The executor evaluates that condition from the line `risk-route` writes there whether or not the signal fired (spec §5.2), so participation binds to a recorded reading rather than to a fresh judgment at review time, and two conformant executors cannot reach different answers for the same run. `review-security` then holds the reading against the change, so a reading that over-fired costs one pass that records itself as an over-fire, while one that missed skips the step that would have caught it — the asymmetry behind the rubric's instruction to err toward yes.
 
+Because the security-review condition reads an artifact rather than the class, wherever it applies the accepted class and the reading can come apart, in two ways and both of them upward. A human raising the class at `intake-approval` over a surface the reading does not record is routed back through intake rather than into the higher class ([intake](stages/intake.md)), since accepting a class cannot correct the reading the condition reads. An upward reclassification mid-run is the other, and it is a limit rather than a route: it applies the new class's defaults to all subsequent steps without revisiting the brief (spec §5.3), so a run bumped to R2 carries the reading it already had. Neither arises at R3, where the pass runs regardless.
+
 ## Gate transports
 
 | Gate | R0 | R1 | R2 | R3 |
