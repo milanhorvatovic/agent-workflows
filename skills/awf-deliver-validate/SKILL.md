@@ -18,6 +18,8 @@ metadata:
           required: false
         - artifact: "{run}/review-validation.md"
           required: false
+        - artifact: "{run}/phase-{N}-plan.md"
+          required: false
       output:
         artifact: "{run}/delivery-validation.md"
         template: references/validation-report.template.md
@@ -37,6 +39,7 @@ The step runs as the validator, always with fresh context (spec §4): profession
 - `{run}/brief.md` (required) — the bar. Its goal, constraints, and acceptance criteria are what "delivered" means; criteria are walked one by one, never sampled.
 - `{run}/phase-{N}-impl-log.md` (required) — where the artifact's evidence claims come from: machine-check results, commits, declared deviations. A multi-phase run has one log per phase and every one is read; a claim sourced from a log is checked against that log and then against the diff.
 - `{run}/phase-{N}-impl-validation.md` and `{run}/review-validation.md` (optional) — the verdicts the artifact quotes. Optional not because this step ever runs without a validator upstream by design, but because reclassification applies the new class's defaults to subsequent steps only (spec §5.3): a run bumped upward mid-implementation reaches this step with no implementation validation behind it. Absent is therefore a fact to check the artifact against, and never satisfied from another run — the grounding cache of spec §8.4 does not apply to a record of this run. Where they exist, they are what the artifact's verdict claims and conditions are checked against; the artifact's own word is never the source.
+- `{run}/phase-{N}-plan.md` (optional) — the same plans `deliver-prepare` reads, and for the same reason: the rollback path it reports is worked out in each plan's **Rollback** section, so without them a truthfully assembled rollback claim would trace to nothing this step holds and be reported unsupported. Optional on the same terms, planning being skipped at R0 and R1. Never satisfied from another run — a plan whose `Run` header names a different one is treated as absent, since the grounding cache of spec §8.4 does not apply to a record of this run.
 - The change itself, read directly — the diff, its tests, and the machine-check evidence are ground truth for every claim the artifact makes. Where the diff and the artifact disagree, the diff wins and the disagreement is a finding.
 - The project's rendered PR or change-note standard, where one exists — the shape the change description is held to, and what the report's Standards checklist row is checked against; the same standard `deliver-prepare` wrote against.
 
@@ -44,7 +47,7 @@ The step runs as the validator, always with fresh context (spec §4): profession
 
 Walk the brief's acceptance criteria one at a time and verify each against the change, not against the artifact's table: find the code that satisfies it and the test or check that demonstrates it. A criterion the artifact marks met without evidence is a finding, and so is one it quietly omits. Constraints the brief states — compatibility, performance, dependency limits, out-of-scope boundaries — are checked the same way.
 
-Then check the artifact for accuracy in both directions. Every claim it makes is traced to the diff, a log, or a verdict; anything unsupported is a finding. In the other direction, read the diff for what the artifact does not mention — an undeclared change, a dropped requirement, a deviation left out of its section — because a delivery record is judged on what it hides as much as on what it states.
+Then check the artifact for accuracy in both directions. Every claim it makes is traced to the diff, a log, a verdict, or a plan; anything unsupported is a finding. In the other direction, read the diff for what the artifact does not mention — an undeclared change, a dropped requirement, a deviation left out of its section — because a delivery record is judged on what it hides as much as on what it states.
 
 Take verification claims as claims. A named test must exist and cover what it is credited with; machine-check evidence must be current for the final state of the change, not a run from three commits ago; a validator verdict quoted here must match the artifact it came from, conditions included. An accepted PASS_WITH_CONDITIONS with unmet conditions is a finding, not a footnote. Where a step was skipped for the risk class, confirm the artifact says so rather than implying verification that never happened.
 
