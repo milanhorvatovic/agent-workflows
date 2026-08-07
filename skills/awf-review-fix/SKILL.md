@@ -14,6 +14,8 @@ metadata:
           required: true
         - artifact: "{run}/security-findings.md"
           required: false
+        - artifact: "{run}/review-validation.md"
+          required: false
         - artifact: "{run}/phase-{N}-plan.md"
           required: true
         - artifact: "{run}/phase-{N}-impl-log.md"
@@ -35,6 +37,7 @@ The step runs as the implementer: minimal, focused changes that fix what the fin
 - `{run}/review-resolution.md` (optional) — the arbiter's resolved list; where present it is authoritative, refutation and triage having already happened.
 - `{run}/review-findings.md` (required) — the code review's findings: part of the working list when no resolution exists, the traceability behind it when one does.
 - `{run}/security-findings.md` (optional) — the security pass's findings, where that step ran: the rest of the working list when no resolution folded them in.
+- `{run}/review-validation.md` (optional) — the validator's own `F-…` findings, for the same reason and by the same route: the verdict can fail on what both passes missed, arbitration runs only on disagreement and at R3, and a working list blind to those findings would iterate without ever clearing the one that blocked. Where a resolution exists it has already folded them in.
 - `{run}/phase-{N}-plan.md` (required) — the file-scope declaration every fix is bound to (spec §9.2).
 - `{run}/phase-{N}-impl-log.md` (required) — the log this step appends its record to.
 - The project's coding and testing standards, where they exist — the same rules the implementation followed, applied to every fix and every test a finding forces. A fix written outside them trades one finding for another on the next iteration.

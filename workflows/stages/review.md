@@ -106,6 +106,8 @@ metadata:
           required: true
         - artifact: "{run}/security-findings.md"
           required: false
+        - artifact: "{run}/review-validation.md"
+          required: false
         - artifact: "{run}/phase-{N}-plan.md"
           required: true
         - artifact: "{run}/phase-{N}-impl-log.md"
