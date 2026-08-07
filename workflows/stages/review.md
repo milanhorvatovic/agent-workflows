@@ -91,7 +91,7 @@ metadata:
 
 ### review-fix (implementer)
 
-Runs when the loop has not exited: applies the resolved findings (the arbiter's list where one exists, both review passes' findings otherwise — the security pass's included where it ran) within the plan's declared scope, updates the implementation log, and keeps machine checks green; otherwise recorded `skipped`. The next iteration re-reviews the updated change.
+Runs when the loop has not exited: applies the resolved findings (the arbiter's list where one exists for this iteration, both review passes' findings otherwise — the security pass's included where it ran) within the plan's declared scope, updates the implementation log, and keeps machine checks green; otherwise recorded `skipped`. The next iteration re-reviews the updated change. The validation report is required rather than optional: it carries the validator's own findings, which reach this step no other way when arbitration is skipped, and an optional input MAY be satisfied from an earlier run (spec §8.4) — a stale verdict standing in for this iteration's is the failure the declaration exists to prevent.
 
 ```yaml
 metadata:
@@ -107,7 +107,7 @@ metadata:
         - artifact: "{run}/security-findings.md"
           required: false
         - artifact: "{run}/review-validation.md"
-          required: false
+          required: true
         - artifact: "{run}/phase-{N}-plan.md"
           required: true
         - artifact: "{run}/phase-{N}-impl-log.md"

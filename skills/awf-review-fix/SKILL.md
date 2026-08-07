@@ -15,7 +15,7 @@ metadata:
         - artifact: "{run}/security-findings.md"
           required: false
         - artifact: "{run}/review-validation.md"
-          required: false
+          required: true
         - artifact: "{run}/phase-{N}-plan.md"
           required: true
         - artifact: "{run}/phase-{N}-impl-log.md"
@@ -34,10 +34,10 @@ The step runs as the implementer: minimal, focused changes that fix what the fin
 
 ## Inputs
 
-- `{run}/review-resolution.md` (optional) — the arbiter's resolved list; where present it is authoritative, refutation and triage having already happened.
+- `{run}/review-resolution.md` (optional) — the arbiter's resolved list; authoritative where it belongs to *this* iteration, refutation and triage having already happened. Its path is run-scoped while arbitration is conditional per iteration, so check the iteration the resolution records against the current one: a file left behind by an earlier iteration is not this iteration's fix list, and taking it as authoritative silently drops everything this iteration's review raised.
 - `{run}/review-findings.md` (required) — the code review's findings: part of the working list when no resolution exists, the traceability behind it when one does.
 - `{run}/security-findings.md` (optional) — the security pass's findings, where that step ran: the rest of the working list when no resolution folded them in.
-- `{run}/review-validation.md` (optional) — the validator's own `F-…` findings, for the same reason and by the same route: the verdict can fail on what both passes missed, arbitration runs only on disagreement and at R3, and a working list blind to those findings would iterate without ever clearing the one that blocked. Where a resolution exists it has already folded them in.
+- `{run}/review-validation.md` (required) — the verdict and the validator's own `F-…` findings, which are part of the working list whenever no current-iteration resolution folded them in: the verdict can fail on what both passes missed, and a list blind to those findings would iterate to the cap without ever clearing the one that blocked. Required rather than optional for two reasons — `review-validate` runs immediately before this step in every class where the review stage runs at all, so the artifact always exists; and an optional input MAY be satisfied from an earlier run (spec §8.4), which would let a stale verdict stand in for this iteration's and recreate exactly the blindness this input closes.
 - `{run}/phase-{N}-plan.md` (required) — the file-scope declaration every fix is bound to (spec §9.2).
 - `{run}/phase-{N}-impl-log.md` (required) — the log this step appends its record to.
 - The project's coding and testing standards, where they exist — the same rules the implementation followed, applied to every fix and every test a finding forces. A fix written outside them trades one finding for another on the next iteration.
