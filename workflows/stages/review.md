@@ -7,11 +7,13 @@ description: Fresh-context review of the implemented change — reviewer finding
 
 Independent scrutiny of the implemented change. Reviewer and validator always run with fresh context (spec §4) — fresh eyes are the point. The reviewer reports findings and renders no verdict; the validator renders the verdict; the arbiter resolves disagreement between them. The loop contract routes the stage (spec §9.2).
 
+This stage runs **once, after the final phase** ([feature](../feature.md)), so it has no current phase. `{N}` in the step blocks below therefore ranges over every completed phase rather than naming one: a multi-phase run has a plan and a log per phase, the change under review is their sum, and every one is read — the same treatment `deliver-validate` states for the other stage that runs after the last phase. The loop's declared scope is the union of what those plans declare. For the same reason nothing this stage writes is phase-indexed: `review-fix` records its iterations in the run-scoped `{run}/review-fixes.md`, alongside the four stage outputs that were already run-scoped.
+
 ## Steps
 
 ### review-code (reviewer)
 
-Review the full change — the diff, against the plan — for correctness, error handling, edge cases, performance, and standards adherence. Findings with severities and concrete fixes; no verdict. Both inputs are required: review only runs in classes where planning and implementation have produced them.
+Review the full change — the diff, against the plan — for correctness, error handling, edge cases, performance, and standards adherence. Findings with severities and concrete fixes; no verdict. The plan and log are required: review only runs in classes where planning and implementation have produced them. `{run}/review-fixes.md` is optional because it does not exist on the first iteration — from the second it carries what the previous pass fixed and, more importantly, what it disputed rather than fixed, which this pass is meant to decide with fresh eyes. Optional puts it in reach of §8.4's cache, so both steps that take it state the freshness check spec §9.1 requires: its `Run` header must match this run, and its **Iteration** says which iteration wrote it.
 
 ```yaml
 metadata:
@@ -24,6 +26,8 @@ metadata:
           required: true
         - artifact: "{run}/phase-{N}-impl-log.md"
           required: true
+        - artifact: "{run}/review-fixes.md"
+          required: false
       output:
         artifact: "{run}/review-findings.md"
 ```
@@ -49,7 +53,7 @@ metadata:
 
 ### review-validate (validator)
 
-Independent verdict on the change in light of the findings: does it meet the brief and plan, and do any open findings block? Renders the verdict the loop contract consumes. The plan is a declared input because the verdict judges against its acceptance criteria and file scope — an executor materializing only declared inputs must still provide it.
+Independent verdict on the change in light of the findings: does it meet the brief and plan, and do any open findings block? Renders the verdict the loop contract consumes. The plan is a declared input because the verdict judges against its acceptance criteria and file scope — an executor materializing only declared inputs must still provide it. `{run}/review-fixes.md` is optional for the same reason it is on `review-code`, and needed for the same one: a finding the previous iteration disputed rather than fixed is still open, and a verdict that cannot see the dispute passes over it.
 
 ```yaml
 metadata:
@@ -66,6 +70,8 @@ metadata:
           required: true
         - artifact: "{run}/phase-{N}-plan.md"
           required: true
+        - artifact: "{run}/review-fixes.md"
+          required: false
       output:
         artifact: "{run}/review-validation.md"
 ```
@@ -93,7 +99,7 @@ metadata:
 
 ### review-fix (implementer)
 
-Runs when the loop has not exited: applies the resolved findings (the arbiter's list where one exists for this run and iteration, otherwise both review passes' findings — the security pass's where it ran — together with the validator's own) within the plan's declared scope, updates the implementation log, and keeps machine checks green; otherwise recorded `skipped`. The next iteration re-reviews the updated change. The security report is usable only where its `Run` and `Iteration` headers match this pass — its path is run-scoped while the security step is conditional, so a skipped iteration leaves the previous report behind, and an optional input may also be cache-satisfied from another run (spec §8.4). The validation report is required rather than optional: it carries the validator's own findings, which reach this step no other way when arbitration is skipped, and an optional input MAY be satisfied from an earlier run (spec §8.4) — a stale verdict standing in for this iteration's is the failure the declaration exists to prevent.
+Runs when the loop has not exited: applies the resolved findings (the arbiter's list where one exists for this run and iteration, otherwise both review passes' findings — the security pass's where it ran — together with the validator's own) within the plan's declared scope, records what it did in `{run}/review-fixes.md`, and keeps machine checks green; otherwise recorded `skipped`. The next iteration re-reviews the updated change. It writes a run-scoped artifact of its own rather than appending to a phase's implementation log: this stage has no current phase, so a phase-indexed output has no defined target once the run has more than one phase — and it no longer declares that log as an input either, appending to it having been the only thing its instructions used it for. The security report is usable only where its `Run` and `Iteration` headers match this pass — its path is run-scoped while the security step is conditional, so a skipped iteration leaves the previous report behind, and an optional input may also be cache-satisfied from another run (spec §8.4). The validation report is required rather than optional: it carries the validator's own findings, which reach this step no other way when arbitration is skipped, and an optional input MAY be satisfied from an earlier run (spec §8.4) — a stale verdict standing in for this iteration's is the failure the declaration exists to prevent.
 
 ```yaml
 metadata:
@@ -112,10 +118,8 @@ metadata:
           required: true
         - artifact: "{run}/phase-{N}-plan.md"
           required: true
-        - artifact: "{run}/phase-{N}-impl-log.md"
-          required: true
       output:
-        artifact: "{run}/phase-{N}-impl-log.md"
+        artifact: "{run}/review-fixes.md"
 ```
 
 ## Loop

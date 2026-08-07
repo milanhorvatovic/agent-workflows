@@ -13,15 +13,6 @@
 
 [Loop iterations only — omit on the first pass. One entry per finding from phase-{N}-impl-validation.md: the finding id and what changed in response. A finding disputed rather than fixed states why.]
 
-## Review fixes
-
-[Review-loop iterations only — omit otherwise. This section belongs to `review-fix`, which appends to this log rather than scaffolding an artifact of its own; one subheading per iteration it runs, the first included, so iterations stay separable without a reader inferring where one ended. Per finding acted on: the source id — `R-…` from the code review, `S-…` from the security pass, or `F-…` where a validator's own finding survived into the fix list — as the resolution list carries it where one exists, a resolution entry keeping the id of its strongest source rather than minting one of its own — what changed in response, and the tests added or strengthened where the finding exposed an untested path. A finding disputed rather than fixed states why, with the evidence, and stays here for the next iteration's review to see. Machine-check evidence and commits are refreshed in their own sections below rather than duplicated here; a fix whose scope would leave the plan's file scope is a finding for planning, also below.]
-
-### Iteration 1
-
-- **[R-001]** — [what changed in response, and the tests added or strengthened with it]
-- **[S-002]** — [disputed: why the fix was not applied, with the evidence]
-
 ## Step log
 
 [One entry per plan step, in plan order. Steps not reached state why not.]

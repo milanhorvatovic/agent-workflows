@@ -1,6 +1,6 @@
 ---
 name: awf-review-validate
-description: Adversarially validates the implemented change in light of the review findings — does it meet the brief and plan it descends from, and do open findings block? — verifying the findings' claims against the diff, hunting what the passes missed, and rendering exactly one verdict, PASS, PASS_WITH_CONDITIONS, or FAIL, in a structured validation report the review loop consumes. Triggers as the review stage's review-validate step, fresh-context in every mode, after the review passes write their findings. It renders the verdict and never fixes anything; disagreement between its verdict and the findings is awf-review-arbitrate's to resolve, and the step-by-step check of implementation against plan was awf-implement-validate.
+description: Adversarially validates the implemented change in light of the review findings — does it meet the brief and plan it descends from, and do open findings block? — verifying the findings' claims against the diff, weighing a previous iteration's disputed findings as the open findings they still are, hunting what the passes missed, and rendering exactly one verdict, PASS, PASS_WITH_CONDITIONS, or FAIL, in a structured validation report the review loop consumes. Triggers as the review stage's review-validate step, fresh-context in every mode, after the review passes write their findings. It renders the verdict and never fixes anything; disagreement between its verdict and the findings is awf-review-arbitrate's to resolve, and the step-by-step check of implementation against plan was awf-implement-validate.
 license: MIT
 metadata:
   workflow:
@@ -16,6 +16,8 @@ metadata:
           required: true
         - artifact: "{run}/phase-{N}-plan.md"
           required: true
+        - artifact: "{run}/review-fixes.md"
+          required: false
       output:
         artifact: "{run}/review-validation.md"
         template: references/validation-report.template.md
@@ -33,8 +35,9 @@ The step runs as the validator, always with fresh context (spec §4): profession
 
 - `{run}/review-findings.md` (required) — the code review's findings, `R-…` ids.
 - `{run}/security-findings.md` (optional) — the security pass's findings, `S-…` ids, present in the classes and conditions where that step runs. Usable only when its `Run` and `Iteration` headers both match this pass: the path is run-scoped while the security step is conditional, so a skipped iteration leaves the previous one's report in place, and being optional it may also be cache-satisfied from another run entirely (spec §8.4). A report failing either check is treated as absent, the same guard the arbiter's resolution carries.
-- `{run}/phase-{N}-impl-log.md` (required) — the implementer's account: machine-check evidence, commits, deviations declared.
-- `{run}/phase-{N}-plan.md` (required) — the acceptance criteria and file-scope declaration the change is judged against, and through its brief link the run's intent.
+- `{run}/phase-{N}-impl-log.md` (required) — the implementer's account: machine-check evidence, commits, deviations declared. This stage runs once after the final phase, so `{N}` ranges over every completed phase rather than naming a current one: one log per phase, every one read.
+- `{run}/phase-{N}-plan.md` (required) — the acceptance criteria and file-scope declaration the change is judged against, and through its brief link the run's intent. `{N}` ranges the same way, and it has to: a verdict on the change is a verdict on the sum of the phases, so criteria owned by an earlier phase are part of the bar.
+- `{run}/review-fixes.md` (optional) — the previous iteration's fixes and, decisively, its disputes, plus the loop's current machine-check result and commits, refreshed in place there rather than in a phase's log. Optional because it does not exist on the first iteration. Optional makes it reachable by §8.4's cache, so the freshness half of the same rule binds: usable only where its `Run` header matches this run, a fix record from another run describing another change entirely, and its **Iteration** read to confirm it is the previous iteration's record rather than one left behind by an earlier run's loop. A finding the fixer disputed rather than applied is still open, and a verdict rendered without seeing the dispute passes over an unresolved finding while believing it was fixed — the one failure this input exists to prevent.
 - The change itself, read directly — the diff is ground truth for every claim weighed here, the findings' claims included.
 - The project's coding, architecture, and testing standards, and its review checklist where one exists — what the report's Standards checklist row is checked against, and what separates a real standards violation from a reviewer's stylistic preference when weighing a finding's claim. An argued departure is judged on the argument; a silent one stands as a violation.
 

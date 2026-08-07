@@ -11,7 +11,7 @@ Closes the run: assemble what shipped, validate it against the brief one last ti
 
 ### deliver-prepare (analyst)
 
-Synthesize the delivery artifact from the run's evidence — brief, implementation logs, validations — into a summary of what changed and why, verification evidence, and a ready-to-use change description for the project's normal shipping channel (for example, a pull request). The implementation logs are required — implementation runs in every class where this step does, one log per completed phase; the validation artifacts stay optional, validator steps being skipped at R1.
+Synthesize the delivery artifact from the run's evidence — brief, implementation logs, the review loop's own fix record, validations — into a summary of what changed and why, verification evidence, and a ready-to-use change description for the project's normal shipping channel (for example, a pull request). The implementation logs are required — implementation runs in every class where this step does, one log per completed phase; the validation artifacts stay optional, validator steps being skipped at R1. `{run}/review-fixes.md` is optional too, and this step states the §9.1 freshness check that optional makes necessary: its `Run` header must match this run and its **Iteration** be the loop's last, since where a review loop ran it holds the current machine-check result and commit list while the logs hold the state as of implementation.
 
 ```yaml
 metadata:
@@ -28,6 +28,8 @@ metadata:
           required: false
         - artifact: "{run}/review-validation.md"
           required: false
+        - artifact: "{run}/review-fixes.md"
+          required: false
         - artifact: "{run}/phase-{N}-plan.md"
           required: false
       output:
@@ -40,7 +42,7 @@ metadata:
 
 ### deliver-validate (validator)
 
-Runs with fresh context in every mode (spec §4). The run's final validation: are the brief's acceptance criteria met, is the delivery artifact accurate about what shipped, is any claimed verification actually evidenced? Renders the verdict presented at the gate. The implementation logs are required — delivery composes only into workflows that implement, so the logs the artifact's evidence claims come from always exist, one per completed phase. The validation artifacts stay optional, though not for `deliver-prepare`'s reason — this step does not run at R1 at all. They are optional because reclassification applies the new class's defaults to subsequent steps only (spec §5.3): a run bumped upward during implementation arrives here with no implementation validation behind it, and one bumped after the review stage was skipped with no review validation either. Where they exist they are the sources the artifact's quoted verdicts and conditions are checked against, which the step cannot do on the artifact's own word.
+Runs with fresh context in every mode (spec §4). The run's final validation: are the brief's acceptance criteria met, is the delivery artifact accurate about what shipped, is any claimed verification actually evidenced? Both steps declare `{run}/review-fixes.md`, optional on two counts — the review stage is skipped at R0 and R1, and `review-fix` runs only on an iteration the loop has not exited, so a review passing first time writes no fix record either: where it did, that artifact holds the loop's commits and its current machine-check result, and the implementation logs hold the state as of implementation — so a verification claim checked against the logs alone is checked against evidence predating every fix the review forced. Both state the §9.1 freshness check that optional makes necessary: the `Run` header must match this run, and the **Iteration** must be the loop's last. Renders the verdict presented at the gate. The implementation logs are required — delivery composes only into workflows that implement, so the logs the artifact's evidence claims come from always exist, one per completed phase. The validation artifacts stay optional, though not for `deliver-prepare`'s reason — this step does not run at R1 at all. They are optional because reclassification applies the new class's defaults to subsequent steps only (spec §5.3): a run bumped upward during implementation arrives here with no implementation validation behind it, and one bumped after the review stage was skipped with no review validation either. Where they exist they are the sources the artifact's quoted verdicts and conditions are checked against, which the step cannot do on the artifact's own word.
 
 ```yaml
 metadata:
@@ -58,6 +60,8 @@ metadata:
         - artifact: "{run}/phase-{N}-impl-validation.md"
           required: false
         - artifact: "{run}/review-validation.md"
+          required: false
+        - artifact: "{run}/review-fixes.md"
           required: false
         - artifact: "{run}/phase-{N}-plan.md"
           required: false
