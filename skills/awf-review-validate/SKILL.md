@@ -32,7 +32,7 @@ The step runs as the validator, always with fresh context (spec §4): profession
 ## Inputs
 
 - `{run}/review-findings.md` (required) — the code review's findings, `R-…` ids.
-- `{run}/security-findings.md` (optional) — the security pass's findings, `S-…` ids, present in the classes and conditions where that step runs.
+- `{run}/security-findings.md` (optional) — the security pass's findings, `S-…` ids, present in the classes and conditions where that step runs. Usable only when its `Run` and `Iteration` headers both match this pass: the path is run-scoped while the security step is conditional, so a skipped iteration leaves the previous one's report in place, and being optional it may also be cache-satisfied from another run entirely (spec §8.4). A report failing either check is treated as absent, the same guard the arbiter's resolution carries.
 - `{run}/phase-{N}-impl-log.md` (required) — the implementer's account: machine-check evidence, commits, deviations declared.
 - `{run}/phase-{N}-plan.md` (required) — the acceptance criteria and file-scope declaration the change is judged against, and through its brief link the run's intent.
 - The change itself, read directly — the diff is ground truth for every claim weighed here, the findings' claims included.
