@@ -28,6 +28,8 @@ metadata:
           required: false
         - artifact: "{run}/review-validation.md"
           required: false
+        - artifact: "{run}/phase-{N}-plan.md"
+          required: false
       output:
         artifact: "{run}/delivery.md"
       on:
@@ -56,6 +58,8 @@ metadata:
         - artifact: "{run}/phase-{N}-impl-validation.md"
           required: false
         - artifact: "{run}/review-validation.md"
+          required: false
+        - artifact: "{run}/phase-{N}-plan.md"
           required: false
       output:
         artifact: "{run}/delivery-validation.md"

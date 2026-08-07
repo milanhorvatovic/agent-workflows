@@ -16,6 +16,8 @@ metadata:
           required: false
         - artifact: "{run}/review-validation.md"
           required: false
+        - artifact: "{run}/phase-{N}-plan.md"
+          required: false
       output:
         artifact: "{run}/delivery.md"
         template: references/delivery.template.md
@@ -39,6 +41,7 @@ The step runs as the analyst assembling a final deliverable from evidence: preci
 - `{run}/phase-{N}-impl-log.md` (required) — the implementer's record for every phase of the run: steps, decisions, declared deviations, commits, and machine-check evidence. Implementation runs wherever this step does, so this input always exists; a multi-phase run has one log per phase and all of them are read.
 - `{run}/phase-{N}-impl-validation.md` (optional) — the implementation verdicts, absent at R1 where the validator is skipped. Optional here means possibly skipped, never satisfied from an earlier run: the grounding cache of spec §8.4 does not apply to a record of this run.
 - `{run}/review-validation.md` (optional) — the review verdict and the conditions attached to it, absent where the review stage's validator did not run.
+- `{run}/phase-{N}-plan.md` (optional) — each phase's validated **Rollback** section, which is where the reverse migrations, the configuration to restore, and the integrations to disconnect were actually worked out; the logs do not carry them, and an executor materializing only declared inputs would otherwise leave this step inventing a rollback path or omitting one. Optional because planning is skipped at R0 and R1, where the artifact is an exit note or a minimal change note and omits the rollback section entirely. Never satisfied from another run: because the input is optional, spec §8.4 would otherwise admit a cached plan, and a rollback path copied from a different change is worse than none — check the plan's `Run` header against this run and treat a mismatch as absent, the same guard `review-fix` applies to the arbiter's resolution. Where it is absent at R2 or R3, the path back is only what the diff and the logs support, said as much rather than filled in from assumption.
 - The change itself, read directly — the diff is what the artifact describes, and it settles any disagreement with the logs: a change the diff carries and no log mentions still shipped and still belongs in the summary.
 - The project's rendered PR or change-note standard, where one exists — it fixes the shape of the change description this step writes, over any ordering suggested here.
 
@@ -52,10 +55,12 @@ Report verification as evidence, not assertion: which machine checks ran and the
 
 Then write the change description in the project's format: the rendered PR or change-note standard fixes the title convention, the section shape, and the checklist, so follow it rather than this skill's ordering; where the project has no such standard, use the artifact's own change-description section as-is. Load `references/shipping.md` when the change must actually reach the project's channel — how the description is used, and what stays the consumer's decision.
 
+Close on what the change carries forward once it is live, filling the template's last two sections by name. **Risks and rollback** takes the risks worth naming, the signals that would show them, and the path back — the revert, the migrations that need reversing, the flags to flip. **Follow-ups** takes what this run deliberately left: the findings-for-planning the logs raised, the findings left open under an accepted verdict, and the gaps the logs record, each with its id and where it is recorded. Both draw only on the sources this step already reads, and neither is an invitation to invent work the run never considered. "None" is a legitimate answer for **Follow-ups** — a run can genuinely leave nothing behind. It is not one for **Risks and rollback**: a change that shipped can be undone, so that section states the path back or says why there is none for this change, which is a fact worth knowing rather than a blank.
+
 At R1 the artifact is a minimal change note per the risk-class overlays — summary, what changed, the verification that ran, and the change description. The sections the template marks as omitted at R1 are left out entirely rather than filled with placeholders.
 
 ## Output
 
-Write the artifact to `{run}/delivery.md`, scaffolded from `references/delivery.template.md` (spec §8.3; load it before assembling, since it fixes the section order and the evidence tables). Every claim in it traces to the brief, a log entry, a validation verdict, or the diff.
+Write the artifact to `{run}/delivery.md`, scaffolded from `references/delivery.template.md` (spec §8.3; load it before assembling, since it fixes the section order and the evidence tables). Every claim in it traces to the brief, a log entry, a validation verdict, a plan, or the diff.
 
 No verdict is rendered here — `deliver-validate` judges this artifact against the brief where the risk class runs it, and the `delivery-approval` gate collects the human decision with that verdict in view, or with the artifact alone at R1, where the validator is skipped. A `revise` outcome at the gate returns here with the human's direction.

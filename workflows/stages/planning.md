@@ -51,6 +51,8 @@ metadata:
           required: true
         - artifact: "{run}/brief.md"
           required: true
+        - artifact: "{run}/phase-1-plan.md"
+          required: true
       output:
         artifact: "{run}/phase-{N}-plan-validation.md"
 ```

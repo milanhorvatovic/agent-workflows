@@ -11,7 +11,7 @@
 
 ## Phase list
 
-[Phase-1 plans only — this section fixes the run's phase list; later phases' plans mark it "fixed by phase-1 plan". A single-phase run states that here. Per phase: name, scope, out of scope, key deliverables, dependencies on other phases — see the phase-decomposition reference.]
+[Phase-1 plans only — this section fixes the run's phase list; later phases' plans mark it "fixed by phase-1 plan". A single-phase run states that here. Per phase: name, scope, out of scope, key deliverables, dependencies on other phases, and relative complexity — see the phase-decomposition reference.]
 
 ## Prerequisites
 

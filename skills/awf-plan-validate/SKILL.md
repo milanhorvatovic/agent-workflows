@@ -12,6 +12,8 @@ metadata:
           required: true
         - artifact: "{run}/brief.md"
           required: true
+        - artifact: "{run}/phase-1-plan.md"
+          required: true
       output:
         artifact: "{run}/phase-{N}-plan-validation.md"
         template: references/validation-report.template.md
@@ -29,6 +31,7 @@ The step runs as the validator, always with fresh context (spec §4): profession
 
 - `{run}/phase-{N}-plan.md` (required) — the plan under validation, read in its entirety before judging.
 - `{run}/brief.md` (required) — the requirements source: its goal, constraints, and acceptance criteria are the bar. Requirements coverage is checked line by line — a plan that misses requirements is fundamentally flawed regardless of its other qualities.
+- `{run}/phase-1-plan.md` (required) — the fixed phase list: what says which phase owns which requirement. Without it this step cannot tell work another phase owns from work this plan dropped, so a later phase's plan could pass with its coverage unchecked. Required rather than optional because it always exists wherever this step runs: validating phase 1 or a single-phase run, `{N}` is 1 and this resolves to the plan already under validation; validating a later phase, phase 1 was planned before that phase could exist. Never satisfied from another run — spec §8.4's cache does not reach a decomposition made for a different run — so check the plan's `Run` header and stop rather than validate coverage against the wrong list.
 - The project's coding, architecture, and testing standards, where they exist — the other bar, and what makes the report's Standards checklist row mean something. A plan whose steps, file scope, or test requirements contradict a standard without saying why is a finding; an argued departure is judged on the argument, not on the departure.
 
 ## Method
@@ -48,5 +51,7 @@ For a plan whose Phase list section fixes the run's phase list, load `references
 ## Output
 
 Write the report to `{run}/phase-{N}-plan-validation.md`, scaffolded from `references/validation-report.template.md` (spec §8.3; a generated copy — the source lives in `standards/templates/`). Every finding carries a stable id, severity, location, issue, impact, and recommendation; questions are separated from findings, blocking from non-blocking.
+
+Append one section, **Coverage**, above the findings: the requirement-by-requirement mapping from the brief's requirements and acceptance criteria to the plan step or steps addressing each, marked covered, partially covered, uncovered, owned by another phase, or owner unresolved. The fixed list decides which of the last two applies: a requirement it assigns to this phase and the plan does not address is **uncovered** and a finding like any other, and one it assigns elsewhere is **owned by another phase** — a fact about the run's decomposition rather than a gap in this plan, and not a finding. A phase-1 plan carries that list in the artifact under validation; a later phase's plan reads it from the phase-1 plan. Availability is not conclusiveness. A list that exists can still fail to assign an owner — `references/phase-decomposition.md` names boundary ambiguity as where multi-phase plans fail, so a requirement may plausibly belong to two phases or to none of them. That row is **owner unresolved**, and it always blocks — but which route clears it depends on whose artifact is at fault. Validating a **phase-1** plan, the list is not yet fixed: it lives in the artifact under validation, `plan-revise` writes that same artifact, and an ambiguous boundary is a defect in the plan being judged. Raise it as a blocking finding and the revise loop corrects it, which is the one chance to fix a decomposition before approval freezes it. Validating a **later** phase, no step in the loop can re-cut a list already fixed, so the blocking finding names the cross-phase re-cut it needs and the loop's stall signal escalates it — the plan must not reach approval carrying coverage nobody could establish, and a non-blocking question would let exactly that happen. Guessing between the two states above stays wrong whichever way it falls. The completeness walk above produces the section, and it belongs in the artifact for the same reason `validate-tickets` gives its own coverage table — the check's result is not a boolean. The core **Completeness** and **Scope** rows record whether coverage holds; this records how that was established, and a partially covered requirement is the finding most easily lost when there is nowhere to write down that it is only half addressed.
 
 Exactly one verdict — PASS, PASS_WITH_CONDITIONS, or FAIL (spec §3.3) — with unresolved critical findings or blocking questions forcing FAIL. The verdict is consumed by the planning loop's exit criteria and routes the plan to the plan-approval gate or back to `plan-revise`.

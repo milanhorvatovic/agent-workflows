@@ -91,7 +91,7 @@ metadata:
 
 ### review-fix (implementer)
 
-Runs when the loop has not exited: applies the resolved findings (the arbiter's list where one exists, both review passes' findings otherwise — the security pass's included where it ran) within the plan's declared scope, updates the implementation log, and keeps machine checks green; otherwise recorded `skipped`. The next iteration re-reviews the updated change.
+Runs when the loop has not exited: applies the resolved findings (the arbiter's list where one exists for this run and iteration, otherwise both review passes' findings — the security pass's where it ran — together with the validator's own) within the plan's declared scope, updates the implementation log, and keeps machine checks green; otherwise recorded `skipped`. The next iteration re-reviews the updated change. The security report is usable only where its `Run` and `Iteration` headers match this pass — its path is run-scoped while the security step is conditional, so a skipped iteration leaves the previous report behind, and an optional input may also be cache-satisfied from another run (spec §8.4). The validation report is required rather than optional: it carries the validator's own findings, which reach this step no other way when arbitration is skipped, and an optional input MAY be satisfied from an earlier run (spec §8.4) — a stale verdict standing in for this iteration's is the failure the declaration exists to prevent.
 
 ```yaml
 metadata:
@@ -106,6 +106,8 @@ metadata:
           required: true
         - artifact: "{run}/security-findings.md"
           required: false
+        - artifact: "{run}/review-validation.md"
+          required: true
         - artifact: "{run}/phase-{N}-plan.md"
           required: true
         - artifact: "{run}/phase-{N}-impl-log.md"
