@@ -1,6 +1,6 @@
 ---
 name: awf-plan-create
-description: Creates the phase plan from the brief, grounding, and ideation — ordered atomic implementation steps with files, changes, tests, and acceptance criteria, the mandatory file-scope declaration the implementation loop binds to, risks, technical decisions, and open questions. Triggers as the planning stage's plan-create step in every workflow, whenever a confirmed brief needs an implementable, validatable plan. Multi-phase decomposition and bugfix root-cause planning load as references; revising an existing plan against findings is awf-plan-revise, not this skill.
+description: Creates the phase plan from the brief, grounding, ideation, and the phase list the phase-1 plan fixed — ordered atomic implementation steps with files, changes, tests, and acceptance criteria, the mandatory file-scope declaration the implementation loop binds to, risks, technical decisions, and open questions. Triggers as the planning stage's plan-create step in every workflow, whenever a confirmed brief needs an implementable, validatable plan. Multi-phase decomposition and bugfix root-cause planning load as references; revising an existing plan against findings is awf-plan-revise, not this skill.
 license: MIT
 metadata:
   workflow:
@@ -13,6 +13,8 @@ metadata:
         - artifact: "{run}/grounding.md"
           required: false
         - artifact: "{run}/ideation.md"
+          required: false
+        - artifact: "{run}/phase-1-plan.md"
           required: false
       output:
         artifact: "{run}/phase-{N}-plan.md"
@@ -36,13 +38,14 @@ The step runs as the planner: decompose into ordered, verifiable work, sequence 
 - `{run}/brief.md` (required) — the confirmed brief: its goal, constraints, and acceptance criteria are the requirements the plan must fully cover, and the bar `plan-validate` will hold it to.
 - `{run}/grounding.md` (optional, cacheable) — the verified codebase analysis; its constraints-on-the-solution-space section is the planning input. When absent, read the relevant code directly before planning — a plan referencing unverified paths or patterns will fail validation.
 - `{run}/ideation.md` (optional) — where ideation ran, the recommended approach is the plan's starting point, not a suggestion to re-litigate; the plan turns it into steps.
+- `{run}/phase-1-plan.md` (optional) — the fixed phase list, for every phase after the first: what this phase owns, what earlier phases already delivered, and what later ones will. Optional because at `{N}` 1 it does not exist — it is this step's own output — and not because it is dispensable afterwards: planning phase 2 without it means inventing a decomposition the run already fixed, so where `{N}` is greater than 1 and it is absent, stop and escalate rather than plan around the gap. Never satisfied from another run — spec §8.4's cache reaches optional inputs, but a decomposition made for a different brief is the wrong list — so check the plan's `Run` header against this run and stop if it disagrees.
 - The project's coding, architecture, and testing standards, where they exist — the rules the steps, their test requirements, and the phase's testing approach must conform to, so the implementer inherits them instead of rediscovering them mid-work. A step that must depart from a standard says so and why; a plan that contradicts one silently is a `plan-validate` finding.
 
 ## Method
 
 Restate the requirements in the overview before decomposing — the restatement is the shared understanding the plan is built on.
 
-Fix the phase boundary first. A run whose work fits one phase plans it all as phase 1. When the brief's work exceeds one deliverable increment, the phase-1 plan fixes the run's phase list — load `references/phase-decomposition.md` for how to cut phases, draw their boundaries, sequence their dependencies, and place cross-cutting concerns. Later phases inherit that list; their plans detail one phase and leave the list alone.
+Fix the phase boundary first. A run whose work fits one phase plans it all as phase 1. When the brief's work exceeds one deliverable increment, the phase-1 plan fixes the run's phase list — load `references/phase-decomposition.md` for how to cut phases, draw their boundaries, sequence their dependencies, and place cross-cutting concerns. Later phases inherit that list by reading it from `{run}/phase-1-plan.md`; their plans detail one phase and leave the list alone.
 
 For a bugfix run (the `bugfix` workflow, or a brief that is a defect report), load `references/bugfix.md` — it adds the reproduction, root-cause, and regression-test sections the plan must carry and the discipline for validating a cause hypothesis before planning the fix.
 
