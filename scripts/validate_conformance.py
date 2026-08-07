@@ -415,6 +415,77 @@ def check_skill_budgets(root: Path) -> tuple[int, list[str]]:
     return len(paths), problems
 
 
+STAGE_STEP_HEADING = re.compile(r"^### (?P<id>[a-z][a-z0-9-]*) \(", re.MULTILINE)
+
+
+def step_of(block: Block | None) -> Any:
+    """The `step` mapping inside a `metadata.workflow`, or None."""
+    if block is None:
+        return None
+    workflow = workflow_value(block.data)
+    if isinstance(workflow, dict) and isinstance(workflow.get("step"), dict):
+        return workflow["step"]
+    return None
+
+
+def stage_steps(root: Path, problems: list[str]) -> dict[str, tuple[str, Any]]:
+    """Every step a stage contract declares, keyed by its `### <id>` heading.
+
+    A stage's fenced block sits under the heading that names the step, so the
+    nearest preceding heading is the step id.
+    """
+    found: dict[str, tuple[str, Any]] = {}
+    for path in sorted(root.glob("workflows/stages/*.md")):
+        rel = path.relative_to(root).as_posix()
+        text = path.read_text(encoding="utf-8")
+        headings = [(m.start(), m.group("id")) for m in STAGE_STEP_HEADING.finditer(text)]
+        for block in yaml_blocks(text, rel, problems):
+            step = step_of(block)
+            if step is None:
+                continue
+            line = int(block.at.rsplit(":", 1)[1])
+            offset = sum(len(x) + 1 for x in text.splitlines(keepends=False)[: line - 1])
+            prior = [name for start, name in headings if start < offset]
+            if prior:
+                found[prior[-1]] = (block.at, step)
+    return found
+
+
+def check_step_parity(root: Path) -> tuple[int, list[str]]:
+    """A step-bound skill restates the step block its stage declares. Two
+    copies of one contract drift silently, so they must stay identical —
+    spec §9.1 makes the input declaration the executor's whole view of a
+    step, and a skill promising inputs its stage does not is unexecutable
+    under the stage."""
+    problems: list[str] = []
+    stages = stage_steps(root, problems)
+    checked = 0
+    for path in sorted(root.glob("skills/*/SKILL.md")):
+        rel = path.relative_to(root).as_posix()
+        step = step_of(frontmatter_block(path.read_text(encoding="utf-8"), rel))
+        if step is None:
+            continue
+        step_id = path.parent.name.removeprefix("awf-")
+        if step_id not in stages:
+            continue  # standalone skill: no stage declares it
+        checked += 1
+        at, declared = stages[step_id]
+        for field in ("role", "inputs", "on"):
+            if step.get(field) != declared.get(field):
+                problems.append(
+                    f"{rel}: step `{field}` differs from the one {at} declares "
+                    f"for `{step_id}`; two copies of one contract must agree"
+                )
+        skill_out = (step.get("output") or {}).get("artifact")
+        stage_out = (declared.get("output") or {}).get("artifact")
+        if skill_out != stage_out:
+            problems.append(
+                f"{rel}: step output artifact differs from the one {at} declares "
+                f"for `{step_id}`; two copies of one contract must agree"
+            )
+    return checked, problems
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
@@ -442,7 +513,9 @@ def main(argv: list[str] | None = None) -> int:
     blocks, block_problems = check_workflow_blocks(root, validators)
     files, frontmatter_problems = check_frontmatter(root)
     skills, skill_problems = check_skill_budgets(root)
+    bound, parity_problems = check_step_parity(root)
     problems += spec_problems + block_problems + frontmatter_problems + skill_problems
+    problems += parity_problems
 
     for problem in problems:
         print(problem)
@@ -451,7 +524,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     print(
         f"conformance: OK — {fixtures} fixtures, {examples} spec examples, "
-        f"{blocks} workflow blocks, {files} frontmatter files, {skills} skill bodies"
+        f"{blocks} workflow blocks, {files} frontmatter files, {skills} skill bodies, "
+        f"{bound} step-bound skills"
     )
     return 0
 
