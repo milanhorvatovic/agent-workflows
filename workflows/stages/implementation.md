@@ -30,7 +30,7 @@ metadata:
 
 ### implement-validate (validator)
 
-Runs with fresh context in every mode (spec §4). Validates the implementation against the plan: every plan step done, acceptance criteria met, no undeclared scope, machine-check evidence present. Renders the verdict the loop contract consumes.
+Runs with fresh context in every mode (spec §4). Validates the implementation against the plan: every plan step done, acceptance criteria met, no undeclared scope, machine-check evidence present. Renders the verdict the loop contract consumes. In a multi-phase run it also reports what this phase's work binds for the phases that follow, which is why it declares the phase-1 plan beside this phase's — the list is what says which phases those are.
 
 ```yaml
 metadata:
@@ -42,6 +42,8 @@ metadata:
         - artifact: "{run}/phase-{N}-impl-log.md"
           required: true
         - artifact: "{run}/phase-{N}-plan.md"
+          required: true
+        - artifact: "{run}/phase-1-plan.md"
           required: true
       output:
         artifact: "{run}/phase-{N}-impl-validation.md"

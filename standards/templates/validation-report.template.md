@@ -67,7 +67,7 @@
 
 ## Cross-phase impact
 
-[Multi-phase runs only — omit otherwise. Whether the artifact's approach affects other phases: the phase list the phase-1 plan fixed, prior completed phases, subsequent phases.]
+[Whether the artifact's approach affects other phases: the phase list the phase-1 plan fixed, prior completed phases, subsequent phases. Multi-phase runs only, and only where the artifact under validation can still bind a phase that has not run — the per-phase validators report here, planning and implementation, and each states that treatment in its own Output. A validator running once after the final phase, before any phase list exists, or outside a run's phases at all leaves the section out: nothing follows it for the artifact to bind, and what earlier phases already did belongs in a finding rather than here.]
 
 ## Verdict
 
