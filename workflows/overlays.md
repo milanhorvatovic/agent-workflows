@@ -22,7 +22,7 @@ Overlays decide how much of a workflow runs; workflow files never do (spec §6.1
 - **Mode:** `inline` at R0–R2, `isolated` per role at R3; `reviewer` and `validator` steps run fresh-context in every mode (spec §4).
 - **Machine checks:** optional at R0; required at R1–R3.
 - **Arbiter:** at R2 only on reviewer/validator disagreement; at R3 mandatory.
-- **Security review:** never at R0/R1; at R2 when the change touches auth, crypto, input handling, or dependencies; at R3 always.
+- **Security review:** never at R0/R1; at R2 when the brief's `## Routing` section records a security surface; at R3 always. The executor evaluates that condition from the line `risk-route` writes there whether or not the signal fired (spec §5.2), so participation binds to a recorded reading rather than to a fresh judgment at review time, and two conformant executors cannot reach different answers for the same run. `review-security` then holds the reading against the change, so a reading that over-fired costs one pass that records itself as an over-fire, while one that missed skips the step that would have caught it — the asymmetry behind the rubric's instruction to err toward yes.
 
 ## Gate transports
 
