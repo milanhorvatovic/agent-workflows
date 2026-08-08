@@ -75,7 +75,7 @@ Every run is classified into exactly one of four risk classes at the `intake` st
 | **Roles** | none (free agent) | `implementer` (+ machine checks) | `analyst` → `planner` → `implementer` → `reviewer` → `validator` | full set; `arbiter` mandatory |
 | **Arbiter** | — | — | only on reviewer/validator disagreement | mandatory |
 | **Gates** | none; exit note only | delivery gate, batched to inbox | plan approval **blocking**; others batched to inbox | all blocking by default (per-gate configuration allowed) |
-| **Security review** | no | no | conditional: touches auth, crypto, input handling, or dependencies | mandatory |
+| **Security review** | no | no | conditional on the security-surface signal recorded at intake ([5.2](#52-classification-rubric)) | mandatory |
 | **Machine checks** | optional | required | required | required |
 | **Artifacts** | scratch directory, discardable | minimal (change note) | full set, run-scoped | full set, run-scoped |
 
@@ -121,7 +121,7 @@ Risk-class overlays — what each class skips or batches — are encoded once, p
 2. **Risk router** — applies the classification rubric ([5.2](#52-classification-rubric)) and proposes a class.
 3. **Intake gate** — the human sees the confirmed brief and the proposed class, and MAY override the class ([5.3](#53-override-and-reclassification)). Its transport follows the class defaults ([5.1](#51-the-four-classes)).
 
-Its outputs are a confirmed brief artifact and a risk class recorded in run state.
+Its outputs are a confirmed brief artifact, carrying the router's security-surface reading alongside the class it proposes, and the accepted risk class recorded in run state. That recorded reading is what the conditional security review at R2 is evaluated against ([5.1](#51-the-four-classes)); where it lives in the brief is the intake stage's contract.
 
 ## 7. Gates
 
