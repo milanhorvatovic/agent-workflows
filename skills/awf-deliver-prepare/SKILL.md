@@ -20,6 +20,8 @@ metadata:
           required: false
         - artifact: "{run}/phase-{N}-plan.md"
           required: false
+        - artifact: "{run}/delivery.md"
+          required: false
       output:
         artifact: "{run}/delivery.md"
         template: references/delivery.template.md
@@ -47,6 +49,8 @@ The step runs as the analyst assembling a final deliverable from evidence: preci
 - `{run}/phase-{N}-plan.md` (optional) — each phase's validated **Rollback** section, which is where the reverse migrations, the configuration to restore, and the integrations to disconnect were actually worked out; the logs do not carry them, and an executor materializing only declared inputs would otherwise leave this step inventing a rollback path or omitting one. Optional because planning is skipped at R0 and R1, where the artifact is an exit note or a minimal change note and omits the rollback section entirely. Never satisfied from another run: because the input is optional, spec §8.4 would otherwise admit a cached plan, and a rollback path copied from a different change is worse than none — check the plan's `Run` header against this run and treat a mismatch as absent, the same guard `review-fix` applies to the arbiter's resolution. Where it is absent at R2 or R3, the path back is only what the diff and the logs support, said as much rather than filled in from assumption.
 - The change itself, read directly — the diff is what the artifact describes, and it settles any disagreement with the logs: a change the diff carries and no log mentions still shipped and still belongs in the summary.
 - The project's rendered PR or change-note standard, where one exists — it fixes the shape of the change description this step writes, over any ordering suggested here.
+- The human's direction, where a `delivery-approval` `revise` returned the artifact rather than this being its first pass — what they want changed about how the delivery is described. Not an artifact, so it is not declared in the step block: a gate record carries the outcome and never the reasoning behind it (spec §7), and the direction arrives with the re-entry.
+- `{run}/delivery.md` (optional) — this step's own prior output, which a `revise` rewrites rather than replaces. Optional on availability: on a first pass the artifact cannot precede the step that writes it, and its absence is what says this is the first pass. Optional here means not yet written, never satisfied from an earlier run: the spec §8.4 cache does not apply to a record of this run.
 
 ## Method
 
@@ -61,6 +65,8 @@ Then write the change description in the project's format: the rendered PR or ch
 Close on what the change carries forward once it is live, filling the template's last two sections by name. **Risks and rollback** takes the risks worth naming, the signals that would show them, and the path back — the revert, the migrations that need reversing, the flags to flip. **Follow-ups** takes what this run deliberately left: the findings-for-planning the logs raised, the findings left open under an accepted verdict, and the gaps the logs record, each with its id and where it is recorded. Both draw only on the sources this step already reads, and neither is an invitation to invent work the run never considered. "None" is a legitimate answer for **Follow-ups** — a run can genuinely leave nothing behind. It is not one for **Risks and rollback**: a change that shipped can be undone, so that section states the path back or says why there is none for this change, which is a fact worth knowing rather than a blank.
 
 At R1 the artifact is a minimal change note per the risk-class overlays — summary, what changed, the verification that ran, and the change description. The sections the template marks as omitted at R1 are left out entirely rather than filled with placeholders.
+
+On a `delivery-approval` `revise`, rewrite the artifact against the human's direction rather than regenerating it from the evidence: the run's evidence has not changed, so a regeneration reproduces the document the gate just declined. Their direction lands in the sections it is about, and where it disputes a claim this artifact makes — a verification reported as performed, a criterion tabled as met — the claim is re-checked against the evidence rather than restated more confidently, since the honest answer may be that the criterion is unmet and the table says so.
 
 ## Output
 
