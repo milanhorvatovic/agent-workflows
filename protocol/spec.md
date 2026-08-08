@@ -75,7 +75,7 @@ Every run is classified into exactly one of four risk classes at the `intake` st
 | **Roles** | none (free agent) | `implementer` (+ machine checks) | `analyst` → `planner` → `implementer` → `reviewer` → `validator` | full set; `arbiter` mandatory |
 | **Arbiter** | — | — | only on reviewer/validator disagreement | mandatory |
 | **Gates** | none; exit note only | delivery gate, batched to inbox | plan approval **blocking**; others batched to inbox | all blocking by default (per-gate configuration allowed) |
-| **Security review** | no | no | conditional: touches auth, crypto, input handling, or dependencies | mandatory |
+| **Security review** | no | no | conditional on the security-surface signal recorded at intake ([5.2](#52-classification-rubric)) | mandatory |
 | **Machine checks** | optional | required | required | required |
 | **Artifacts** | scratch directory, discardable | minimal (change note) | full set, run-scoped | full set, run-scoped |
 
