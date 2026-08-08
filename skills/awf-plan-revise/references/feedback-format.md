@@ -1,6 +1,6 @@
 # Plan feedback format — the revision decision audit
 
-The YAML structure recording what each revision iteration decided: one decision per validation finding, one resolution per question. Produced by `awf-plan-revise` at every iteration — decisions the human supplied (via the plan-approval gate's `revise` outcome) are recorded as theirs; the rest are the planner's own. The file is the audit trail that makes a revised plan explainable: anyone can trace which finding produced which change, what was rejected and why, and who decided.
+The YAML structure recording what each revision iteration decided: one decision per validation finding, one resolution per question, one entry per item of direction a gate sent back. Produced by `awf-plan-revise` at every iteration — decisions the human supplied (via the plan-approval gate's `revise` outcome) are recorded as theirs; the rest are the planner's own. The file is the audit trail that makes a revised plan explainable: anyone can trace which finding produced which change, what was rejected and why, and who decided.
 
 Only `plan-revise` and the human consume this format. It is working material in the run directory, not a gated artifact.
 
@@ -40,6 +40,11 @@ questions:
     alternatives:                        # options considered, when they exist
       - "JWT — stateless, fits the API consumers"
       - "Session cookies — simpler, fits the current stack"
+
+direction:                               # present when trigger is gate; the human's own, so no decided_by
+  - text: "Split step 3 — the migration and the backfill want separate reviews"
+    action: accept                       # accept | reject | defer
+    reason: ""                           # required for reject and defer
 ```
 
 ## Fields
@@ -58,5 +63,8 @@ questions:
 | `questions[].resolved_by` | yes | `human`, `planner`, or `open` — `open` means it moved to the plan's open questions, unanswered |
 | `questions[].answer` | unless open | the chosen answer |
 | `questions[].alternatives` | no | options considered |
+| `direction[].text` | when `trigger` is `gate` | what the human asked for, quoted or restated. Gate direction has no finding or question to key to — a plan reaches `plan-approval` on a *passing* validation, so there may be no `F-…` at all — and this is where it goes |
+| `direction[].action` | with `text` | `accept`, `reject`, or `defer`, as for a finding |
+| `direction[].reason` | for reject/defer | why; a human's direction that is not followed is answered on the record rather than dropped |
 
-Every finding and every blocking question in the validation report appears exactly once — a finding without a decision is the omission `plan-validate` will catch on the next pass. Iteration caps and stall handling live in the planning stage's loop contract, not in this format.
+Every finding and every blocking question in the validation report appears exactly once, and so does every item of gate direction — a finding without a decision is the omission `plan-validate` will catch on the next pass. Iteration caps and stall handling live in the planning stage's loop contract, not in this format.
