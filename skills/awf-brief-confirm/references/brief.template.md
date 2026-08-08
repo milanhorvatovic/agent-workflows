@@ -11,7 +11,7 @@
 
 ## Constraints
 
-[What bounds the solution — compatibility that must hold, performance that must not regress, deadlines, dependencies the project will not take on, approaches already ruled out. Each marked stated, inferred, or directed, so the gate can strike an inference cheaply and can tell its own additions from the requester's: directed is a constraint the human added at a gate, which the request neither stated nor implied and which must not be recorded as either. "None" when the request states no constraint and none was inferred.]
+[What bounds the solution — compatibility that must hold, performance that must not regress, deadlines, dependencies the project will not take on, approaches already ruled out. Each marked stated, inferred, or directed, so the gate can strike an inference cheaply and can tell its own additions from the requester's: directed is a constraint the human added at a gate, which the request neither stated nor implied and which must not be recorded as either. "None" only when the request states no constraint, none was inferred, and no gate directed one.]
 
 - [constraint] — [stated | inferred | directed]
 
