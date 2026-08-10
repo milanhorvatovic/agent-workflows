@@ -9,8 +9,10 @@ run:
   protocol: "0.1"
 steps:
   - id: plan-create
+    status: done # outside the revise loop, so it carries no iterations
+  - id: plan-validate
     status: done
-    iterations: 2
+    iterations: 2 # a loop member counts against the loop's cap (spec §9.2)
     stall_flags: []
   - id: plan-approval
     status: blocked # a gate waits on a human here; not done, so a resume returns to it (spec §7, §8.5)

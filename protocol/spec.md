@@ -287,13 +287,14 @@ run:
   protocol: "0.1"
 steps:
   - id: plan-create
-    status: done # pending | active | blocked | done | skipped
-    iterations: 2
-    stall_flags: []
+    status: done # pending | active | blocked | done | skipped; outside the loop, so no iterations
   - id: plan-revise # the revise outcome's destination, and the first entry a resume finds
     status: pending
+    iterations: 1 # one revision already run; the cap is the loop's (spec 9.2)
+    stall_flags: []
   - id: plan-validate # must re-check what the revision changes
     status: pending
+    iterations: 2 # it validated the created plan and the first revision
   - id: plan-approval # decides again; a gate is `done` only where its decision stands
     status: pending
 gates:
