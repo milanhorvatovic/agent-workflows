@@ -69,7 +69,7 @@
 
 ## Open questions
 
-[Ambiguities the planner could not confidently resolve, each specific and answerable, with proposed alternatives. "None" when everything is decided.]
+[Ambiguities the planner could not confidently resolve, each specific and answerable, with proposed alternatives. Escalations land here too: a revision that cannot follow the human's direction or an accepted finding without breaking the fixed phase list states what the change would require, since this is the section the gate reads and the feedback audit is not an artifact it is given. "None" when everything is decided.]
 
 ## Gate direction
 
