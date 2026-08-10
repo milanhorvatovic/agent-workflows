@@ -13,6 +13,8 @@ run:
 steps:
   - id: brief-confirm
     status: done
+  - id: clarifying-question # conditional and it did not fire; skipped conditional steps are recorded (overlays)
+    status: skipped
   - id: risk-route
     status: done
   - id: intake-approval
