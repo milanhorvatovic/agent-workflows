@@ -282,6 +282,8 @@ steps:
     status: done # pending | active | blocked | done | skipped
     iterations: 2
     stall_flags: []
+  - id: plan-approval # a gate carries its own entry; `blocked` while it waits, `done` once its outcome is recorded
+    status: done
 gates:
   - gate: plan-approval
     transport: blocking # blocking | inbox

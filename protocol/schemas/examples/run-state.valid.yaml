@@ -13,7 +13,7 @@ steps:
     iterations: 2
     stall_flags: []
   - id: plan-approval
-    status: pending
+    status: blocked # a gate waits on a human here; not done, so a resume returns to it (spec §7, §8.5)
 gates:
   - gate: intake
     transport: inbox
