@@ -292,7 +292,7 @@ artifacts: [] # run manifest, see spec §8.2
 ```
 
 - `run` identifies the run: id, workflow, risk class with rationale ([5](#5-risk-classes)), and the protocol version the run executes under.
-- `steps` records each step's `status` (`pending` | `active` | `blocked` | `done` | `skipped`), its `iterations` count against the loop cap, and any accumulated `stall_flags`. `blocked` is what a step wears while a gate it reached is waiting on a human: it is not `done`, so a resume returns to it rather than past the gate ([7](#7-gates), [8.5](#85-resume)).
+- `steps` records each step's `status` (`pending` | `active` | `blocked` | `done` | `skipped`), its `iterations` count against the loop cap, and any accumulated `stall_flags`. `blocked` is what a *gate's own* entry wears while it waits on a human — not the entry of the step that produced the artifact, which is `done` by then: it is not `done`, so a resume returns to the gate rather than past it, and blocking the producer instead would re-run the step and never reach the gate ([7](#7-gates), [8.5](#85-resume)).
 - `gates` is the instrumentation record required by [section 7](#7-gates).
 - `instrumentation` MAY carry per-step enrichment such as token counts and durations.
 - `artifacts` is the run manifest ([8.2](#82-manifest)).
