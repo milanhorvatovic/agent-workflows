@@ -63,7 +63,7 @@ metadata:
 
 ### plan-revise (planner)
 
-Addresses the validation findings — and any structured feedback escalated from implementation — then rewrites the plan; re-validated by `plan-validate` under the loop contract. A revision that cannot stay inside the fixed phase list escalates to the human instead of quietly rewriting the run's shape — except where the human at `plan-approval` is the one asking, the phase-1 plan is what they are looking at, and the list is the only obstacle — that list being the plan's own content with nothing built against it yet. Direction blocked by anything else escalates at phase 1 too.
+Addresses the validation findings — and any structured feedback escalated from implementation — then rewrites the plan; re-validated by `plan-validate` under the loop contract. The phase list is provisional until `plan-approval` fixes it: before then a validation finding this loop accepts, or the human's direction at that gate, may move it — which is what lets the loop correct a decomposition the validator found wrong. Once it is fixed, a revision that cannot stay inside it escalates to the human instead of quietly rewriting the run's shape, and so does direction blocked by anything other than the list itself.
 
 ```yaml
 metadata:
