@@ -39,12 +39,12 @@
             "R2",
             "R3"
           ],
-          "description": "The accepted risk class. Absent until the intake gate accepts one, since this field carries the human's decision rather than the router's proposal; present from then on, and moved only by upward reclassification (spec sections 5.1 and 5.3)."
+          "description": "The accepted risk class. Absent until the intake gate accepts one, since this field carries the human's decision rather than the router's proposal; present from then on, and moved only by upward reclassification (spec sections 5.1, 5.3 and 10). `dependentRequired` below pairs this field with its rationale and does not police when either appears \u2014 whether the gate has decided is not visible in this document, gate ids being workflow vocabulary and a clarifying question also accepting before any class exists, so the timing is a semantic rule the prose carries."
         },
         "risk_rationale": {
           "type": "string",
           "minLength": 1,
-          "description": "The one-line rationale for the class in `risk`. Absent and present exactly when `risk` is, the two being written together (spec section 5.3)."
+          "description": "The one-line rationale for the class in `risk`. Absent and present exactly when `risk` is, the two being written together at acceptance and at any later reclassification (spec section 5.3)."
         },
         "protocol": {
           "type": "string",

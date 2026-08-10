@@ -15,7 +15,7 @@ steps:
   - id: plan-approval
     status: blocked # a gate waits on a human here; not done, so a resume returns to it (spec §7, §8.5)
 gates:
-  - gate: intake
+  - gate: intake-approval
     transport: inbox
     outcome: accept
     at: "2026-08-03T13:40:00Z"
