@@ -41,8 +41,8 @@
 
 [Filled at `intake-approval` on an `accept`, by whoever records the decision, never by risk-route. A `revise` or `reject` accepts no class: leave both fields as scaffolded and strike anything a previous acceptance left, since a class recorded here that this gate did not accept is the proposal impersonating a decision that risk-route refuses to write.]
 
-**Accepted class:** [the class the human accepted, which run state carries — "as proposed" where they did not override]
-**Accepted rationale:** [where they overrode, their one-line reason: this is what run state transcribes into `run.risk_rationale`, which is why the **Rationale** line above stays the router's proposal. Omit where the class was accepted as proposed]
+**Accepted class:** [the class the human accepted, written as `R0`–`R3` even where it matches the proposal — this is what run state carries, and a pointer back to the proposed class would make an executor dereference a second field to fill `run.risk`]
+**Accepted rationale:** [where they overrode, their one-line reason: this is what run state transcribes into `run.risk_rationale`, which is why the **Rationale** line above stays the router's proposal. Omit where the class was accepted as proposed, the **Rationale** line above being the reason in that case]
 
 ## Gate direction
 
