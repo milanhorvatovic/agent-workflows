@@ -1,6 +1,6 @@
 ---
 name: awf-plan-create
-description: Creates the phase plan from the brief, grounding, ideation, and the phase list the phase-1 plan fixed — ordered atomic implementation steps with files, changes, tests, and acceptance criteria, the mandatory file-scope declaration the implementation loop binds to, risks, technical decisions, and open questions. Triggers as the planning stage's plan-create step in every workflow, whenever a confirmed brief needs an implementable, validatable plan. Multi-phase decomposition and bugfix root-cause planning load as references; revising an existing plan against findings is awf-plan-revise, not this skill.
+description: Creates the phase plan from the brief, grounding, ideation, and the phase list the phase-1 plan authored and plan-approval fixed — ordered atomic implementation steps with files, changes, tests, and acceptance criteria, the mandatory file-scope declaration the implementation loop binds to, risks, technical decisions, and open questions. Triggers as the planning stage's plan-create step in every workflow, whenever a confirmed brief needs an implementable, validatable plan. Multi-phase decomposition and bugfix root-cause planning load as references; revising an existing plan against findings is awf-plan-revise, not this skill.
 license: MIT
 metadata:
   workflow:

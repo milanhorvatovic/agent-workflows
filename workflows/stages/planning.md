@@ -1,6 +1,6 @@
 ---
 name: planning
-description: Produces the phase plan — planner creates from brief, grounding, ideation, and the phase list the phase-1 plan fixed; validator renders the verdict; a capped revise loop converges; the blocking plan-approval gate collects the human decision. Every plan declares its file scope, the contract implementation loops bind to.
+description: Produces the phase plan — planner creates from brief, grounding, ideation, and the phase list the phase-1 plan authored and plan-approval fixed; validator renders the verdict; a capped revise loop converges; the blocking plan-approval gate collects the human decision. Every plan declares its file scope, the contract implementation loops bind to.
 ---
 
 # Stage: planning
