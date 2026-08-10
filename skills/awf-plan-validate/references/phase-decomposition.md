@@ -1,6 +1,6 @@
 # Phase-list validation — sequencing and coverage checks
 
-Additional checks for a plan whose Phase list section fixes the run's phase list (a phase-1 plan of multi-phase work). Loaded on top of the standard method, which still applies to the phase-1 steps themselves. The phase list is fixed for the run once this plan is approved, not merely once it passes here — `plan-approval` follows this verdict, and direction at that gate can still move the list. An error that survives both surfaces phases later, as cross-phase escalation, which is what makes this the cheapest place to catch one.
+Additional checks for a plan whose Phase list section authors the run's phase list (a phase-1 plan of multi-phase work). Loaded on top of the standard method, which still applies to the phase-1 steps themselves. The phase list is fixed for the run once this plan is approved, not merely once it passes here — `plan-approval` follows this verdict, and direction at that gate can still move the list. An error that survives both surfaces phases later, as cross-phase escalation, which is what makes this the cheapest place to catch one.
 
 ## Requirements coverage across phases
 

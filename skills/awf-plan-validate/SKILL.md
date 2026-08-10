@@ -31,7 +31,7 @@ The step runs as the validator, always with fresh context (spec §4): profession
 
 - `{run}/phase-{N}-plan.md` (required) — the plan under validation, read in its entirety before judging.
 - `{run}/brief.md` (required) — the requirements source: its goal, constraints, and acceptance criteria are the bar. Requirements coverage is checked line by line — a plan that misses requirements is fundamentally flawed regardless of its other qualities.
-- `{run}/phase-1-plan.md` (required) — the fixed phase list: what says which phase owns which requirement. Without it this step cannot tell work another phase owns from work this plan dropped, so a later phase's plan could pass with its coverage unchecked. Required rather than optional because it always exists wherever this step runs: validating phase 1 or a single-phase run, `{N}` is 1 and this resolves to the plan already under validation; validating a later phase, phase 1 was planned before that phase could exist. Never satisfied from another run — spec §8.4's cache does not reach a decomposition made for a different run — so check the plan's `Run` header and stop rather than validate coverage against the wrong list.
+- `{run}/phase-1-plan.md` (required) — the phase list: what says which phase owns which requirement. Validating the phase-1 plan it is provisional, this step being one of the two things that can still re-cut it before `plan-approval` fixes it; validating any later phase it is fixed and binds. Without it this step cannot tell work another phase owns from work this plan dropped, so a later phase's plan could pass with its coverage unchecked. Required rather than optional because it always exists wherever this step runs: validating phase 1 or a single-phase run, `{N}` is 1 and this resolves to the plan already under validation; validating a later phase, phase 1 was planned before that phase could exist. Never satisfied from another run — spec §8.4's cache does not reach a decomposition made for a different run — so check the plan's `Run` header and stop rather than validate coverage against the wrong list.
 - The project's coding, architecture, and testing standards, where they exist — the other bar, and what makes the report's Standards checklist row mean something. A plan whose steps, file scope, or test requirements contradict a standard without saying why is a finding; an argued departure is judged on the argument, not on the departure.
 
 ## Method
@@ -46,7 +46,7 @@ Judge test adequacy per step — scenarios comprehensive enough to catch regress
 
 Assess implementer readiness last, reading each step as the implementer will — cold: flag every step that needs a design decision the plan does not make, an assumption it does not state, or context it does not provide. Every ambiguity becomes an explicit question with possible answers — never resolved by assuming the likely interpretation.
 
-For a plan whose Phase list section fixes the run's phase list, load `references/phase-decomposition.md` — the phase-sequencing and coverage checks that section must additionally survive. For a bugfix plan, load `references/bugfix.md` — the root-cause and regression-test checks that decide whether the fix targets cause or symptom.
+For a plan whose Phase list section authors the run's phase list, load `references/phase-decomposition.md` — the phase-sequencing and coverage checks that section must additionally survive. For a bugfix plan, load `references/bugfix.md` — the root-cause and regression-test checks that decide whether the fix targets cause or symptom.
 
 ## Output
 
