@@ -36,5 +36,5 @@
 [Filled by risk-route; left as scaffolded until then.]
 
 **Proposed class:** [R0 | R1 | R2 | R3 — or "withheld", where ambiguity above threshold routed back to the clarifying question instead]
-**Rationale:** [one line naming the signals that decided it — transcribed verbatim into `run.risk_rationale` where the human accepts this class, superseded there by their own reason where they override it; where the class is withheld, what could not be pinned down]
+**Rationale:** [one line naming the signals that decided it — transcribed verbatim into `run.risk_rationale` where the human accepts this class; where they override it, run state takes their reason from the gate's direction carrier instead and this line stays the proposal it always was; where the class is withheld, what could not be pinned down]
 **Security surface:** [the value begins with yes or no, written as a bare word with no formatting around it, then what decided the reading either way — for yes, what triggers it, which also enables security review; for no, what was checked and found absent]

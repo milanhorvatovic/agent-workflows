@@ -14,6 +14,8 @@ metadata:
           required: true
         - artifact: "{run}/phase-1-plan.md"
           required: true
+        - artifact: "{run}/gate-direction.md"
+          required: false
       output:
         artifact: "{run}/phase-{N}-plan.md"
       on:
@@ -36,7 +38,8 @@ The step runs as the planner: answer each finding with reasoning, keep the plan 
 - `{run}/phase-{N}-plan-validation.md` (required) — the validation report whose findings and questions drive the revision; its stable finding and question ids are what the decisions reference.
 - `{run}/phase-1-plan.md` (required) — the fixed phase list this revision must stay inside: moving scope between phases, adding one, or shifting a boundary breaks it, and this is what says whether an accepted finding would. Without it the escalation below has nothing to test against, so the list gets broken silently by a revision that looks local. Required rather than optional because it always exists wherever this step runs, the same availability argument `plan-validate` makes for the same input: revising phase 1 or a single-phase run, `{N}` is 1 and this resolves to the plan under revision; revising a later phase, phase 1 was planned before that phase could exist. Never satisfied from another run, the guard `plan-validate` states for the same artifact: §8.4's cache does not reach a required input, and a decomposition made for a different run would be the wrong list even if it did — so check the plan's `Run` header.
 - The project's coding and architecture standards, where they exist — revisions stay inside them, and a revision that must depart from one records the departure with its reasoning rather than making it quietly. A finding that asks for a change contradicting a standard is answered on the record — accepted with the departure argued, or rejected citing the standard — never split the difference in silence.
-- Depending on the entry point, the driving feedback also includes: the human's decisions and answers from the plan-approval gate's `revise` outcome, which reaches this step in the plan the gate read (spec §7) and is recorded in the feedback file's `direction` list where it keys to no finding — the gate fires on a *passing* validation, so direction that is not about a finding is the ordinary case rather than the exception; the implementation log's structured plan-defect feedback (what is wrong, where, suggested correction) when implementation escalated back into planning; the triggering phase's revised plan in a cross-phase cascade.
+- `{run}/gate-direction.md` (optional) — the human's decisions and answers from the `plan-approval` gate's `revise` outcome. A gate record carries the outcome and never the reasoning behind it, so the executor writes the direction here before recording the outcome (spec §7); this step reads it and records each item in the feedback file's `direction` list, which is where direction that keys to no finding goes — the gate fires on a *passing* validation, so direction that is not about a finding is the ordinary case rather than the exception. Optional because the other three entry points carry no gate decision. Never satisfied from an earlier run: §8.4's cache does not reach a record of this run's decision.
+- Depending on the entry point, the driving feedback also includes: the implementation log's structured plan-defect feedback (what is wrong, where, suggested correction) when implementation escalated back into planning; the triggering phase's revised plan in a cross-phase cascade.
 
 ## Method
 
