@@ -43,8 +43,8 @@ questions:
 
 direction:                               # present when trigger is gate; the human's own, so no decided_by
   - text: "Split step 3 — the migration and the backfill want separate reviews"
-    action: accept                       # accept | reject | defer
-    reason: ""                           # required for reject and defer
+    action: accept                       # accept | escalate — never reject or defer
+    reason: ""                           # required for escalate
 ```
 
 ## Fields
@@ -64,7 +64,7 @@ direction:                               # present when trigger is gate; the hum
 | `questions[].answer` | unless open | the chosen answer |
 | `questions[].alternatives` | no | options considered |
 | `direction[].text` | when `trigger` is `gate` | what the human asked for, quoted or restated. Gate direction has no finding or question to key to — a plan reaches `plan-approval` on a *passing* validation, so there may be no `F-…` at all — and this is where it goes |
-| `direction[].action` | with `text` | `accept`, `reject`, or `defer`, as for a finding |
-| `direction[].reason` | for reject/defer | why; a human's direction that is not followed is answered on the record rather than dropped |
+| `direction[].action` | with `text` | `accept` or `escalate` — **not** the finding vocabulary. A finding is a claim the planner may disagree with; direction is the human's instruction, and declining it is not the planner's call. Where it cannot be followed — it would break the phase list the phase-1 plan fixed — the answer is `escalate`, back to the human who gave it |
+| `direction[].reason` | for escalate | what the direction would require and why the planner cannot decide it; a human's instruction is never silently dropped or quietly deferred |
 
 Every finding and every blocking question in the validation report appears exactly once, and so does every item of gate direction — a finding without a decision is the omission `plan-validate` will catch on the next pass. Iteration caps and stall handling live in the planning stage's loop contract, not in this format.
