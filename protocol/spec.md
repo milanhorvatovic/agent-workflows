@@ -162,7 +162,7 @@ The run state carries a manifest listing the artifacts the run has produced. The
 
 ### 8.3 Templates
 
-Where an output declares a template, the artifact is scaffolded from that template by script — not generated freehand — so structure is guaranteed before content is written. Placeholders in templates are contracts: a scaffolded artifact MUST contain every placeholder its template defines until the step fills it.
+Where an output declares a template, the artifact is scaffolded from that template by script — not generated freehand — so structure is guaranteed before content is written. Scaffolding creates and MUST NOT overwrite: a step revising, re-entering, or appending to an artifact is given one that already exists, and re-scaffolding it would discard the content it was given to work from, a gate's recorded direction ([7](#7-gates)) included. Placeholders in templates are contracts: a scaffolded artifact MUST contain every placeholder its template defines until the step fills it.
 
 ### 8.4 Grounding cache
 
