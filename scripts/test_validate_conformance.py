@@ -383,6 +383,15 @@ class ValidateConformanceTest(unittest.TestCase):
         output = self.assert_problem("trigger.valid.manual.yaml")
         self.assertIn("[trigger]", output)
 
+    def test_invalid_variant_fixture_must_still_fail_its_schema(self) -> None:
+        # An invalid variant carries one fault so it covers one rule. A variant
+        # that validates proves nothing, exactly as the required pair's does.
+        self.write(
+            "protocol/schemas/examples/trigger.invalid.pairing.yaml",
+            'protocol: "0.1"\ntrigger:\n  kind: manual\n',
+        )
+        self.assert_problem("the negative test proves nothing")
+
     def test_valid_variant_fixture_counts_toward_the_tally(self) -> None:
         # A conforming variant does not fail the run, and the summary counts
         # it — otherwise a fixture could be silently ignored rather than checked.

@@ -247,16 +247,19 @@ def fixture_paths(root: Path, name: str) -> list[tuple[str, Path]]:
     """The fixtures for one schema: the required pair, plus any variants.
 
     `<name>.valid.yaml` and `<name>.invalid.yaml` are mandatory — their absence
-    is a problem. A schema whose document has more than one legal shape may add
-    `<name>.valid.<variant>.yaml` for each further shape, so a state the schema
-    newly permits is proven by a fixture rather than only described in prose.
+    is a problem. Either kind may add `<name>.<kind>.<variant>.yaml` for a shape
+    the pair does not reach: a further legal shape, or a further way to be
+    illegal. One invalid fixture proves only that a document with several faults
+    is rejected, which says nothing about any single rule — a constraint gets
+    its own negative fixture or it has no coverage at all.
     """
-    found: list[tuple[str, Path]] = [
-        ("valid", root / FIXTURE_DIR / f"{name}.valid.yaml"),
-        ("invalid", root / FIXTURE_DIR / f"{name}.invalid.yaml"),
-    ]
-    variants = sorted((root / FIXTURE_DIR).glob(f"{name}.valid.*.yaml"))
-    found.extend(("valid", path) for path in variants)
+    directory = root / FIXTURE_DIR
+    found: list[tuple[str, Path]] = []
+    for kind in ("valid", "invalid"):
+        found.append((kind, directory / f"{name}.{kind}.yaml"))
+        found.extend(
+            (kind, path) for path in sorted(directory.glob(f"{name}.{kind}.*.yaml"))
+        )
     return found
 
 

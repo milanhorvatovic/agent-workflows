@@ -1,0 +1,11 @@
+# INVALID on purpose — schema validation MUST reject this fixture:
+# - run.risk is present without run.risk_rationale, which the pairing forbids
+#   (spec §5.3, §10: the two are written together or not at all)
+run:
+  id: 2026-08-10-half-written
+  workflow: feature
+  risk: R2
+  protocol: "0.1"
+steps: []
+gates: []
+artifacts: []

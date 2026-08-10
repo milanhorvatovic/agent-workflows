@@ -5,7 +5,7 @@ description: Produces the phase plan — planner creates from brief, grounding, 
 
 # Stage: planning
 
-Turns the brief (and, where ideation ran, the recommended approach) into a validated, human-approved plan for the current phase. `{N}` is the current phase number, starting at 1; the phase-1 plan fixes the phase list, and a multi-phase run repeats planning → implementation per phase.
+Turns the brief (and, where ideation ran, the recommended approach) into a validated, human-approved plan for the current phase. `{N}` is the current phase number, starting at 1; the phase-1 plan authors the phase list and `plan-approval` fixes it for the run, and a multi-phase run repeats planning → implementation per phase.
 
 All three steps declare that phase-1 plan as an input, because all three are bound by the list it fixes: `plan-create` optionally, since at phase 1 the artifact is the step's own output and cannot precede it, and `plan-validate` and `plan-revise` as required, since wherever they run it already exists — at phase 1 as the artifact they are working on, later as the plan that made a later phase possible.
 
@@ -15,7 +15,7 @@ Every plan MUST declare its file scope — the files and modules the phase may t
 
 ### plan-create (planner)
 
-Create the phase plan: steps, dependencies, acceptance criteria, file scope, risks, and open questions. Where ideation ran, the recommended approach is the plan's starting point, not a suggestion to re-litigate. At phase 1 this step fixes the phase list; after it, the list bounds what this plan may own, and a phase-1 plan that cannot be read is an escalation rather than a decomposition to invent again.
+Create the phase plan: steps, dependencies, acceptance criteria, file scope, risks, and open questions. Where ideation ran, the recommended approach is the plan's starting point, not a suggestion to re-litigate. At phase 1 this step authors the phase list — `plan-approval` is what fixes it, so direction at that gate can still move it and a revision afterwards cannot; after phase 1 the list bounds what this plan may own, and a phase-1 plan that cannot be read is an escalation rather than a decomposition to invent again.
 
 ```yaml
 metadata:
