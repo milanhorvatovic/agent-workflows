@@ -78,8 +78,6 @@ metadata:
           required: true
         - artifact: "{run}/phase-1-plan.md"
           required: true
-        - artifact: "{run}/gate-direction.md"
-          required: false
       output:
         artifact: "{run}/phase-{N}-plan.md"
       on:
@@ -108,4 +106,4 @@ metadata:
 
 ## Gates
 
-- **plan-approval** — after a passing validation. Transport per risk class ([overlays](../overlays.md)); blocking wherever planning runs. Outcomes: `accept` proceeds to the next stage in composition order (in the `plan` workflow, planning is the final stage, so `accept` completes the run); `revise` returns to `plan-revise` — an explicit edge overriding the spec §7 default of returning to the step that produced the artifact, because a plan that passed validation on its first pass was produced by `plan-create`, and sending a human's direction there returns an existing plan to the step that writes one from scratch; revision is surgery on the plan the gate read, which is `plan-revise`'s whole contract, and it already declares every input this route needs — carrying the human's decisions and answers, written to `{run}/gate-direction.md` before the outcome is recorded rather than into the gate record (spec §7), and recorded from there into the revision's feedback audit; `reject` ends the run — or the phase, in multi-phase runs.
+- **plan-approval** — after a passing validation. Transport per risk class ([overlays](../overlays.md)); blocking wherever planning runs. Outcomes: `accept` proceeds to the next stage in composition order (in the `plan` workflow, planning is the final stage, so `accept` completes the run); `revise` returns to `plan-revise` — an explicit edge overriding the spec §7 default of returning to the step that produced the artifact, because a plan that passed validation on its first pass was produced by `plan-create`, and sending a human's direction there returns an existing plan to the step that writes one from scratch; revision is surgery on the plan the gate read, which is `plan-revise`'s whole contract, and it already declares every input this route needs — carrying the human's decisions and answers, recorded in the plan's **Gate direction** section before the outcome rather than in the gate record (spec §7), and carried from there into the revision's feedback audit; `reject` ends the run — or the phase, in multi-phase runs.

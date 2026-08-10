@@ -70,3 +70,7 @@
 ## Open questions
 
 [Ambiguities the planner could not confidently resolve, each specific and answerable, with proposed alternatives. "None" when everything is decided.]
+
+## Gate direction
+
+[What the human asked for at a gate that sent this artifact back, recorded before the outcome so it survives the decision (spec §7). One entry per item, quoted or restated. The step that revises this artifact folds each into the sections it is about and leaves this one empty — a non-empty section in an artifact that has left its stage is direction nobody applied. "None" until a gate sends something back.]

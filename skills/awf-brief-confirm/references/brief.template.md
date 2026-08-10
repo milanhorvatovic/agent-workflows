@@ -36,5 +36,9 @@
 [Filled by risk-route; left as scaffolded until then.]
 
 **Proposed class:** [R0 | R1 | R2 | R3 — or "withheld", where ambiguity above threshold routed back to the clarifying question instead]
-**Rationale:** [one line naming the signals that decided it — transcribed verbatim into `run.risk_rationale` where the human accepts this class; where they override it, run state takes their reason from the gate's direction carrier instead and this line stays the proposal it always was; where the class is withheld, what could not be pinned down]
+**Rationale:** [one line naming the signals that decided it — transcribed verbatim into `run.risk_rationale` where the human accepts this class; where they override it, run state takes their reason from the **Gate direction** section below instead and this line stays the proposal it always was; where the class is withheld, what could not be pinned down]
 **Security surface:** [the value begins with yes or no, written as a bare word with no formatting around it, then what decided the reading either way — for yes, what triggers it, which also enables security review; for no, what was checked and found absent]
+
+## Gate direction
+
+[What the human asked for at a gate that sent this artifact back, recorded before the outcome so it survives the decision (spec §7). One entry per item, quoted or restated. The step that revises this artifact folds each into the sections it is about and leaves this one empty — a non-empty section in an artifact that has left its stage is direction nobody applied. "None" until a gate sends something back. At `intake-approval` a class override's reason lands here too, and is what run state transcribes into `run.risk_rationale` — which is why the Routing block's own **Rationale** line stays the router's proposal rather than being overwritten by it.]

@@ -22,8 +22,6 @@ metadata:
           required: false
         - artifact: "{run}/delivery.md"
           required: false
-        - artifact: "{run}/gate-direction.md"
-          required: false
       output:
         artifact: "{run}/delivery.md"
         template: references/delivery.template.md
@@ -51,8 +49,7 @@ The step runs as the analyst assembling a final deliverable from evidence: preci
 - `{run}/phase-{N}-plan.md` (optional) — each phase's validated **Rollback** section, which is where the reverse migrations, the configuration to restore, and the integrations to disconnect were actually worked out; the logs do not carry them, and an executor materializing only declared inputs would otherwise leave this step inventing a rollback path or omitting one. Optional because planning is skipped at R0 and R1, where the artifact is an exit note or a minimal change note and omits the rollback section entirely. Never satisfied from another run: because the input is optional, spec §8.4 would otherwise admit a cached plan, and a rollback path copied from a different change is worse than none — check the plan's `Run` header against this run and treat a mismatch as absent, the same guard `review-fix` applies to the arbiter's resolution. Where it is absent at R2 or R3, the path back is only what the diff and the logs support, said as much rather than filled in from assumption.
 - The change itself, read directly — the diff is what the artifact describes, and it settles any disagreement with the logs: a change the diff carries and no log mentions still shipped and still belongs in the summary.
 - The project's rendered PR or change-note standard, where one exists — it fixes the shape of the change description this step writes, over any ordering suggested here.
-- `{run}/gate-direction.md` (optional) — what the human wants changed about how the delivery is described, where a `delivery-approval` `revise` returned the artifact. A gate record carries the outcome and never the reasoning behind it, so the executor writes the direction here before recording the outcome (spec §7). Optional because it exists only on a re-entry. Never satisfied from an earlier run: §8.4's cache does not reach a record of this run's decision. It is an instruction rather than content — fold what it asks for into the sections it is about and leave the carrier spent, never copy it into the artifact, which would ship the request alongside the change it was about.
-- `{run}/delivery.md` (optional) — this step's own prior output, which a `revise` rewrites rather than replaces. Optional on availability: on a first pass the artifact cannot precede the step that writes it, and its absence is what says this is the first pass. Optional here means not yet written, never satisfied from an earlier run: the spec §8.4 cache does not apply to a record of this run.
+- `{run}/delivery.md` (optional) — this step's own prior output, which a `revise` rewrites rather than replaces, and where the human's direction is waiting: what they want said differently is recorded in its **Gate direction** section before the outcome is (spec §7), so no separate input carries it. Fold each item into the sections it is about and leave that one empty — direction left there would ship alongside the change it was about. Optional on availability: on a first pass the artifact cannot precede the step that writes it, and its absence is what says this is the first pass. Optional here means not yet written, never satisfied from an earlier run: the spec §8.4 cache does not apply to a record of this run.
 
 ## Method
 
