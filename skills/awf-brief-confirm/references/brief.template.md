@@ -39,7 +39,7 @@
 **Rationale:** [one line naming the signals that decided it — transcribed verbatim into `run.risk_rationale` where the human accepts this class; where they override it, run state takes their reason from **Accepted rationale** below instead and this line stays the proposal it always was; where the class is withheld, what could not be pinned down]
 **Security surface:** [the value begins with yes or no, written as a bare word with no formatting around it, then what decided the reading either way — for yes, what triggers it, which also enables security review; for no, what was checked and found absent]
 
-[Filled at `intake-approval` by whoever records the decision, never by risk-route.]
+[Filled at `intake-approval` on an `accept`, by whoever records the decision, never by risk-route. A `revise` or `reject` accepts no class: leave both fields as scaffolded and strike anything a previous acceptance left, since a class recorded here that this gate did not accept is the proposal impersonating a decision that risk-route refuses to write.]
 
 **Accepted class:** [the class the human accepted, which run state carries — "as proposed" where they did not override]
 **Accepted rationale:** [where they overrode, their one-line reason: this is what run state transcribes into `run.risk_rationale`, which is why the **Rationale** line above stays the router's proposal. Omit where the class was accepted as proposed]
