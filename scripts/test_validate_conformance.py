@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import re
 import json
 import tempfile
 import unittest
@@ -370,6 +371,35 @@ class ValidateConformanceTest(unittest.TestCase):
     def test_missing_fixture_reported(self) -> None:
         (self.root / "protocol/schemas/examples/loop.invalid.yaml").unlink()
         self.assert_problem("loop.invalid.yaml: fixture missing")
+
+    def test_valid_variant_fixture_is_validated(self) -> None:
+        # A schema whose document has more than one legal shape proves the
+        # extra shape with a `<name>.valid.<variant>.yaml`, and that fixture
+        # is validated like the required one rather than merely present.
+        self.write(
+            "protocol/schemas/examples/trigger.valid.manual.yaml",
+            'protocol: "0.1"\ntrigger:\n  kind: quantum\n',
+        )
+        output = self.assert_problem("trigger.valid.manual.yaml")
+        self.assertIn("[trigger]", output)
+
+    def test_valid_variant_fixture_counts_toward_the_tally(self) -> None:
+        # A conforming variant does not fail the run, and the summary counts
+        # it — otherwise a fixture could be silently ignored rather than checked.
+        source = (
+            self.root / "protocol/schemas/examples/run-state.valid.yaml"
+        ).read_text(encoding="utf-8")
+        _, before = self.run_main()
+        self.write("protocol/schemas/examples/run-state.valid.copy.yaml", source)
+        code, after = self.run_main()
+        self.assertEqual(code, 0, after)
+        self.assertEqual(self.fixture_tally(after), self.fixture_tally(before) + 1)
+
+    @staticmethod
+    def fixture_tally(output: str) -> int:
+        match = re.search(r"(\d+) fixtures", output)
+        assert match is not None, output
+        return int(match.group(1))
 
     def test_unknown_placeholder_reported(self) -> None:
         self.write(

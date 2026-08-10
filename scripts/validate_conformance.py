@@ -242,15 +242,32 @@ def validate_workflow_block(
     return problems
 
 
+
+def fixture_paths(root: Path, name: str) -> list[tuple[str, Path]]:
+    """The fixtures for one schema: the required pair, plus any variants.
+
+    `<name>.valid.yaml` and `<name>.invalid.yaml` are mandatory — their absence
+    is a problem. A schema whose document has more than one legal shape may add
+    `<name>.valid.<variant>.yaml` for each further shape, so a state the schema
+    newly permits is proven by a fixture rather than only described in prose.
+    """
+    found: list[tuple[str, Path]] = [
+        ("valid", root / FIXTURE_DIR / f"{name}.valid.yaml"),
+        ("invalid", root / FIXTURE_DIR / f"{name}.invalid.yaml"),
+    ]
+    variants = sorted((root / FIXTURE_DIR).glob(f"{name}.valid.*.yaml"))
+    found.extend(("valid", path) for path in variants)
+    return found
+
+
 def check_fixtures(
     root: Path, validators: dict[str, Draft202012Validator]
 ) -> tuple[int, list[str]]:
     problems: list[str] = []
     checked = 0
     for name in sorted(validators):
-        for kind in ("valid", "invalid"):
-            rel = (FIXTURE_DIR / f"{name}.{kind}.yaml").as_posix()
-            path = root / rel
+        for kind, path in fixture_paths(root, name):
+            rel = path.relative_to(root).as_posix()
             if not path.is_file():
                 problems.append(f"{rel}: fixture missing")
                 continue

@@ -1,0 +1,22 @@
+# Starter: run state between the start of intake and the intake gate's decision.
+# `run.risk` and `risk_rationale` are absent — they carry the class the human
+# accepts, not the class the router proposes (spec §5.3), so there is nothing
+# conforming to write until `intake-approval` decides.
+# The file exists all the same, which is what gives both intake gates something
+# to resume from: `intake-approval` takes the inbox transport at R0–R2, and a
+# gate whose decision another driver may clear cannot be the thing that creates
+# the state it resumes from (spec §8.5).
+run:
+  id: 2026-08-10-feature-slug
+  workflow: feature
+  protocol: "0.1"
+steps:
+  - id: brief-confirm
+    status: done
+  - id: risk-route
+    status: done
+  - id: intake-approval
+    status: blocked # the gate is waiting; not done, so a resume returns to it (spec §7)
+gates: []
+artifacts:
+  - "{run}/brief.md"

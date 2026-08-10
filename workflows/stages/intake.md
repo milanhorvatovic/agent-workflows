@@ -56,5 +56,5 @@ metadata:
 
 ## Notes
 
-- **Run-state bootstrap:** the run-state file is first written when `risk-route` proposes a class, because `run.risk` is required. The clarifying-question exchange happens before run state exists and is not resumable — deliberately so; the exchange is one cheap question. Artifacts do not wait on run state: `{run}/brief.md` is written before it, direction included, so that gate still has somewhere to record what the human said (spec §7).
+- **Run-state bootstrap:** the run-state file is created when the run starts, before this stage runs a step. It carries no class until `intake-approval` accepts one — `run.risk` and `risk_rationale` hold the human's decision, not the router's proposal, and the schema leaves both absent until there is a decision to record (spec §5.3, §10). That is what gives both gates here something to resume from, which `intake-approval` needs: it takes the `inbox` transport at R0–R2, and a gate whose decision another driver may clear cannot be the thing that creates the state it resumes from. `risk-route` still writes no run state, and now there is nothing it could have written.
 - Neither step declares `on`: intake artifacts have no validation step, so steps and gates proceed in composition order (spec §9.1).
