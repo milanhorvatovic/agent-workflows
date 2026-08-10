@@ -41,7 +41,7 @@ questions:
       - "JWT — stateless, fits the API consumers"
       - "Session cookies — simpler, fits the current stack"
 
-direction:                               # present when trigger is gate; the human's own, so no decided_by
+direction:                               # present where a gate supplied any; the human's own, so no decided_by
   - text: "Split step 3 — the migration and the backfill want separate reviews"
     action: accept                       # accept | escalate — never reject or defer
     reason: ""                           # required for escalate
@@ -63,7 +63,7 @@ direction:                               # present when trigger is gate; the hum
 | `questions[].resolved_by` | yes | `human`, `planner`, or `open` — `open` means it moved to the plan's open questions, unanswered |
 | `questions[].answer` | unless open | the chosen answer |
 | `questions[].alternatives` | no | options considered |
-| `direction[].text` | when `trigger` is `gate` | what the human asked for, quoted or restated. Gate direction has no finding or question to key to — a plan reaches `plan-approval` on a *passing* validation, so there may be no `F-…` at all — and this is where it goes |
+| `direction[].text` | per item supplied | what the human asked for, quoted or restated. The list is present where a gate supplied direction and absent where it did not — spec §7 has a `revise` *should* carry direction rather than must, so `trigger: gate` with no direction is a valid revision and not a gap to fill. Gate direction has no finding or question to key to — a plan reaches `plan-approval` on a *passing* validation, so there may be no `F-…` at all — and this is where it goes |
 | `direction[].action` | with `text` | `accept` or `escalate` — **not** the finding vocabulary. A finding is a claim the planner may disagree with; direction is the human's instruction, and declining it is not the planner's call. Where it cannot be followed — it would break a phase list that bounds work already planned or done — the answer is `escalate`, returning what the change would cost to the human who asked. Revising phase 1 it is `accept` where the list is the only obstacle: `{N}` is 1, `{run}/phase-1-plan.md` resolves to the plan under revision, nothing has been built against the list, and escalating would hand the instruction back with nothing the first ask did not already have. Direction blocked by anything else — infeasible, contradicting the brief, departing from a project standard — is `escalate` at phase 1 as anywhere, since `accept` is the only alternative the vocabulary offers and it would buy a plan that fails validation rather than a question the human can answer |
 | `direction[].reason` | for escalate | what the direction would require and why the planner cannot decide it; a human's instruction is never silently dropped or quietly deferred |
 

@@ -45,7 +45,7 @@ The step runs as the planner: decompose into ordered, verifiable work, sequence 
 
 Restate the requirements in the overview before decomposing — the restatement is the shared understanding the plan is built on.
 
-Fix the phase boundary first. A run whose work fits one phase plans it all as phase 1. When the brief's work exceeds one deliverable increment, the phase-1 plan fixes the run's phase list — load `references/phase-decomposition.md` for how to cut phases, draw their boundaries, sequence their dependencies, and place cross-cutting concerns. Later phases inherit that list by reading it from `{run}/phase-1-plan.md`; their plans detail one phase and leave the list alone.
+Fix the phase boundary first. A run whose work fits one phase plans it all as phase 1. When the brief's work exceeds one deliverable increment, the phase-1 plan fixes the run's phase list — fixed for every phase that plans against it, though still the human's to move by direction at the phase-1 gate, where nothing has been built on it yet — load `references/phase-decomposition.md` for how to cut phases, draw their boundaries, sequence their dependencies, and place cross-cutting concerns. Later phases inherit that list by reading it from `{run}/phase-1-plan.md`; their plans detail one phase and leave the list alone.
 
 For a bugfix run (the `bugfix` workflow, or a brief that is a defect report), load `references/bugfix.md` — it adds the reproduction, root-cause, and regression-test sections the plan must carry and the discipline for validating a cause hypothesis before planning the fix.
 
