@@ -104,8 +104,24 @@ RUN_STATE_SCHEMA = {
             "type": "object",
             "additionalProperties": False,
             "required": ["id"],
-            "properties": {"id": {"type": "string"}},
+            "properties": {"id": {"type": "string"}, "phase": {"type": "integer"}},
         },
+        # Enough of the real shape for the manifest check to have something to
+        # read; the schema itself is exercised by its own fixtures.
+        "steps": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["id", "status"],
+                "properties": {
+                    "id": {"type": "string"},
+                    "status": {"type": "string"},
+                    "iterations": {"type": "integer"},
+                },
+            },
+        },
+        "artifacts": {"type": "array", "items": {"type": "string"}},
         "gates": {
             "type": "array",
             "items": {
@@ -671,6 +687,92 @@ metadata:
     def test_missing_schema_directory_exits(self) -> None:
         message = self.run_main_expecting_exit_with_root(self.root / "elsewhere")
         self.assertIn("not found", message)
+
+    # ---- run-state manifests (spec §8.2) ----
+
+    PHASED_SKILL = """---
+name: awf-phased
+description: A description.
+license: MIT
+metadata:
+  workflow:
+    protocol: "0.1"
+    step:
+      role: analyst
+      inputs:
+        - artifact: "{run}/a.md"
+          required: true
+      output:
+        artifact: "{run}/phase-{N}-plan.md"
+---
+
+# awf-phased
+"""
+
+    def write_run_state(self, steps: str, artifacts: str, run: str = "") -> None:
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            f"run:\n  id: demo\n{run}steps:\n{steps}gates: []\nartifacts:{artifacts}\n",
+        )
+
+    def test_done_step_output_missing_from_the_manifest_is_reported(self) -> None:
+        self.write_pair()
+        self.write_run_state("  - id: thing\n    status: done\n", " []")
+        self.assert_problem("`thing` is done and its output {run}/b.md is not in the manifest")
+
+    def test_manifest_listing_the_done_step_output_passes(self) -> None:
+        self.write_pair()
+        self.write_run_state("  - id: thing\n    status: done\n", '\n  - "{run}/b.md"')
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_reset_record_is_not_held_to_the_manifest(self) -> None:
+        """A `pending` record may still have produced its output — a `revise`
+        routing back to it, or entering a phase, resets the record and leaves
+        the artifact where it was. Its absence from the manifest proves nothing
+        either way, so only `done` is checked."""
+        self.write_pair()
+        self.write_run_state(
+            "  - id: thing\n    status: pending\n    iterations: 1\n", " []"
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_gate_record_has_no_output_to_look_for(self) -> None:
+        """Gates take `steps` entries and declare no output, so a `done` gate
+        must not be read as an artifact the manifest is missing."""
+        self.write_pair()
+        self.write_run_state("  - id: plan-approval\n    status: done\n", " []")
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_the_phase_placeholder_resolves_from_run_phase(self) -> None:
+        """`{N}` in a declared output resolves from `run.phase`, so a phase-2
+        run wants phase 2's artifact and phase 1's does not stand in for it."""
+        self.write("skills/awf-phased/SKILL.md", self.PHASED_SKILL)
+        self.write_run_state(
+            "  - id: phased\n    status: done\n",
+            '\n  - "{run}/phase-1-plan.md"',
+            run="  phase: 2\n",
+        )
+        self.assert_problem("its output {run}/phase-2-plan.md is not in the manifest")
+
+    def test_the_phase_placeholder_defaults_to_phase_one(self) -> None:
+        self.write("skills/awf-phased/SKILL.md", self.PHASED_SKILL)
+        self.write_run_state(
+            "  - id: phased\n    status: done\n", '\n  - "{run}/phase-1-plan.md"'
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_the_spec_run_state_example_is_checked_too(self) -> None:
+        """The spec's own example is a run-state document like any other, and
+        the tally counts it — a normative example nothing checks is the one
+        most likely to drift."""
+        _, output = self.run_main()
+        match = re.search(r"(\d+) run-state manifests", output)
+        assert match is not None, output
+        self.assertGreaterEqual(int(match.group(1)), 2)
 
     def run_main_expecting_exit_with_root(self, root: Path) -> str:
         with contextlib.redirect_stdout(io.StringIO()):

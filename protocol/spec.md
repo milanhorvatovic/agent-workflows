@@ -170,7 +170,7 @@ Each run owns a directory, `{artifacts}/runs/<run-id>/`, referred to in metadata
 
 ### 8.2 Manifest
 
-The run state carries a manifest listing the artifacts the run has produced. The executor maintaining the run state MUST keep the manifest current as outputs land.
+The run state carries a manifest listing the artifacts the run has produced. The executor maintaining the run state MUST keep the manifest current as outputs land. It records what was produced rather than what is current work, so it only grows within a run: a step record returned to `pending` by a re-entry, or reset when a phase is entered ([10](#10-run-state)), does not unmake the output that step already wrote, and removing it would hide a phase's artifacts from every reader after the phase that produced them.
 
 ### 8.3 Templates
 
@@ -343,7 +343,15 @@ gates:
     outcome: revise # accept | revise | reject
     at: 2026-08-03T14:12:00Z
 instrumentation: # optional enrichment (tokens, duration) per step
-artifacts: [] # run manifest, see spec §8.2
+artifacts: # run manifest, see §8.2 — `plan-revise` and `plan-validate` read
+  # `pending` above and their outputs are still here: a reset record does not
+  # unmake what the step already wrote
+  - "{run}/brief.md"
+  - "{run}/grounding.md"
+  - "{run}/ideation.md"
+  - "{run}/ideation-validation.md"
+  - "{run}/phase-1-plan.md"
+  - "{run}/phase-1-plan-validation.md"
 ```
 
 - `run` identifies the run: id, workflow, risk class with rationale ([5](#5-risk-classes)), and the protocol version the run executes under.

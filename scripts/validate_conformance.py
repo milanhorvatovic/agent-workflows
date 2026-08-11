@@ -506,6 +506,77 @@ def check_step_parity(root: Path) -> tuple[int, list[str]]:
     return checked, problems
 
 
+def step_outputs(root: Path) -> dict[str, str]:
+    """Every step-bound skill's declared output artifact, keyed by step id."""
+    found: dict[str, str] = {}
+    for path in sorted(root.glob("skills/*/SKILL.md")):
+        rel = path.relative_to(root).as_posix()
+        step = step_of(frontmatter_block(path.read_text(encoding="utf-8"), rel))
+        if step is None:
+            continue
+        artifact = (step.get("output") or {}).get("artifact")
+        if isinstance(artifact, str):
+            found[path.parent.name.removeprefix("awf-")] = artifact
+    return found
+
+
+def manifest_problems(at: str, data: Any, outputs: dict[str, str]) -> list[str]:
+    """Spec §8.2: the manifest lists what the run has produced, so the output
+    of a step recorded `done` belongs in it.
+
+    Only `done` is checked, and deliberately. A record reading `pending` may
+    still have produced its output — a `revise` routing back to it, or entering
+    a phase, resets the record and leaves the artifact where it was — so its
+    absence from the manifest proves nothing either way. `done` is the one
+    status that always implies the output landed.
+    """
+    if not isinstance(data, dict) or not isinstance(data.get("run"), dict):
+        return []
+    phase = data["run"].get("phase", 1)
+    manifest = {x for x in (data.get("artifacts") or []) if isinstance(x, str)}
+    problems: list[str] = []
+    for step in data.get("steps") or []:
+        if not isinstance(step, dict) or step.get("status") != "done":
+            continue
+        artifact = outputs.get(step.get("id"))
+        if artifact is None:
+            continue  # a gate, or a step no skill declares
+        resolved = artifact.replace("{N}", str(phase))
+        if resolved not in manifest:
+            problems.append(
+                f"{at}: `{step['id']}` is done and its output {resolved} is not in "
+                f"the manifest — spec §8.2 has the executor keep it current"
+            )
+    return problems
+
+
+def check_manifests(root: Path) -> tuple[int, list[str]]:
+    """Every run-state document this repo ships models a state an executor may
+    resume from, so a stale manifest in one is a nonconforming example rather
+    than a cosmetic slip: §8.5 resumes into a run whose artifacts it can only
+    find here."""
+    outputs = step_outputs(root)
+    problems: list[str] = []
+    checked = 0
+    for kind, path in fixture_paths(root, RUN_STATE):
+        if kind != "valid" or not path.is_file():
+            continue
+        rel = path.relative_to(root).as_posix()
+        try:
+            data = jsonify(YAML_LOADER.load(path.read_text(encoding="utf-8")))
+        except YAMLError:
+            continue  # check_fixtures reports the parse failure
+        checked += 1
+        problems += manifest_problems(rel, data, outputs)
+    spec = root / SPEC
+    if spec.is_file():
+        for block in yaml_blocks(spec.read_text(encoding="utf-8"), SPEC.as_posix(), []):
+            if isinstance(block.data, dict) and "run" in block.data:
+                checked += 1
+                problems += manifest_problems(block.at, block.data, outputs)
+    return checked, problems
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
@@ -534,8 +605,9 @@ def main(argv: list[str] | None = None) -> int:
     files, frontmatter_problems = check_frontmatter(root)
     skills, skill_problems = check_skill_budgets(root)
     bound, parity_problems = check_step_parity(root)
+    manifests, manifest_faults = check_manifests(root)
     problems += spec_problems + block_problems + frontmatter_problems + skill_problems
-    problems += parity_problems
+    problems += parity_problems + manifest_faults
 
     for problem in problems:
         print(problem)
@@ -545,7 +617,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"conformance: OK — {fixtures} fixtures, {examples} spec examples, "
         f"{blocks} workflow blocks, {files} frontmatter files, {skills} skill bodies, "
-        f"{bound} step-bound skills"
+        f"{bound} step-bound skills, {manifests} run-state manifests"
     )
     return 0
 

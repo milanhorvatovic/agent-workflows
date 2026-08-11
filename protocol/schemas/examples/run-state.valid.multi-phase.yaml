@@ -70,7 +70,15 @@ gates:
     transport: blocking
     outcome: accept
     at: "2026-08-11T09:15:00Z"
-artifacts:
+artifacts: # cumulative across phases: phase 1's records were reset to `pending`
+  # for phase 2, and the manifest is what still says its outputs exist (spec §8.2)
   - "{run}/brief.md"
+  - "{run}/grounding.md"
+  - "{run}/ideation.md"
+  - "{run}/ideation-validation.md"
   - "{run}/phase-1-plan.md"
+  - "{run}/phase-1-plan-validation.md"
+  - "{run}/phase-1-impl-log.md"
+  - "{run}/phase-1-impl-validation.md"
   - "{run}/phase-2-plan.md"
+  - "{run}/phase-2-plan-validation.md"

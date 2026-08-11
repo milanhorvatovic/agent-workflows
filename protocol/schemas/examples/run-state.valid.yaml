@@ -66,6 +66,10 @@ gates:
     transport: inbox
     outcome: accept
     at: "2026-08-03T13:40:00Z"
-artifacts:
-  - "{run}/brief.md"
-  - "{run}/plan.md"
+artifacts: # every output that has landed, in production order (spec §8.2)
+  - "{run}/brief.md" # brief-confirm, then risk-route's Routing block
+  - "{run}/grounding.md"
+  - "{run}/ideation.md"
+  - "{run}/ideation-validation.md"
+  - "{run}/phase-1-plan.md"
+  - "{run}/phase-1-plan-validation.md"
