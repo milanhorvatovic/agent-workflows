@@ -656,50 +656,45 @@ def gate_record_problems(at: str, data: Any, gates: dict[str, bool]) -> list[str
     if not isinstance(data, dict):
         return []
     # `gates` is appended in decision order (§10), so the last entry naming a
-    # gate is its latest. Presence alone proves nothing: a gate decided `revise`
-    # keeps that entry while its own record returns to `pending`, so an entry
-    # left over from a revision would vouch for a `done` a later acceptance was
-    # never written for.
-    # Neither does the latest entry overall, where a phase repeats the gate:
-    # phase 1's acceptance would vouch for a phase-2 `done` nobody recorded a
-    # decision for. Which gates those are comes from `gates`, the stage-derived
-    # map, never from the records — and in a run with a `run.phase` such a
-    # record carries the phase it decided in, so an entry that names another
-    # phase — or none, having been recorded before the run had any — stands for
-    # no approval of the phase now executing.
+    # gate is its latest — and it is that entry which has to stand, never the
+    # best one on file. Filtering the others out first would let a stale accept
+    # vouch for a gate whose newest decision was a revise.
     phase = data["run"].get("phase") if isinstance(data.get("run"), dict) else None
     latest: dict[str, Any] = {}
-    problems: list[str] = []
     for record in items_of(data.get("gates")):
-        if not isinstance(record, dict) or not isinstance(record.get("gate"), str):
-            continue
-        gate = record["gate"]
-        if phase is not None and gates.get(gate) and record.get("phase") != phase:
-            # Another phase's decision, or one taken before the run had phases
-            # at all — a re-cut may turn a single-phase run into a multi-phase
-            # one (§10) and does not rewrite what was already decided. Either
-            # way it says nothing about the phase now executing, which is what
-            # closes the omitted-`phase` gap without demanding a backfill: an
-            # entry with no phase satisfies no phase.
-            continue
-        latest[gate] = record.get("outcome")
+        if isinstance(record, dict) and isinstance(record.get("gate"), str):
+            latest[record["gate"]] = record
+    problems: list[str] = []
     for step in items_of(data.get("steps")):
         if not isinstance(step, dict) or step.get("status") != "done":
             continue
         step_id = step.get("id")
         if not isinstance(step_id, str) or step_id not in gates:
             continue
-        if step_id not in latest:
-            where = f" at phase {phase}" if phase is not None and gates[step_id] else ""
+        record = latest.get(step_id)
+        if record is None:
             problems.append(
                 f"{at}: gate `{step_id}` is done and no `gates` entry records its "
-                f"outcome{where} — spec §7 keeps every decision"
+                f"outcome — spec §7 keeps every decision"
             )
-        elif latest[step_id] not in ("accept", "reject"):
+            continue
+        # A gate a phase repeats decides once per phase, so its standing
+        # decision is the one taken at the phase now executing. An entry naming
+        # another phase, or none — recorded before the run had phases, which a
+        # re-cut does not reach back into (§10) — is not this phase's.
+        if phase is not None and gates[step_id] and record.get("phase") != phase:
+            named = record.get("phase")
+            says = f"phase {named}" if named is not None else "no phase"
+            problems.append(
+                f"{at}: gate `{step_id}` is done at phase {phase} and its latest "
+                f"decision records {says} — spec §10 has a decision taken while the "
+                f"run is phased name the phase it was taken in"
+            )
+        elif record.get("outcome") not in ("accept", "reject"):
             problems.append(
                 f"{at}: gate `{step_id}` is done and its latest outcome is "
-                f"`{latest[step_id]}` — spec §7 has a `revise` return the gate to "
-                f"`pending`, so only an accept or a reject stands"
+                f"`{record.get('outcome')}` — spec §7 has a `revise` return the gate "
+                f"to `pending`, so only an accept or a reject stands"
             )
     return problems
 

@@ -866,7 +866,9 @@ metadata:
             "    status: done\ngates:\n  - gate: demo-approval\n    phase: 1\n"
             "    at: '2026-08-11T09:00:00Z'\n    outcome: accept\nartifacts: []\n",
         )
-        self.assert_problem("no `gates` entry records its outcome at phase 2")
+        self.assert_problem(
+            "is done at phase 2 and its latest decision records phase 1"
+        )
 
     def test_a_phased_gate_with_this_phase_decision_stands(self) -> None:
         self.write("workflows/stages/phasedgate.md", self.PHASED_GATED_STAGE)
@@ -894,7 +896,25 @@ metadata:
             "    status: done\ngates:\n  - gate: demo-approval\n"
             "    at: '2026-08-11T09:00:00Z'\n    outcome: accept\nartifacts: []\n",
         )
-        self.assert_problem("no `gates` entry records its outcome at phase 2")
+        self.assert_problem(
+            "is done at phase 2 and its latest decision records no phase"
+        )
+
+    def test_a_stale_decision_does_not_hide_a_newer_one(self) -> None:
+        """The latest entry is what has to stand, not the best one on file.
+        Discarding the entries that do not match the phase before choosing let a
+        `phase: 2` acceptance vouch for a gate whose newest decision, recorded
+        after it, was a revise."""
+        self.write("workflows/stages/phasedgate.md", self.PHASED_GATED_STAGE)
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            "run:\n  id: demo\n  phase: 2\nsteps:\n  - id: demo-approval\n"
+            "    status: done\ngates:\n  - gate: demo-approval\n    phase: 2\n"
+            "    at: '2026-08-11T09:00:00Z'\n    outcome: accept\n"
+            "  - gate: demo-approval\n    phase: 2\n"
+            "    at: '2026-08-11T11:00:00Z'\n    outcome: revise\nartifacts: []\n",
+        )
+        self.assert_problem("its latest outcome is `revise`")
 
     def test_a_decision_from_before_the_run_had_phases_is_left_alone(self) -> None:
         """A re-cut may turn a single-phase run into a multi-phase one (§10),
