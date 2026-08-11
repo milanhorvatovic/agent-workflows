@@ -881,11 +881,12 @@ metadata:
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
 
-    def test_a_phased_gate_record_without_a_phase_is_reported(self) -> None:
+    def test_an_unphased_record_satisfies_no_phase(self) -> None:
         """Whether a gate needs a `phase` comes from its stage, never from the
-        records: inferring it from whether a record carries one would let an
-        omitted field decide the field was never required, bypassing exactly
-        the check it exists for."""
+        records — inferring it from what a record carries would let an omitted
+        field decide the field was never required. Reading it from the stage
+        closes that without demanding the field back: an entry with no phase
+        simply stands for no phase's approval."""
         self.write("workflows/stages/phasedgate.md", self.PHASED_GATED_STAGE)
         self.write(
             "protocol/schemas/examples/run-state.valid.yaml",
@@ -893,8 +894,23 @@ metadata:
             "    status: done\ngates:\n  - gate: demo-approval\n"
             "    at: '2026-08-11T09:00:00Z'\n    outcome: accept\nartifacts: []\n",
         )
-        output = self.assert_problem("is repeated per phase and this decision records none")
-        self.assertIn("no `gates` entry records its outcome at phase 2", output)
+        self.assert_problem("no `gates` entry records its outcome at phase 2")
+
+    def test_a_decision_from_before_the_run_had_phases_is_left_alone(self) -> None:
+        """A re-cut may turn a single-phase run into a multi-phase one (§10),
+        and the decisions taken before it had phases were correctly recorded
+        without one. Demanding a phase of them would make conformance reject a
+        state a supported transition produces, and backfilling would rewrite an
+        audit record to say something that was not true when it was written."""
+        self.write("workflows/stages/phasedgate.md", self.PHASED_GATED_STAGE)
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            "run:\n  id: demo\n  phase: 1\nsteps:\n  - id: demo-approval\n"
+            "    status: blocked\ngates:\n  - gate: demo-approval\n"
+            "    at: '2026-08-11T09:00:00Z'\n    outcome: accept\nartifacts: []\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
 
     def test_an_unphased_gate_in_a_phased_run_is_judged_on_its_latest(self) -> None:
         """A gate that decides once per run records no phase, so scoping its

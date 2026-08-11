@@ -664,8 +664,9 @@ def gate_record_problems(at: str, data: Any, gates: dict[str, bool]) -> list[str
     # phase 1's acceptance would vouch for a phase-2 `done` nobody recorded a
     # decision for. Which gates those are comes from `gates`, the stage-derived
     # map, never from the records — and in a run with a `run.phase` such a
-    # record MUST carry the phase it decided in, or it is not readable as this
-    # phase's decision or an earlier one's.
+    # record carries the phase it decided in, so an entry that names another
+    # phase — or none, having been recorded before the run had any — stands for
+    # no approval of the phase now executing.
     phase = data["run"].get("phase") if isinstance(data.get("run"), dict) else None
     latest: dict[str, Any] = {}
     problems: list[str] = []
@@ -673,15 +674,14 @@ def gate_record_problems(at: str, data: Any, gates: dict[str, bool]) -> list[str
         if not isinstance(record, dict) or not isinstance(record.get("gate"), str):
             continue
         gate = record["gate"]
-        if phase is not None and gates.get(gate):
-            if record.get("phase") is None:
-                problems.append(
-                    f"{at}: gate `{gate}` is repeated per phase and this decision "
-                    f"records none — spec §10 has such a record carry its phase"
-                )
-                continue
-            if record["phase"] != phase:
-                continue  # another phase's decision says nothing about this one
+        if phase is not None and gates.get(gate) and record.get("phase") != phase:
+            # Another phase's decision, or one taken before the run had phases
+            # at all — a re-cut may turn a single-phase run into a multi-phase
+            # one (§10) and does not rewrite what was already decided. Either
+            # way it says nothing about the phase now executing, which is what
+            # closes the omitted-`phase` gap without demanding a backfill: an
+            # entry with no phase satisfies no phase.
+            continue
         latest[gate] = record.get("outcome")
     for step in items_of(data.get("steps")):
         if not isinstance(step, dict) or step.get("status") != "done":
