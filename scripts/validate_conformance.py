@@ -28,7 +28,10 @@ Seven checks:
 - Step parity: a step-bound skill restates the step block its stage declares,
   identically — two copies of one contract drift silently, and spec §9.1
   makes the input declaration the executor's whole view of a step.
-- Run-state manifests: in every run-state document this repo ships, a step
+- Run-state documents: every one this repo ships is checked for three
+  semantics its schema cannot hold — a manifest current with the steps
+  recorded `done`, a gate recorded `done` carrying a standing decision, and
+  at most one record per step. In every run-state document this repo ships, a step
   recorded `done` has its declared output in the manifest, `{N}` resolved
   from `run.phase` (spec §8.2). The map from step id to output is read off
   the stage contracts, since a run's steps are the composed workflow's. Every
@@ -685,6 +688,32 @@ def gate_record_problems(at: str, data: Any, gates: set[str]) -> list[str]:
     return problems
 
 
+def duplicate_record_problems(at: str, data: Any) -> list[str]:
+    """Spec §10: at most one record per step and per gate.
+
+    The schema cannot hold this one. `uniqueItems` compares whole records, so
+    `plan-create: done` and `plan-create: pending` are two distinct items and
+    both pass, and JSON Schema has no way to say "unique by this property" for
+    an open set of ids. It is left to this check for that reason rather than as
+    an oversight, and it has no negative fixture for the same reason: an invalid
+    fixture here must fail its schema, and a document with duplicate ids does
+    not.
+
+    `gates` is deliberately not checked. It carries one entry per decision, so a
+    gate decided more than once appears more than once by design (§10).
+    """
+    counts: dict[str, int] = {}
+    for step in items_of(data.get("steps")) if isinstance(data, dict) else []:
+        if isinstance(step, dict) and isinstance(step.get("id"), str):
+            counts[step["id"]] = counts.get(step["id"], 0) + 1
+    return [
+        f"{at}: `{step_id}` has {n} records in `steps` — spec §10 keeps at most "
+        f"one per step, and resume and `iterations` have no single record to read"
+        for step_id, n in sorted(counts.items())
+        if n > 1
+    ]
+
+
 def check_manifests(root: Path) -> tuple[int, list[str]]:
     """Every run-state document this repo ships models a state an executor may
     resume from, so a stale manifest in one is a nonconforming example rather
@@ -705,6 +734,7 @@ def check_manifests(root: Path) -> tuple[int, list[str]]:
         checked += 1
         problems += manifest_problems(rel, data, outputs)
         problems += gate_record_problems(rel, data, gates)
+        problems += duplicate_record_problems(rel, data)
     spec = root / SPEC
     if spec.is_file():
         for block in yaml_blocks(spec.read_text(encoding="utf-8"), SPEC.as_posix(), []):
@@ -712,6 +742,7 @@ def check_manifests(root: Path) -> tuple[int, list[str]]:
                 checked += 1
                 problems += manifest_problems(block.at, block.data, outputs)
                 problems += gate_record_problems(block.at, block.data, gates)
+                problems += duplicate_record_problems(block.at, block.data)
     return checked, problems
 
 
@@ -755,7 +786,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"conformance: OK — {fixtures} fixtures, {examples} spec examples, "
         f"{blocks} workflow blocks, {files} frontmatter files, {skills} skill bodies, "
-        f"{bound} step-bound skills, {manifests} run-state manifests"
+        f"{bound} step-bound skills, {manifests} run-state documents"
     )
     return 0
 

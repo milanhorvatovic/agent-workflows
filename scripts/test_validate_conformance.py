@@ -797,6 +797,49 @@ metadata:
         )
         self.assert_problem("gate `demo-approval` is done and no `gates` entry records")
 
+    def test_a_duplicate_step_id_is_reported(self) -> None:
+        """§10 keeps at most one record per step, and the schema cannot: it
+        would have to say "unique by this property" for an open set of ids, and
+        `uniqueItems` compares whole records — `done` and `pending` for the same
+        id are two distinct items and both pass."""
+        self.write_pair()
+        self.write_run_state(
+            "  - id: thing\n    status: done\n  - id: thing\n    status: pending\n",
+            '\n  - "{run}/b.md"',
+        )
+        self.assert_problem("`thing` has 2 records in `steps`")
+
+    def test_the_schema_alone_does_not_catch_a_duplicate_step_id(self) -> None:
+        """The reason the rule lives here rather than in the schema, pinned so
+        a later reader does not move it back and lose the coverage."""
+        schema = json.loads(
+            (self.root / "protocol/schemas/run-state.schema.json").read_text()
+        )
+        validator = validate_conformance.Draft202012Validator(schema)
+        doc = {
+            "run": {"id": "demo"},
+            "gates": [],
+            "steps": [
+                {"id": "thing", "status": "done"},
+                {"id": "thing", "status": "pending"},
+            ],
+        }
+        self.assertEqual(list(validator.iter_errors(doc)), [])
+
+    def test_repeated_gate_entries_are_not_duplicates(self) -> None:
+        """`gates` carries one entry per decision, so a gate decided twice
+        appears twice by design and must not be reported."""
+        self.write("workflows/stages/gated.md", self.GATED_STAGE)
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            "run:\n  id: demo\nsteps:\n  - id: demo-approval\n    status: done\n"
+            "gates:\n  - gate: demo-approval\n    at: '2026-08-11T09:00:00Z'\n"
+            "    outcome: revise\n  - gate: demo-approval\n"
+            "    at: '2026-08-11T10:00:00Z'\n    outcome: accept\nartifacts: []\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
     def test_a_done_gate_whose_latest_outcome_is_revise_is_reported(self) -> None:
         """The regression the presence check missed: a `revise` leaves its entry
         in `gates` while the gate returns to `pending`, so an entry alone does
