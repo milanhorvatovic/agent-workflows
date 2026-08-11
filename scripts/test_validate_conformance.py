@@ -668,6 +668,18 @@ metadata:
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
 
+    def test_a_standalone_skill_lends_its_output_to_no_run_state_record(self) -> None:
+        """A standalone skill is not a step of any composed workflow, so a
+        run-state record sharing its id must not be held to its output — the
+        manifest rule applies to what the stages compose, and reading the map
+        out of `skills/` would have let any of them lend an artifact to a run
+        that never ran it."""
+        self.write("skills/awf-loner/SKILL.md", self.SKILL.replace("awf-thing", "awf-loner") % "true")
+        self.write("skills/awf-loner/references/t.template.md", "# t\n")
+        self.write_run_state("  - id: loner\n    status: done\n", " []")
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
     def test_standalone_skill_without_a_stage_is_skipped(self) -> None:
         self.write("skills/awf-loner/SKILL.md", self.SKILL.replace("awf-thing", "awf-loner") % "true")
         self.write("skills/awf-loner/references/t.template.md", "# t\n")
@@ -690,23 +702,31 @@ metadata:
 
     # ---- run-state manifests (spec §8.2) ----
 
-    PHASED_SKILL = """---
-name: awf-phased
-description: A description.
-license: MIT
+    # A stage, not a skill: the manifest check reads what composes the
+    # workflow, so a step it should know about has to be declared by one.
+    PHASED_STAGE = """---
+name: phased
+description: A stage whose step output carries the phase placeholder.
+---
+
+# Stage: phased
+
+### phased (planner)
+
+Prose.
+
+```yaml
 metadata:
   workflow:
     protocol: "0.1"
     step:
-      role: analyst
+      role: planner
       inputs:
         - artifact: "{run}/a.md"
           required: true
       output:
         artifact: "{run}/phase-{N}-plan.md"
----
-
-# awf-phased
+```
 """
 
     def write_run_state(self, steps: str, artifacts: str, run: str = "") -> None:
@@ -749,7 +769,7 @@ metadata:
     def test_the_phase_placeholder_resolves_from_run_phase(self) -> None:
         """`{N}` in a declared output resolves from `run.phase`, so a phase-2
         run wants phase 2's artifact and phase 1's does not stand in for it."""
-        self.write("skills/awf-phased/SKILL.md", self.PHASED_SKILL)
+        self.write("workflows/stages/phased.md", self.PHASED_STAGE)
         self.write_run_state(
             "  - id: phased\n    status: done\n",
             '\n  - "{run}/phase-1-plan.md"',
@@ -758,7 +778,7 @@ metadata:
         self.assert_problem("its output {run}/phase-2-plan.md is not in the manifest")
 
     def test_the_phase_placeholder_defaults_to_phase_one(self) -> None:
-        self.write("skills/awf-phased/SKILL.md", self.PHASED_SKILL)
+        self.write("workflows/stages/phased.md", self.PHASED_STAGE)
         self.write_run_state(
             "  - id: phased\n    status: done\n", '\n  - "{run}/phase-1-plan.md"'
         )

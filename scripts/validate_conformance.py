@@ -534,22 +534,29 @@ def check_step_parity(root: Path) -> tuple[int, list[str]]:
 
 
 def step_outputs(root: Path) -> dict[str, str]:
-    """Every step-bound skill's declared output artifact, keyed by step id."""
+    """Every output a stage contract declares, keyed by step id.
+
+    Read from the stages rather than from `skills/`, because a run's `steps`
+    are the composed workflow's steps and it is the stages that compose it. The
+    two are not the same set in either direction: a standalone skill is not a
+    step, so keying by skill would let one lend its output to any run-state
+    record that happened to share its id, and a stage step whose skill is
+    missing would be silently exempt from the manifest rule instead of held to
+    the output its stage declares. Parse problems are discarded here — every
+    stage file is a markdown file, so `check_workflow_blocks` reports them
+    already, and `check_step_parity` reports them again from its own read.
+    """
     found: dict[str, str] = {}
-    for path in sorted(root.glob("skills/*/SKILL.md")):
-        rel = path.relative_to(root).as_posix()
-        step = step_of(frontmatter_block(path.read_text(encoding="utf-8"), rel))
-        if step is None:
-            continue
+    for step_id, (_, step) in stage_steps(root, []).items():
         # Stricter than the parity check's use of the same field, and for the
         # opposite reason: parity compares whatever is declared, so a malformed
         # value is a value to compare, while a step id mapped to a malformed
         # value here would be read back as an artifact path and reported as
         # missing from a manifest that could never have listed it.
-        output = step.get("output")
+        output = step.get("output") if isinstance(step, dict) else None
         artifact = output.get("artifact") if isinstance(output, dict) else None
         if isinstance(artifact, str):
-            found[path.parent.name.removeprefix("awf-")] = artifact
+            found[step_id] = artifact
     return found
 
 
