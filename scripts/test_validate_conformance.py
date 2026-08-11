@@ -623,6 +623,9 @@ metadata:
           required: true
       output:
         artifact: "{run}/b.md"
+      on:
+        PASS: next-step
+        FAIL: fix-step
 ```
 """
 
@@ -641,6 +644,9 @@ metadata:
       output:
         artifact: "{run}/b.md"
         template: references/t.template.md
+      on:
+        PASS: next-step
+        FAIL: fix-step
 ---
 
 # awf-thing
@@ -937,12 +943,22 @@ metadata:
                     skill.replace(output_block, f"      output: {encoded}")
                     if field == "output"
                     else re.sub(
-                        rf"^      {field}:(\n        .*)*$",
+                        # The key line may carry a scalar (`role: analyst`) or
+                        # open a block; matching only the block form left `role`
+                        # and `on` substituting nothing, which reads in the
+                        # results as a field that tolerated every hostile value.
+                        rf"^      {field}:[^\n]*(?:\n        [^\n]*)*",
                         f"      {field}: {encoded}",
                         skill,
                         count=1,
                         flags=re.MULTILINE,
                     )
+                )
+                self.assertNotEqual(
+                    mutated,
+                    skill,
+                    f"the {field} mutation changed nothing — the subtest below "
+                    "would assert tolerance of a value never written",
                 )
                 self.write("skills/awf-thing/SKILL.md", mutated)
                 with self.subTest(field=field, value=encoded):
