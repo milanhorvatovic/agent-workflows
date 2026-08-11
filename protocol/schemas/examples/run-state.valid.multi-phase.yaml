@@ -11,11 +11,11 @@ run:
   risk_rationale: "multi-phase, migration touches released API surface"
   protocol: "0.1"
 steps:
-  - id: plan-create
+  - id: plan-create # returned to pending when phase 2 was entered, and has since run
     status: done
   - id: plan-validate
     status: done
-    iterations: 1 # phase 2's loop; phase 1's count did not carry forward
+    iterations: 1 # phase 2's loop; entering the phase cleared phase 1's count
     stall_flags: []
   - id: plan-approval
     status: blocked
