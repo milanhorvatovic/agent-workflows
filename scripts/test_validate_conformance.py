@@ -707,7 +707,7 @@ metadata:
         message = self.run_main_expecting_exit_with_root(self.root / "elsewhere")
         self.assertIn("not found", message)
 
-    # ---- run-state manifests (spec §8.2) ----
+    # ---- run-state documents (spec §8.2, §7, §10) ----
 
     # A stage, not a skill: the manifest check reads what composes the
     # workflow, so a step it should know about has to be declared by one.
@@ -967,7 +967,7 @@ description: A stage that declares a gate.
         the tally counts it — a normative example nothing checks is the one
         most likely to drift."""
         _, output = self.run_main()
-        match = re.search(r"(\d+) run-state manifests", output)
+        match = re.search(r"(\d+) run-state documents", output)
         assert match is not None, output
         self.assertGreaterEqual(int(match.group(1)), 2)
 
