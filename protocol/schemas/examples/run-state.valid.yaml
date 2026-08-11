@@ -54,8 +54,8 @@ steps:
     status: pending
   - id: review-arbitrate # at R2 only on reviewer/validator disagreement
     status: skipped
-  - id: review-fix
-    status: pending
+  - id: review-fix # conditional, like every revising loop member: it runs only
+    status: skipped # where the loop has not exited, so the verdict routes to it
   - id: deliver-prepare
     status: pending
   - id: deliver-validate
