@@ -11,7 +11,7 @@
 
 ## Phase list
 
-[Phase-1 plans only — this section authors the run's phase list, which `plan-approval` then fixes; later phases' plans mark it "fixed by phase-1 plan". A single-phase run states that here. Per phase: name, scope, out of scope, key deliverables, dependencies on other phases, and relative complexity — see the phase-decomposition reference.]
+[Phase-1 plans only — this section authors the run's phase list, which `plan-approval` then fixes; later phases' plans mark it "fixed at plan-approval, authored by the phase-1 plan". A single-phase run states that here. Per phase: name, scope, out of scope, key deliverables, dependencies on other phases, and relative complexity — see the phase-decomposition reference.]
 
 ## Prerequisites
 
@@ -69,7 +69,7 @@
 
 ## Open questions
 
-[Ambiguities the planner could not confidently resolve, each specific and answerable, with proposed alternatives. Escalations land here too, and only one kind: a revision that cannot follow the human's *direction* without breaking a phase list that approval has already fixed states what the change would require. A finding it cannot cover without that re-cut does not come here — it stays an unresolved finding, because a plan that cannot cover a requirement is defective rather than awaiting a decision, since this is the section the gate reads and the feedback audit is not an artifact it is given. "None" when everything is decided.]
+[Ambiguities the planner could not confidently resolve, each specific and answerable, with proposed alternatives. Escalations land here too — every item of the human's *direction* a revision could not apply, whatever blocked it: a phase list approval has already fixed, infeasibility, a constraint in the brief, a project standard it would depart from. Each states what it would require and what stood in the way, because this section is what the gate reads and the feedback audit is not an artifact it is given, so direction escalated only there is direction nobody sees. What does not come here is an unresolved validation *finding* — a plan that cannot cover a requirement is defective rather than awaiting a decision, so it stays a finding for the validator, since this is the section the gate reads and the feedback audit is not an artifact it is given. "None" when everything is decided.]
 
 ## Gate direction
 
