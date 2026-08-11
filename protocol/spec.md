@@ -24,7 +24,8 @@ The key words MUST, MUST NOT, SHOULD, SHOULD NOT, and MAY are to be interpreted 
 - **Step** — the smallest unit of execution: one role applying one skill to declared inputs, producing a declared output.
 - **Stage** — a named sub-workflow (steps, loop contracts, gates) that workflows compose.
 - **Gate** — a point where a human decision is required or collected (see [Gates](#7-gates)).
-- **Artifact** — a file produced or consumed by a step, addressed relative to the run directory.
+- **Artifact** — a file a step declares as an input or an output, addressed relative to the run directory.
+- **Working material** — a file a step writes into the run directory and declares as neither ([8.2](#82-manifest)). Not an artifact: nothing may depend on it.
 - **Verdict** — a categorical validation outcome: `PASS`, `PASS_WITH_CONDITIONS`, or `FAIL`.
 - **Brief** — the confirmed statement of intent produced by the `intake` stage.
 
@@ -170,7 +171,7 @@ Each run owns a directory, `{artifacts}/runs/<run-id>/`, referred to in metadata
 
 ### 8.2 Manifest
 
-The run state carries a manifest listing the artifacts the run has produced. The executor maintaining the run state MUST keep the manifest current as outputs land. What it lists are artifacts — the declared outputs of steps ([9.1](#91-step-and-handoff)). A step MAY also write working material into `{run}` that is not one, a decision audit or an intermediate it re-reads itself, and that material is neither declared nor manifested. No step MUST depend on working material, its own or another's: a consumer can neither declare it as an input, since it is nothing's declared output, nor discover it from the manifest, which does not list it. Anything a contract does depend on is an artifact, is declared, and is manifested, whatever a step keeps alongside it for the reader. The manifest records what was produced rather than what is current work, so it only grows within a run: a step record returned to `pending` by a re-entry, or reset when a phase is entered ([10](#10-run-state)), does not unmake the output that step already wrote, and removing it would hide a phase's artifacts from every reader after the phase that produced them.
+The run state carries a manifest listing the artifacts the run has produced. The executor maintaining the run state MUST keep the manifest current as outputs land. What it lists are artifacts — the outputs steps declare ([9.1](#91-step-and-handoff)). A step MAY also write working material into `{run}`: a decision audit, an intermediate it re-reads within its own invocation. It declares that as neither input nor output and the manifest does not list it. A step MUST NOT depend on working material — another step's, or its own from an earlier invocation — because §9.1 obliges it to declare whatever its instructions depend on, and declaring it is exactly what would stop it being working material. So anything a contract needs is an artifact, declared and manifested, whatever a step keeps beside it for a human reader. The manifest records what was produced rather than what is current work, so it only grows within a run: a step record returned to `pending` by a re-entry, or reset when a phase is entered ([10](#10-run-state)), does not unmake the output that step already wrote, and removing it would hide a phase's artifacts from every reader after the phase that produced them.
 
 ### 8.3 Templates
 
