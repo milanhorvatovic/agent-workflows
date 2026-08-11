@@ -88,7 +88,7 @@
       "maxContains": 1
     },
     "gates": {
-      "description": "The gate instrumentation record required by spec section 7: id, transport, outcome, timestamp for every gate decision.",
+      "description": "The gate instrumentation record required by spec section 7: id, transport, outcome, timestamp for every gate decision, appended in decision order so the last entry naming a gate is its latest (spec section 10).",
       "type": "array",
       "items": {
         "$ref": "#/$defs/gateRecord"

@@ -655,20 +655,32 @@ def gate_record_problems(at: str, data: Any, gates: set[str]) -> list[str]:
     """
     if not isinstance(data, dict):
         return []
-    recorded = {
-        g.get("gate")
-        for g in items_of(data.get("gates"))
-        if isinstance(g, dict)
-    }
+    # `gates` is appended in decision order (§10), so the last entry naming a
+    # gate is its latest. Presence alone proves nothing: a gate decided `revise`
+    # keeps that entry while its own record returns to `pending`, so an entry
+    # left over from a revision would vouch for a `done` a later acceptance was
+    # never written for.
+    latest: dict[str, Any] = {}
+    for record in items_of(data.get("gates")):
+        if isinstance(record, dict) and isinstance(record.get("gate"), str):
+            latest[record["gate"]] = record.get("outcome")
     problems: list[str] = []
     for step in items_of(data.get("steps")):
         if not isinstance(step, dict) or step.get("status") != "done":
             continue
         step_id = step.get("id")
-        if isinstance(step_id, str) and step_id in gates and step_id not in recorded:
+        if not isinstance(step_id, str) or step_id not in gates:
+            continue
+        if step_id not in latest:
             problems.append(
                 f"{at}: gate `{step_id}` is done and no `gates` entry records its "
                 f"outcome — spec §7 keeps every decision"
+            )
+        elif latest[step_id] not in ("accept", "reject"):
+            problems.append(
+                f"{at}: gate `{step_id}` is done and its latest outcome is "
+                f"`{latest[step_id]}` — spec §7 has a `revise` return the gate to "
+                f"`pending`, so only an accept or a reject stands"
             )
     return problems
 

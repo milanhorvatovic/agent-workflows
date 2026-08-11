@@ -130,6 +130,7 @@ RUN_STATE_SCHEMA = {
                 "required": ["gate", "at"],
                 "properties": {
                     "gate": {"type": "string"},
+                    "outcome": {"enum": ["accept", "revise", "reject"]},
                     "at": {"type": "string", "format": "date-time"},
                 },
             },
@@ -795,6 +796,38 @@ metadata:
             "gates: []\nartifacts: []\n",
         )
         self.assert_problem("gate `demo-approval` is done and no `gates` entry records")
+
+    def test_a_done_gate_whose_latest_outcome_is_revise_is_reported(self) -> None:
+        """The regression the presence check missed: a `revise` leaves its entry
+        in `gates` while the gate returns to `pending`, so an entry alone does
+        not say a decision stands. If the later acceptance is never written but
+        the status reaches `done`, the stale revision would vouch for it."""
+        self.write("workflows/stages/gated.md", self.GATED_STAGE)
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            "run:\n  id: demo\nsteps:\n  - id: demo-approval\n    status: done\n"
+            "gates:\n  - gate: demo-approval\n    at: '2026-08-11T09:00:00Z'\n"
+            "    outcome: revise\nartifacts: []\n",
+        )
+        self.assert_problem("its latest outcome is `revise`")
+
+    def test_a_done_gate_takes_the_last_entry_naming_it(self) -> None:
+        """`gates` is appended in decision order, so a revision followed by an
+        acceptance stands — and the reverse does not."""
+        self.write("workflows/stages/gated.md", self.GATED_STAGE)
+        head = ("run:\n  id: demo\nsteps:\n  - id: demo-approval\n    status: done\n"
+                "gates:\n")
+        entry = ("  - gate: demo-approval\n    at: '2026-08-11T0{n}:00:00Z'\n"
+                 "    outcome: {o}\n")
+        for first, second, ok in (("revise", "accept", True), ("accept", "revise", False)):
+            self.write(
+                "protocol/schemas/examples/run-state.valid.yaml",
+                head + entry.format(n=9, o=first) + entry.format(n=10 % 10, o=second)
+                + "artifacts: []\n",
+            )
+            with self.subTest(order=f"{first} then {second}"):
+                code, output = self.run_main()
+                self.assertEqual(code, 0 if ok else 1, output)
 
     def test_a_waiting_or_skipped_gate_owes_no_record(self) -> None:
         """`blocked` is a gate still waiting and `skipped` one that never
