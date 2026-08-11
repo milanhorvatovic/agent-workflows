@@ -575,6 +575,31 @@ def manifest_problems(at: str, data: Any, outputs: dict[str, str]) -> list[str]:
     phase = data["run"].get("phase", 1)
     manifest = {x for x in items_of(data.get("artifacts")) if isinstance(x, str)}
     problems: list[str] = []
+    recorded = {
+        step.get("id")
+        for step in items_of(data.get("steps"))
+        if isinstance(step, dict) and isinstance(step.get("id"), str)
+    }
+    # Every phase before the current one completed — the run advanced past it —
+    # so its per-phase outputs exist whatever the records say now, those having
+    # been reset for the phase now executing. Reading the status here instead
+    # would exempt exactly the artifacts the manifest is the last record of.
+    # Keyed on the artifact rather than the step, since several steps can
+    # declare the same one and a phase owes it once.
+    per_phase = {
+        outputs[step_id]
+        for step_id in recorded
+        if step_id in outputs and "{N}" in outputs[step_id]
+    }
+    if isinstance(phase, int) and not isinstance(phase, bool):
+        for prior in range(1, phase):
+            for artifact in sorted(per_phase):
+                resolved = artifact.replace("{N}", str(prior))
+                if resolved not in manifest:
+                    problems.append(
+                        f"{at}: phase {prior} completed and {resolved} is not in the "
+                        f"manifest — spec §8.2 has it carry every phase's outputs"
+                    )
     for step in items_of(data.get("steps")):
         if not isinstance(step, dict) or step.get("status") != "done":
             continue
