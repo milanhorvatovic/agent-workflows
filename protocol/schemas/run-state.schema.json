@@ -67,7 +67,7 @@
       }
     },
     "steps": {
-      "description": "Per-step execution record; resume = first step whose status is not done or skipped (spec sections 8.5 and 10).",
+      "description": "Per-step execution record; resume = the active record if there is one, else the first step whose status is not done or skipped (spec sections 8.5 and 10).",
       "type": "array",
       "items": {
         "$ref": "#/$defs/stepRecord"

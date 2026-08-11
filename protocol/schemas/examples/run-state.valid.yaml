@@ -1,6 +1,7 @@
 # Starter: the shape the executor maintains in {run}/workflow-state.yaml.
 # Runtime state with exactly one writer — never a hand-authored source document (spec §10).
-# Resume = first step whose status is not done or skipped (spec §8.5).
+# Resume = the active record if there is one, else the first step whose
+# status is not done or skipped (spec §8.5).
 # One record per step of the composed workflow, all of them populated when
 # `intake-approval` accepted R2 (spec §7): the class is what decides which are
 # `skipped`, so they cannot be written before it is known.
