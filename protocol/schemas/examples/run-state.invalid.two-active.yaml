@@ -1,0 +1,15 @@
+# Deliberately broken: two `active` records.
+# §8.5 resumes at *the* active record — the step that was running — so a second
+# one leaves a resume with no defined answer. One fault, so the fixture proves
+# this rule and nothing else (spec §8.5, §10).
+run:
+  id: 2026-08-11-feature-slug
+  workflow: feature
+  protocol: "0.1"
+steps:
+  - id: brief-confirm
+    status: active
+  - id: risk-route
+    status: active
+gates: []
+artifacts: []

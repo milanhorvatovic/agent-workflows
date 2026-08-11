@@ -71,7 +71,21 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/stepRecord"
-      }
+      },
+      "contains": {
+        "description": "At most one step may be `active`: \u00a78.5 resumes at *the* active record, which a second one would make ambiguous.",
+        "type": "object",
+        "properties": {
+          "status": {
+            "const": "active"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "minContains": 0,
+      "maxContains": 1
     },
     "gates": {
       "description": "The gate instrumentation record required by spec section 7: id, transport, outcome, timestamp for every gate decision.",
