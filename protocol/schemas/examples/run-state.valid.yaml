@@ -31,13 +31,13 @@ steps:
     status: skipped
   - id: plan-create
     status: done
+  - id: plan-revise # before its validator: a plan-approval `revise` makes both
+    status: done     # pending in one write, and the destination must be found
+    iterations: 1    # first (spec §10)
+    stall_flags: []
   - id: plan-validate
     status: done
     iterations: 2 # a loop member counts against the loop's cap (spec §9.2)
-    stall_flags: []
-  - id: plan-revise
-    status: done
-    iterations: 1
     stall_flags: []
   - id: plan-approval
     status: blocked # a gate waits on a human here; not done, so a resume returns to it (spec §7, §8.5)

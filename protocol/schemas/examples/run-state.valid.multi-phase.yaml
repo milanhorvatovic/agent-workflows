@@ -33,12 +33,13 @@ steps:
     status: skipped
   - id: plan-create # returned to pending when phase 2 was entered, and has since run
     status: done
+  - id: plan-revise # phase 2's plan passed first time, so this iteration never
+    status: skipped # ran; it precedes its validator because a plan-approval
+                    # `revise` makes both pending at once (spec §10)
   - id: plan-validate
     status: done
     iterations: 1 # phase 2's loop; entering the phase cleared phase 1's count
     stall_flags: []
-  - id: plan-revise # phase 2's plan passed first time, so this iteration never ran
-    status: skipped
   - id: plan-approval
     status: blocked
   - id: implement # phase 1's implementation is done; this record was reset for phase 2
