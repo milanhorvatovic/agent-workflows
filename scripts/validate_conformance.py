@@ -448,6 +448,21 @@ def step_of(block: Block | None) -> Any:
     return None
 
 
+def output_artifact(step: Any) -> Any:
+    """The `artifact` a step declares as its output.
+
+    Returns the raw `output` value where that value is not a mapping. These
+    checks run over frontmatter the schema pass has faulted rather than instead
+    of it, and `main` prints nothing until every check has run — so a malformed
+    declaration must read as a value here and be reported there, never raise
+    and take the accumulated problems down with it.
+    """
+    output = step.get("output") if isinstance(step, dict) else None
+    if not isinstance(output, dict):
+        return output
+    return output.get("artifact")
+
+
 def stage_steps(root: Path, problems: list[str]) -> dict[str, tuple[str, Any]]:
     """Every step a stage contract declares, keyed by its `### <id>` heading.
 
@@ -496,8 +511,8 @@ def check_step_parity(root: Path) -> tuple[int, list[str]]:
                     f"{rel}: step `{field}` differs from the one {at} declares "
                     f"for `{step_id}`; two copies of one contract must agree"
                 )
-        skill_out = (step.get("output") or {}).get("artifact")
-        stage_out = (declared.get("output") or {}).get("artifact")
+        skill_out = output_artifact(step)
+        stage_out = output_artifact(declared)
         if skill_out != stage_out:
             problems.append(
                 f"{rel}: step output artifact differs from the one {at} declares "
@@ -514,7 +529,13 @@ def step_outputs(root: Path) -> dict[str, str]:
         step = step_of(frontmatter_block(path.read_text(encoding="utf-8"), rel))
         if step is None:
             continue
-        artifact = (step.get("output") or {}).get("artifact")
+        # Stricter than the parity check's use of the same field, and for the
+        # opposite reason: parity compares whatever is declared, so a malformed
+        # value is a value to compare, while a step id mapped to a malformed
+        # value here would be read back as an artifact path and reported as
+        # missing from a manifest that could never have listed it.
+        output = step.get("output")
+        artifact = output.get("artifact") if isinstance(output, dict) else None
         if isinstance(artifact, str):
             found[path.parent.name.removeprefix("awf-")] = artifact
     return found
@@ -533,18 +554,22 @@ def manifest_problems(at: str, data: Any, outputs: dict[str, str]) -> list[str]:
     if not isinstance(data, dict) or not isinstance(data.get("run"), dict):
         return []
     phase = data["run"].get("phase", 1)
-    manifest = {x for x in (data.get("artifacts") or []) if isinstance(x, str)}
+    listed = data.get("artifacts")
+    manifest = {x for x in listed if isinstance(x, str)} if isinstance(listed, list) else set()
     problems: list[str] = []
     for step in data.get("steps") or []:
         if not isinstance(step, dict) or step.get("status") != "done":
             continue
-        artifact = outputs.get(step.get("id"))
+        step_id = step.get("id")
+        if not isinstance(step_id, str):
+            continue  # not a usable id; check_fixtures faults it against the schema
+        artifact = outputs.get(step_id)
         if artifact is None:
             continue  # a gate, or a step no skill declares
         resolved = artifact.replace("{N}", str(phase))
         if resolved not in manifest:
             problems.append(
-                f"{at}: `{step['id']}` is done and its output {resolved} is not in "
+                f"{at}: `{step_id}` is done and its output {resolved} is not in "
                 f"the manifest — spec §8.2 has the executor keep it current"
             )
     return problems

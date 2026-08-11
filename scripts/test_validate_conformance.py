@@ -774,6 +774,59 @@ metadata:
         assert match is not None, output
         self.assertGreaterEqual(int(match.group(1)), 2)
 
+    # ---- malformed declarations stay reportable ----
+    #
+    # Every check accumulates problems and `main` prints nothing until all of
+    # them have run, so a check that raises takes the whole report down with
+    # it. These run over documents the schema pass faults rather than instead
+    # of it, which is exactly when malformed shapes reach them.
+
+    def test_scalar_output_on_a_standalone_skill_is_reported_not_raised(self) -> None:
+        self.write(
+            "skills/awf-loner/SKILL.md",
+            self.SKILL.replace("awf-thing", "awf-loner").replace(
+                '      output:\n        artifact: "{run}/b.md"\n'
+                "        template: references/t.template.md",
+                "      output: invalid",
+            )
+            % "true",
+        )
+        self.assert_problem("is not of type 'object'")
+
+    def test_scalar_output_on_a_step_bound_skill_is_reported_not_raised(self) -> None:
+        """The parity check reads the same field, so the guard has to cover it
+        too — and there a malformed value is still a value to compare, which is
+        why it reads as drift against the stage's well-formed one."""
+        self.write_pair()
+        self.write(
+            "skills/awf-thing/SKILL.md",
+            self.SKILL.replace(
+                '      output:\n        artifact: "{run}/b.md"\n'
+                "        template: references/t.template.md",
+                "      output: invalid",
+            )
+            % "true",
+        )
+        output = self.assert_problem("is not of type 'object'")
+        self.assertIn("step output artifact differs from the one", output)
+
+    def test_a_non_string_step_id_is_reported_not_raised(self) -> None:
+        self.write_pair()
+        self.write_run_state("  - id: [thing]\n    status: done\n", " []")
+        self.assert_problem("is not of type 'string'")
+
+    def test_a_non_iterable_manifest_is_reported_not_raised(self) -> None:
+        """A scalar manifest is the shape that bites: a string iterates into
+        characters and merely computes nonsense, where a number cannot be
+        iterated at all."""
+        self.write_pair()
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            "run:\n  id: demo\nsteps:\n  - id: thing\n    status: done\n"
+            "gates: []\nartifacts: 5\n",
+        )
+        self.assert_problem("is not of type 'array'")
+
     def run_main_expecting_exit_with_root(self, root: Path) -> str:
         with contextlib.redirect_stdout(io.StringIO()):
             with self.assertRaises(SystemExit) as caught:
