@@ -78,6 +78,8 @@ metadata:
           required: true
         - artifact: "{run}/phase-1-plan.md"
           required: true
+        - artifact: "{run}/phase-{N}-impl-log.md"
+          required: false
       output:
         artifact: "{run}/phase-{N}-plan.md"
       on:
