@@ -13,7 +13,7 @@ Stages by reference (spec §6.1) — each owns its steps, loop contracts, and ga
 2. [stages/ideation.md](stages/ideation.md) — ground, explore, and validate approaches
 3. [stages/planning.md](stages/planning.md) — phase plan, validated and human-approved
 
-Planning is the final stage, so `accept` at `plan-approval` completes the run — once there is nothing left to plan. Where the phase-1 plan authored a list with phases after it, `accept` enters the next phase and planning repeats, and only the last phase's acceptance ends the run; the deliverable below is the whole set, so stopping at phase 1 would ship a list of phases with a plan for one of them. What repeats here is planning alone, this workflow having no implementation — so each later plan is written from the inputs `plan-create` declares and no others: the brief, whatever grounding and ideation the run produced, and the phase-1 plan whose list says what this phase owns. No intervening phase's plan is among them, and that is the limit rather than an omission — the phase list is what carries one phase's shape to the next, and a range of prior plans is not expressible in a declaration where `{N}` is the only phase placeholder (spec §8.1). Planning against the list rather than against work already done is what makes the set producible without executing any of it. What each risk class skips or batches is encoded once in [overlays.md](overlays.md), never here.
+Planning is the final stage, so `accept` at `plan-approval` completes the run. Where the phase-1 plan authored a list with phases after it, those are not planned here, and the reason is the one this workflow is defined by: what makes a later phase's plan sound is the phase before it having been built, with `implement-validate` reporting what that work binds for the phases the list places after it. This workflow has no implementation and so no such carrier. Planning phase 3 from the phase-1 boundary list alone would miss phase 2's technical decisions, file scope, and resolved open questions, and `plan-validate` reads the same inputs — so two later plans could contradict each other and both pass. The list is what this run delivers for those phases; the `feature` or `bugfix` run that executes them plans each as it reaches it. What each risk class skips or batches is encoded once in [overlays.md](overlays.md), never here.
 
 ```yaml
 metadata:
@@ -23,4 +23,4 @@ metadata:
       kind: manual
 ```
 
-Deliverable: the validated, approved plan set — `{run}/phase-{N}-plan.md` per phase — ready for a later `feature` or `bugfix` run to execute.
+Deliverable: the validated, approved `{run}/phase-1-plan.md` and the phase list it authors — ready for a later `feature` or `bugfix` run to execute, which plans each later phase as it reaches it.
