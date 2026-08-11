@@ -815,6 +815,75 @@ metadata:
         self.write_run_state("  - id: [thing]\n    status: done\n", " []")
         self.assert_problem("is not of type 'string'")
 
+    HOSTILE = (5, "str", [], {}, None, [1, 2], {"a": "b"}, True, 3.5)
+
+    RUN_STATE_SHAPES = (
+        "run: %s\ngates: []\n",
+        "run:\n  id: demo\n  phase: %s\nsteps:\n  - id: thing\n    status: done\ngates: []\n",
+        "run:\n  id: demo\nsteps: %s\ngates: []\n",
+        "run:\n  id: demo\nsteps:\n  - %s\ngates: []\n",
+        "run:\n  id: demo\nsteps:\n  - id: %s\n    status: done\ngates: []\n",
+        "run:\n  id: demo\nsteps:\n  - id: thing\n    status: %s\ngates: []\n",
+        "run:\n  id: demo\nsteps:\n  - id: thing\n    status: done\ngates: []\nartifacts: %s\n",
+        "run:\n  id: demo\nsteps:\n  - id: thing\n    status: done\ngates: []\nartifacts:\n  - %s\n",
+    )
+
+    def test_no_malformed_shape_stops_the_report(self) -> None:
+        """Whatever shape a document arrives in, `main` has to reach its print —
+        reporting or passing, but never raising. Which of the two it is belongs
+        to the schema; that it gets there at all is what this asserts.
+
+        These checks read declarations by shape, and they run over documents
+        the schema pass has *faulted* rather than instead of them — that pass
+        records a problem and carries on, and nothing prints until every check
+        has run. So each field they touch must tolerate a value the schema
+        would reject, and the guard belongs on all of them at once: the first
+        version covered the manifest and left `steps`, its neighbour, raising.
+        """
+        self.write_pair()
+        pristine = (self.root / "protocol/schemas/examples/run-state.valid.yaml").read_text()
+        skill = (self.root / "skills/awf-thing/SKILL.md").read_text()
+        output_block = (
+            '      output:\n        artifact: "{run}/b.md"\n'
+            "        template: references/t.template.md"
+        )
+        for value in self.HOSTILE:
+            encoded = json.dumps(value)
+            for shape in self.RUN_STATE_SHAPES:
+                self.write(
+                    "protocol/schemas/examples/run-state.valid.yaml", shape % encoded
+                )
+                with self.subTest(field="run-state", value=encoded, shape=shape[:24]):
+                    self.assertIn(self.run_main()[0], (0, 1))
+            self.write("protocol/schemas/examples/run-state.valid.yaml", pristine)
+            for field in ("output", "role", "inputs", "on"):
+                mutated = (
+                    skill.replace(output_block, f"      output: {encoded}")
+                    if field == "output"
+                    else re.sub(
+                        rf"^      {field}:(\n        .*)*$",
+                        f"      {field}: {encoded}",
+                        skill,
+                        count=1,
+                        flags=re.MULTILINE,
+                    )
+                )
+                self.write("skills/awf-thing/SKILL.md", mutated)
+                with self.subTest(field=field, value=encoded):
+                    self.assertIn(self.run_main()[0], (0, 1))
+            self.write("skills/awf-thing/SKILL.md", skill)
+
+    def test_a_non_iterable_step_list_is_reported_not_raised(self) -> None:
+        """`steps` and `artifacts` are the two arrays a run-state document
+        offers, so both go through one guard — the first version of it covered
+        the manifest and left this one raising."""
+        self.write_pair()
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            'run:\n  id: demo\nsteps: 5\ngates: []\nartifacts:\n  - "{run}/b.md"\n',
+        )
+        self.assert_problem("is not of type 'array'")
+
     def test_a_non_iterable_manifest_is_reported_not_raised(self) -> None:
         """A scalar manifest is the shape that bites: a string iterates into
         characters and merely computes nonsense, where a number cannot be

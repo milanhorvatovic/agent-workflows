@@ -448,6 +448,18 @@ def step_of(block: Block | None) -> Any:
     return None
 
 
+def items_of(value: Any) -> list[Any]:
+    """The entries of a value the schema declares as an array, or nothing.
+
+    A value of the wrong shape is the schema pass's to report and these checks
+    run over documents it has already faulted, so a scalar must read as empty
+    here rather than raise mid-iteration. Both array fields a run-state
+    document offers go through this, so guarding one and not its neighbour is
+    not a thing that can be done by accident.
+    """
+    return value if isinstance(value, list) else []
+
+
 def output_artifact(step: Any) -> Any:
     """The `artifact` a step declares as its output.
 
@@ -554,10 +566,9 @@ def manifest_problems(at: str, data: Any, outputs: dict[str, str]) -> list[str]:
     if not isinstance(data, dict) or not isinstance(data.get("run"), dict):
         return []
     phase = data["run"].get("phase", 1)
-    listed = data.get("artifacts")
-    manifest = {x for x in listed if isinstance(x, str)} if isinstance(listed, list) else set()
+    manifest = {x for x in items_of(data.get("artifacts")) if isinstance(x, str)}
     problems: list[str] = []
-    for step in data.get("steps") or []:
+    for step in items_of(data.get("steps")):
         if not isinstance(step, dict) or step.get("status") != "done":
             continue
         step_id = step.get("id")
