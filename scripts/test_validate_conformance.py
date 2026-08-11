@@ -859,7 +859,7 @@ metadata:
         """A gate a phase repeats decides once per phase, so an earlier phase's
         acceptance must not vouch for a `done` at this one — the entries would
         otherwise be indistinguishable."""
-        self.write("workflows/stages/gated.md", self.GATED_STAGE)
+        self.write("workflows/stages/phasedgate.md", self.PHASED_GATED_STAGE)
         self.write(
             "protocol/schemas/examples/run-state.valid.yaml",
             "run:\n  id: demo\n  phase: 2\nsteps:\n  - id: demo-approval\n"
@@ -869,7 +869,7 @@ metadata:
         self.assert_problem("no `gates` entry records its outcome at phase 2")
 
     def test_a_phased_gate_with_this_phase_decision_stands(self) -> None:
-        self.write("workflows/stages/gated.md", self.GATED_STAGE)
+        self.write("workflows/stages/phasedgate.md", self.PHASED_GATED_STAGE)
         self.write(
             "protocol/schemas/examples/run-state.valid.yaml",
             "run:\n  id: demo\n  phase: 2\nsteps:\n  - id: demo-approval\n"
@@ -880,6 +880,21 @@ metadata:
         )
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
+
+    def test_a_phased_gate_record_without_a_phase_is_reported(self) -> None:
+        """Whether a gate needs a `phase` comes from its stage, never from the
+        records: inferring it from whether a record carries one would let an
+        omitted field decide the field was never required, bypassing exactly
+        the check it exists for."""
+        self.write("workflows/stages/phasedgate.md", self.PHASED_GATED_STAGE)
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            "run:\n  id: demo\n  phase: 2\nsteps:\n  - id: demo-approval\n"
+            "    status: done\ngates:\n  - gate: demo-approval\n"
+            "    at: '2026-08-11T09:00:00Z'\n    outcome: accept\nartifacts: []\n",
+        )
+        output = self.assert_problem("is repeated per phase and this decision records none")
+        self.assertIn("no `gates` entry records its outcome at phase 2", output)
 
     def test_an_unphased_gate_in_a_phased_run_is_judged_on_its_latest(self) -> None:
         """A gate that decides once per run records no phase, so scoping its
@@ -926,6 +941,38 @@ metadata:
             with self.subTest(status=status):
                 code, output = self.run_main()
                 self.assertEqual(code, 0, output)
+
+    # A stage a phase repeats — its step writes a per-phase output — declaring a
+    # gate. Whether that gate needs a `phase` is read from this, never from the
+    # records being checked.
+    PHASED_GATED_STAGE = """---
+name: phasedgate
+description: A stage a phase repeats, declaring a gate.
+---
+
+# Stage: phasedgate
+
+### phasedgate (planner)
+
+Prose.
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.1"
+    step:
+      role: planner
+      inputs:
+        - artifact: "{run}/a.md"
+          required: true
+      output:
+        artifact: "{run}/phase-{N}-thing.md"
+```
+
+## Gates
+
+- **demo-approval** — collects the human decision.
+"""
 
     GATED_STAGE = """---
 name: gated
