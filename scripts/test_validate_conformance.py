@@ -777,23 +777,61 @@ metadata:
         )
         self.assert_problem("its output {run}/phase-2-plan.md is not in the manifest")
 
-    def test_a_prior_phase_output_is_not_required(self) -> None:
-        """A phase the run has left owes the manifest nothing this tool can
-        check. Records are one per step and reset on entering a phase, so run
-        state carries no per-phase history — and a `plan-approval` reject ends
-        its phase and advances to the next, leaving that phase with a plan and
-        no implementation at all. Requiring every phase-indexed output of every
-        prior phase would reject that legal, resumable state as a stale
-        manifest, which is worse than the gap it closes.
-        """
+    def test_a_prior_phase_output_is_required(self) -> None:
+        """A phase the run advanced past completed, so its per-phase outputs
+        exist and the manifest is the last record of them: `run.phase` advances
+        only after the phase before it finished, a reject ending the run rather
+        than the phase."""
         self.write("workflows/stages/phased.md", self.PHASED_STAGE)
         self.write_run_state(
             "  - id: phased\n    status: done\n",
-            '\n  - "{run}/phase-2-plan.md"',  # phase 1's is absent and stays legal
+            '\n  - "{run}/phase-2-plan.md"',
             run="  phase: 2\n",
+        )
+        self.assert_problem("phase 1 completed and {run}/phase-1-plan.md is not in the manifest")
+
+    def test_a_prior_phase_is_owed_whatever_the_record_says_now(self) -> None:
+        """Entering a phase resets the records it repeats, so reading the
+        status for a prior phase would exempt exactly the artifacts nothing
+        else records — a `pending` step still owes every phase before this."""
+        self.write("workflows/stages/phased.md", self.PHASED_STAGE)
+        self.write_run_state(
+            "  - id: phased\n    status: pending\n", " []", run="  phase: 3\n"
+        )
+        output = self.assert_problem("phase 1 completed and {run}/phase-1-plan.md")
+        self.assertIn("phase 2 completed and {run}/phase-2-plan.md", output)
+        self.assertNotIn("phase-3-plan.md", output)  # pending: the status check exempts it
+
+    def test_a_skipped_record_owes_no_prior_phase(self) -> None:
+        """The one exemption, and the reason the blanket form was wrong: a risk
+        class can drop a per-phase step for a whole run — `implement-validate`
+        at R1, all of implementation at R0 — so a `skipped` record never
+        produced its output in any phase and must not be demanded of one."""
+        self.write("workflows/stages/phased.md", self.PHASED_STAGE)
+        self.write_run_state(
+            "  - id: phased\n    status: skipped\n", " []", run="  phase: 2\n"
         )
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
+
+    def test_one_artifact_two_steps_is_owed_once_per_phase(self) -> None:
+        """`plan-create` and `plan-revise` declare the same output, and a phase
+        owes it once — which is also why excluding a skipped `plan-revise`
+        costs no coverage: `plan-create` still owes the plan."""
+        self.write("workflows/stages/phased.md", self.PHASED_STAGE)
+        self.write(
+            "workflows/stages/phased2.md",
+            self.PHASED_STAGE.replace("name: phased", "name: phased2").replace(
+                "### phased (planner)", "### phased2 (planner)"
+            ),
+        )
+        self.write_run_state(
+            "  - id: phased\n    status: done\n  - id: phased2\n    status: skipped\n",
+            '\n  - "{run}/phase-2-plan.md"',
+            run="  phase: 2\n",
+        )
+        output = self.assert_problem("phase 1 completed and {run}/phase-1-plan.md")
+        self.assertEqual(output.count("{run}/phase-1-plan.md is not in the manifest"), 1)
 
     def test_the_phase_placeholder_defaults_to_phase_one(self) -> None:
         self.write("workflows/stages/phased.md", self.PHASED_STAGE)
