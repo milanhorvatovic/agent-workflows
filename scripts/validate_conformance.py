@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate the protocol surface against the schemas in protocol/schemas/.
 
-Five checks:
+Seven checks:
 
 - Fixtures: every `protocol/schemas/examples/<name>.valid.yaml` must satisfy
   its schema and every `<name>.invalid.yaml` must be rejected — the
@@ -25,6 +25,14 @@ Five checks:
   standalone.
 - Skill budget: every `skills/*/SKILL.md` body stays within the 500-line /
   ~5000-token budget.
+- Step parity: a step-bound skill restates the step block its stage declares,
+  identically — two copies of one contract drift silently, and spec §9.1
+  makes the input declaration the executor's whole view of a step.
+- Run-state manifests: in every run-state document this repo ships, a step
+  recorded `done` has its declared output in the manifest, `{N}` resolved
+  from `run.phase` (spec §8.2). The map from step id to output is read off
+  the stage contracts, since a run's steps are the composed workflow's.
+  Bounded to the phase now executing — see `manifest_problems`.
 
 YAML is parsed as YAML 1.2 (ruamel.yaml) — under PyYAML's YAML 1.1 the `on:`
 key of a step block reads as boolean true, spuriously failing every step
@@ -575,31 +583,15 @@ def manifest_problems(at: str, data: Any, outputs: dict[str, str]) -> list[str]:
     phase = data["run"].get("phase", 1)
     manifest = {x for x in items_of(data.get("artifacts")) if isinstance(x, str)}
     problems: list[str] = []
-    recorded = {
-        step.get("id")
-        for step in items_of(data.get("steps"))
-        if isinstance(step, dict) and isinstance(step.get("id"), str)
-    }
-    # Every phase before the current one completed — the run advanced past it —
-    # so its per-phase outputs exist whatever the records say now, those having
-    # been reset for the phase now executing. Reading the status here instead
-    # would exempt exactly the artifacts the manifest is the last record of.
-    # Keyed on the artifact rather than the step, since several steps can
-    # declare the same one and a phase owes it once.
-    per_phase = {
-        outputs[step_id]
-        for step_id in recorded
-        if step_id in outputs and "{N}" in outputs[step_id]
-    }
-    if isinstance(phase, int) and not isinstance(phase, bool):
-        for prior in range(1, phase):
-            for artifact in sorted(per_phase):
-                resolved = artifact.replace("{N}", str(prior))
-                if resolved not in manifest:
-                    problems.append(
-                        f"{at}: phase {prior} completed and {resolved} is not in the "
-                        f"manifest — spec §8.2 has it carry every phase's outputs"
-                    )
+    # Only the phase now executing is checked, and the limit is the document's
+    # rather than a choice. Records are one per step and are reset when a phase
+    # is entered, so run state carries no per-phase history: which steps ran in
+    # a phase the run has left is not derivable from it. Nor can it be assumed
+    # — a `plan-approval` reject ends its phase and advances to the next
+    # (§7, §10), so that phase legally has a plan and a plan validation and no
+    # implementation at all, and requiring every phase-indexed output of every
+    # prior phase would reject that state as a stale manifest. §8.2's growth
+    # rule still binds the executor there; nothing here can confirm it.
     for step in items_of(data.get("steps")):
         if not isinstance(step, dict) or step.get("status") != "done":
             continue
