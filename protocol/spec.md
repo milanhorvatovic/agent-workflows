@@ -287,9 +287,27 @@ run:
   risk: R2
   risk_rationale: "single module, no security surface, one phase"
   protocol: "0.1" # single-phase run, so no `phase` field
-steps:
+steps: # one record per step of the composed workflow; `intake-approval` populated them (§7)
+  - id: brief-confirm
+    status: done # pending | active | blocked | done | skipped
+  - id: clarifying-question # conditional; it never fired
+    status: skipped
+  - id: risk-route
+    status: done
+  - id: intake-approval
+    status: done
+  - id: ground
+    status: done
+  - id: ideate
+    status: done
+  - id: ideate-validate
+    status: done
+    iterations: 1
+    stall_flags: []
+  - id: ideate-revise # the loop exited on the first verdict
+    status: skipped
   - id: plan-create
-    status: done # pending | active | blocked | done | skipped; outside the loop, so no iterations
+    status: done # outside the revise loop, so no iterations
   - id: plan-revise # the revise outcome's destination, and the first entry a resume finds
     status: pending
     iterations: 1 # one revision already run; the cap is the loop's (spec 9.2)
@@ -298,6 +316,26 @@ steps:
     status: pending
     iterations: 2 # it validated the created plan and the first revision
   - id: plan-approval # decides again; a gate is `done` only where its decision stands
+    status: pending
+  - id: implement
+    status: pending
+  - id: implement-validate
+    status: pending
+  - id: review-code
+    status: pending
+  - id: review-security # conditional at R2, and the brief records no security surface
+    status: skipped
+  - id: review-validate
+    status: pending
+  - id: review-arbitrate # at R2 only on reviewer/validator disagreement
+    status: skipped
+  - id: review-fix
+    status: pending
+  - id: deliver-prepare
+    status: pending
+  - id: deliver-validate
+    status: pending
+  - id: delivery-approval
     status: pending
 gates:
   - gate: plan-approval
@@ -310,7 +348,7 @@ artifacts: [] # run manifest, see spec §8.2
 
 - `run` identifies the run: id, workflow, risk class with rationale ([5](#5-risk-classes)), and the protocol version the run executes under.
 - `run.risk` and `risk_rationale` MUST be absent before the intake gate accepts a class and present from then on, and they move together. The schema enforces the pairing and not the timing: whether that gate has decided is not visible in this document — gate ids are workflow vocabulary rather than protocol vocabulary, and a clarifying question also records `accept` while no class exists — so the timing is one of the semantics this prose carries for a structure the schema defines. Run state exists before either field: it is created when the run starts, which is what gives a gate reached during intake something to resume from.
-- `steps` holds one record per step, not one per invocation: a step that runs again reuses its record and `iterations` counts the re-entries, which is what that field is for. The list is ordered so that the first entry which is neither `done` nor `skipped` is the next step to run — that is what makes resume ([8.5](#85-resume)) mean anything, and a transition that re-enters steps keeps it true. Each record carries an `id` and a `status` (`pending` | `active` | `blocked` | `done` | `skipped`), and those two are all a record must have. `iterations` appears where the step is inside a loop and has a cap to count against; `stall_flags` where signals have accumulated. A step that has run once outside a loop carries neither, which is why the schema requires neither. Reusing one record per step leaves the run needing to say which phase it is in, and `run.phase` is that: step ids repeat across phases, so a resume reads it to know which `{N}` an artifact path resolves to and which phase's loop an `iterations` count belongs to. It is absent in a single-phase run, where `{N}` is always 1.
+- `steps` holds one record per step, not one per invocation: a step that runs again reuses its record and `iterations` counts the re-entries, which is what that field is for. The list is ordered so that the first entry which is neither `done` nor `skipped` is the next step to run — that is what makes resume ([8.5](#85-resume)) mean anything, and a transition that re-enters steps keeps it true. Each record carries an `id` and a `status` (`pending` | `active` | `blocked` | `done` | `skipped`), and those two are all a record must have. `iterations` appears where the step is inside a loop and has a cap to count against; `stall_flags` where signals have accumulated. A step that has run once outside a loop carries neither, which is why the schema requires neither. Reusing one record per step leaves the run needing to say which phase it is in, and `run.phase` is that: step ids repeat across phases, so a resume reads it to know which `{N}` an artifact path resolves to and which phase's loop an `iterations` count belongs to. It appears when the run first knows it has phases, which is the phase-1 `plan-approval` accepting a list with more than one: the field is set to 1 in that same write, since the phase being executed is the one whose plan was just approved. Before then nothing knows whether the run is multi-phase, and `{N}` resolves to 1 either way; a list accepted with a single phase leaves the field absent for the life of the run.
 
 Advancing it is a write over the records the new phase repeats, not a counter on its own. The steps a phase runs are `done` from the phase before, and §8.5 skips what is `done` — so a run that only incremented `run.phase` would step over its own planning and implementation and resume in a later stage. Entering a phase therefore returns the steps that phase runs to `pending`, clears the `iterations` and `stall_flags` they accumulated in the phase before, and sets `run.phase`, in one write: the count is against this phase's loop, and a phase inheriting the last one's would start part-spent. `iterations` counts against the cap of the loop instance it is in, not across the run: a multi-phase workflow repeats a stage per phase ([6.1](#61-composition)), each repetition is its own loop with its own cap ([9.2](#92-loop-contracts)), and the count starts at zero when a phase enters one. Carrying it forward would let a phase that revised twice spend the next phase's allowance, and the caps are per loop precisely so one phase's difficulty is not another's. `blocked` is what a *gate's own* entry wears while it waits on a human — not the entry of the step that produced the artifact, which is `done` by then: it is not `done`, so a resume returns to the gate rather than past it, and blocking the producer instead would re-run the step and never reach the gate ([7](#7-gates), [8.5](#85-resume)). It becomes `done` when its decision stands: an `accept` the run proceeds past, or a `reject` that ends the run. A `revise` is the decision that does not stand — the cycle runs again and this gate decides again — so its entry returns to `pending` with the rest of what the revision invalidates.
 - `gates` is the instrumentation record required by [section 7](#7-gates).

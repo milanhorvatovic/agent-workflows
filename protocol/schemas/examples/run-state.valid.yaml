@@ -1,6 +1,9 @@
 # Starter: the shape the executor maintains in {run}/workflow-state.yaml.
 # Runtime state with exactly one writer — never a hand-authored source document (spec §10).
 # Resume = first step whose status is not done or skipped (spec §8.5).
+# One record per step of the composed workflow, all of them populated when
+# `intake-approval` accepted R2 (spec §7): the class is what decides which are
+# `skipped`, so they cannot be written before it is known.
 run:
   id: 2026-08-03-feature-slug
   workflow: feature
@@ -8,14 +11,56 @@ run:
   risk_rationale: "single module, no security surface, one phase"
   protocol: "0.1" # a multi-phase run also carries `phase:` (spec §10)
 steps:
+  - id: brief-confirm
+    status: done
+  - id: clarifying-question # conditional; the brief was restatable, so it never fired
+    status: skipped
+  - id: risk-route
+    status: done
+  - id: intake-approval
+    status: done
+  - id: ground
+    status: done
+  - id: ideate
+    status: done
+  - id: ideate-validate
+    status: done
+    iterations: 1
+    stall_flags: []
+  - id: ideate-revise # the loop exited on the first verdict, so it never ran
+    status: skipped
   - id: plan-create
-    status: done # outside the revise loop, so it carries no iterations
+    status: done
   - id: plan-validate
     status: done
     iterations: 2 # a loop member counts against the loop's cap (spec §9.2)
     stall_flags: []
+  - id: plan-revise
+    status: done
+    iterations: 1
+    stall_flags: []
   - id: plan-approval
     status: blocked # a gate waits on a human here; not done, so a resume returns to it (spec §7, §8.5)
+  - id: implement
+    status: pending
+  - id: implement-validate
+    status: pending
+  - id: review-code
+    status: pending
+  - id: review-security # conditional at R2; the brief's Routing records no security surface
+    status: skipped
+  - id: review-validate
+    status: pending
+  - id: review-arbitrate # at R2 only on reviewer/validator disagreement
+    status: skipped
+  - id: review-fix
+    status: pending
+  - id: deliver-prepare
+    status: pending
+  - id: deliver-validate
+    status: pending
+  - id: delivery-approval
+    status: pending
 gates:
   - gate: intake-approval
     transport: inbox

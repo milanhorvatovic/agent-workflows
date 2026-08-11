@@ -6,6 +6,9 @@
 # to resume from: `intake-approval` takes the inbox transport at R0–R2, and a
 # gate whose decision another driver may clear cannot be the thing that creates
 # the state it resumes from (spec §8.5).
+# Only intake's records exist yet, and deliberately: `intake-approval` is what
+# populates the rest, because the class it accepts decides which are `skipped`
+# (spec §7). The other valid fixtures show the full set after that write.
 run:
   id: 2026-08-10-feature-slug
   workflow: feature
