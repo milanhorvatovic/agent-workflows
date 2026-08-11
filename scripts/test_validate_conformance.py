@@ -783,6 +783,45 @@ metadata:
         )
         self.assert_problem("its output {run}/phase-2-plan.md is not in the manifest")
 
+    def test_a_decided_gate_without_a_record_is_reported(self) -> None:
+        """§7 keeps every gate decision and §10 makes a gate's own entry `done`
+        only once its decision stands, so a `done` gate with no `gates` entry
+        has lost one — the intake gate's especially, that being what accepted
+        the class `run.risk` holds."""
+        self.write("workflows/stages/gated.md", self.GATED_STAGE)
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            "run:\n  id: demo\nsteps:\n  - id: demo-approval\n    status: done\n"
+            "gates: []\nartifacts: []\n",
+        )
+        self.assert_problem("gate `demo-approval` is done and no `gates` entry records")
+
+    def test_a_waiting_or_skipped_gate_owes_no_record(self) -> None:
+        """`blocked` is a gate still waiting and `skipped` one that never
+        decided; neither has an outcome to have lost."""
+        self.write("workflows/stages/gated.md", self.GATED_STAGE)
+        for status in ("blocked", "skipped", "pending"):
+            self.write(
+                "protocol/schemas/examples/run-state.valid.yaml",
+                f"run:\n  id: demo\nsteps:\n  - id: demo-approval\n    status: {status}\n"
+                "gates: []\nartifacts: []\n",
+            )
+            with self.subTest(status=status):
+                code, output = self.run_main()
+                self.assertEqual(code, 0, output)
+
+    GATED_STAGE = """---
+name: gated
+description: A stage that declares a gate.
+---
+
+# Stage: gated
+
+## Gates
+
+- **demo-approval** — collects the human decision.
+"""
+
     def test_a_prior_phase_output_is_required(self) -> None:
         """A phase the run advanced past completed, so its per-phase outputs
         exist and the manifest is the last record of them: `run.phase` advances

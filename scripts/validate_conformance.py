@@ -631,12 +631,55 @@ def manifest_problems(at: str, data: Any, outputs: dict[str, str]) -> list[str]:
     return problems
 
 
+GATE_HEADING = re.compile(r"^- \*\*(?P<id>[a-z][a-z0-9-]*)\*\*", re.MULTILINE)
+
+
+def gate_ids(root: Path) -> set[str]:
+    """Every gate id a stage declares under its `## Gates` heading."""
+    found: set[str] = set()
+    for path in sorted(root.glob("workflows/stages/*.md")):
+        text = path.read_text(encoding="utf-8")
+        section = text.split("## Gates", 1)
+        if len(section) == 2:
+            found.update(m.group("id") for m in GATE_HEADING.finditer(section[1]))
+    return found
+
+
+def gate_record_problems(at: str, data: Any, gates: set[str]) -> list[str]:
+    """Spec §5.3 and §7: a gate's decision is recorded in `gates` like any other
+    outcome, and §10 makes its own `steps` entry `done` only once that decision
+    stands. So a gate recorded `done` with no entry has lost the decision — the
+    intake gate's especially, since that is what accepted the class `run.risk`
+    holds. Only `done` is checked: `blocked` is a gate still waiting, `pending`
+    one not yet reached, and `skipped` one that never decided anything.
+    """
+    if not isinstance(data, dict):
+        return []
+    recorded = {
+        g.get("gate")
+        for g in items_of(data.get("gates"))
+        if isinstance(g, dict)
+    }
+    problems: list[str] = []
+    for step in items_of(data.get("steps")):
+        if not isinstance(step, dict) or step.get("status") != "done":
+            continue
+        step_id = step.get("id")
+        if isinstance(step_id, str) and step_id in gates and step_id not in recorded:
+            problems.append(
+                f"{at}: gate `{step_id}` is done and no `gates` entry records its "
+                f"outcome — spec §7 keeps every decision"
+            )
+    return problems
+
+
 def check_manifests(root: Path) -> tuple[int, list[str]]:
     """Every run-state document this repo ships models a state an executor may
     resume from, so a stale manifest in one is a nonconforming example rather
     than a cosmetic slip: §8.5 resumes into a run whose artifacts it can only
     find here."""
     outputs = step_outputs(root)
+    gates = gate_ids(root)
     problems: list[str] = []
     checked = 0
     for kind, path in fixture_paths(root, RUN_STATE):
@@ -649,12 +692,14 @@ def check_manifests(root: Path) -> tuple[int, list[str]]:
             continue  # check_fixtures reports the parse failure
         checked += 1
         problems += manifest_problems(rel, data, outputs)
+        problems += gate_record_problems(rel, data, gates)
     spec = root / SPEC
     if spec.is_file():
         for block in yaml_blocks(spec.read_text(encoding="utf-8"), SPEC.as_posix(), []):
             if isinstance(block.data, dict) and "run" in block.data:
                 checked += 1
                 problems += manifest_problems(block.at, block.data, outputs)
+                problems += gate_record_problems(block.at, block.data, gates)
     return checked, problems
 
 
