@@ -131,6 +131,7 @@ RUN_STATE_SCHEMA = {
                 "properties": {
                     "gate": {"type": "string"},
                     "outcome": {"enum": ["accept", "revise", "reject"]},
+                    "phase": {"type": "integer", "minimum": 1},
                     "at": {"type": "string", "format": "date-time"},
                 },
             },
@@ -854,6 +855,46 @@ metadata:
         )
         self.assert_problem("its latest outcome is `revise`")
 
+    def test_a_phased_gate_needs_a_decision_at_the_current_phase(self) -> None:
+        """A gate a phase repeats decides once per phase, so an earlier phase's
+        acceptance must not vouch for a `done` at this one — the entries would
+        otherwise be indistinguishable."""
+        self.write("workflows/stages/gated.md", self.GATED_STAGE)
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            "run:\n  id: demo\n  phase: 2\nsteps:\n  - id: demo-approval\n"
+            "    status: done\ngates:\n  - gate: demo-approval\n    phase: 1\n"
+            "    at: '2026-08-11T09:00:00Z'\n    outcome: accept\nartifacts: []\n",
+        )
+        self.assert_problem("no `gates` entry records its outcome at phase 2")
+
+    def test_a_phased_gate_with_this_phase_decision_stands(self) -> None:
+        self.write("workflows/stages/gated.md", self.GATED_STAGE)
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            "run:\n  id: demo\n  phase: 2\nsteps:\n  - id: demo-approval\n"
+            "    status: done\ngates:\n  - gate: demo-approval\n    phase: 1\n"
+            "    at: '2026-08-11T09:00:00Z'\n    outcome: accept\n"
+            "  - gate: demo-approval\n    phase: 2\n"
+            "    at: '2026-08-11T10:00:00Z'\n    outcome: accept\nartifacts: []\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_an_unphased_gate_in_a_phased_run_is_judged_on_its_latest(self) -> None:
+        """A gate that decides once per run records no phase, so scoping its
+        decision to `run.phase` would make intake unapprovable in a multi-phase
+        run."""
+        self.write("workflows/stages/gated.md", self.GATED_STAGE)
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            "run:\n  id: demo\n  phase: 2\nsteps:\n  - id: demo-approval\n"
+            "    status: done\ngates:\n  - gate: demo-approval\n"
+            "    at: '2026-08-11T09:00:00Z'\n    outcome: accept\nartifacts: []\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
     def test_a_done_gate_takes_the_last_entry_naming_it(self) -> None:
         """`gates` is appended in decision order, so a revision followed by an
         acceptance stands — and the reverse does not."""
@@ -898,61 +939,24 @@ description: A stage that declares a gate.
 - **demo-approval** — collects the human decision.
 """
 
-    def test_a_prior_phase_output_is_required(self) -> None:
-        """A phase the run advanced past completed, so its per-phase outputs
-        exist and the manifest is the last record of them: `run.phase` advances
-        only after the phase before it finished, a reject ending the run rather
-        than the phase."""
+    def test_a_prior_phase_output_is_not_required(self) -> None:
+        """A phase the run has left owes this tool nothing it can check.
+        Records are one per step and reset on entering a phase, so a `skipped`
+        record may have run in an earlier phase and a running one may have been
+        skipped there — reading either as evidence about the phase before is
+        inference, and this check has been wrong in both directions doing it.
+        §8.2 still binds the executor; the document cannot confirm it until run
+        state records per-phase participation the way `gates` records the phase
+        a decision belongs to.
+        """
         self.write("workflows/stages/phased.md", self.PHASED_STAGE)
         self.write_run_state(
             "  - id: phased\n    status: done\n",
-            '\n  - "{run}/phase-2-plan.md"',
+            '\n  - "{run}/phase-2-plan.md"',  # phase 1's is absent and stays legal
             run="  phase: 2\n",
-        )
-        self.assert_problem("phase 1 completed and {run}/phase-1-plan.md is not in the manifest")
-
-    def test_a_prior_phase_is_owed_whatever_the_record_says_now(self) -> None:
-        """Entering a phase resets the records it repeats, so reading the
-        status for a prior phase would exempt exactly the artifacts nothing
-        else records — a `pending` step still owes every phase before this."""
-        self.write("workflows/stages/phased.md", self.PHASED_STAGE)
-        self.write_run_state(
-            "  - id: phased\n    status: pending\n", " []", run="  phase: 3\n"
-        )
-        output = self.assert_problem("phase 1 completed and {run}/phase-1-plan.md")
-        self.assertIn("phase 2 completed and {run}/phase-2-plan.md", output)
-        self.assertNotIn("phase-3-plan.md", output)  # pending: the status check exempts it
-
-    def test_a_skipped_record_owes_no_prior_phase(self) -> None:
-        """The one exemption, and the reason the blanket form was wrong: a risk
-        class can drop a per-phase step for a whole run — `implement-validate`
-        at R1, all of implementation at R0 — so a `skipped` record never
-        produced its output in any phase and must not be demanded of one."""
-        self.write("workflows/stages/phased.md", self.PHASED_STAGE)
-        self.write_run_state(
-            "  - id: phased\n    status: skipped\n", " []", run="  phase: 2\n"
         )
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
-
-    def test_one_artifact_two_steps_is_owed_once_per_phase(self) -> None:
-        """`plan-create` and `plan-revise` declare the same output, and a phase
-        owes it once — which is also why excluding a skipped `plan-revise`
-        costs no coverage: `plan-create` still owes the plan."""
-        self.write("workflows/stages/phased.md", self.PHASED_STAGE)
-        self.write(
-            "workflows/stages/phased2.md",
-            self.PHASED_STAGE.replace("name: phased", "name: phased2").replace(
-                "### phased (planner)", "### phased2 (planner)"
-            ),
-        )
-        self.write_run_state(
-            "  - id: phased\n    status: done\n  - id: phased2\n    status: skipped\n",
-            '\n  - "{run}/phase-2-plan.md"',
-            run="  phase: 2\n",
-        )
-        output = self.assert_problem("phase 1 completed and {run}/phase-1-plan.md")
-        self.assertEqual(output.count("{run}/phase-1-plan.md is not in the manifest"), 1)
 
     def test_the_phase_placeholder_defaults_to_phase_one(self) -> None:
         self.write("workflows/stages/phased.md", self.PHASED_STAGE)

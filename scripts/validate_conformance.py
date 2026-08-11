@@ -587,35 +587,14 @@ def manifest_problems(at: str, data: Any, outputs: dict[str, str]) -> list[str]:
     phase = data["run"].get("phase", 1)
     manifest = {x for x in items_of(data.get("artifacts")) if isinstance(x, str)}
     problems: list[str] = []
-    # A phase the run has left completed, so its per-phase outputs exist whatever
-    # the records say now, those having been reset for the phase now executing.
-    # `run.phase` advances only after the phase before it finished — a reject
-    # ends the run rather than the phase (§7), so no route skips a phase's work
-    # and reaches the next. Records skipped are excluded and that is the whole
-    # exemption: a risk class can drop a per-phase step for the entire run
-    # (`implement-validate` at R1, all of implementation at R0), and a loop
-    # member can go unused in one phase — `plan-revise` writes the plan
-    # `plan-create` already owes, so excluding it costs no coverage.
-    # Keyed on the artifact, since several steps can declare the same one and a
-    # phase owes it once.
-    per_phase = {
-        outputs[step.get("id")]
-        for step in items_of(data.get("steps"))
-        if isinstance(step, dict)
-        and step.get("status") != "skipped"
-        and isinstance(step.get("id"), str)
-        and step["id"] in outputs
-        and "{N}" in outputs[step["id"]]
-    }
-    if isinstance(phase, int) and not isinstance(phase, bool):
-        for prior in range(1, phase):
-            for artifact in sorted(per_phase):
-                resolved = artifact.replace("{N}", str(prior))
-                if resolved not in manifest:
-                    problems.append(
-                        f"{at}: phase {prior} completed and {resolved} is not in the "
-                        f"manifest — spec §8.2 has it carry every phase's outputs"
-                    )
+    # Only the phase now executing is checked. What a prior phase owes cannot
+    # be read from this document: records are one per step and are reset when a
+    # phase is entered, so a `skipped` record may have run in an earlier phase
+    # and a running one may have been skipped there — reading either as evidence
+    # about the phase before is inference, not fact, and it has been wrong in
+    # both directions here. §8.2's growth rule still binds the executor across
+    # phases; nothing here can confirm it until run state records per-phase
+    # participation the way `gates` now records the phase a decision belongs to.
     for step in items_of(data.get("steps")):
         if not isinstance(step, dict) or step.get("status") != "done":
             continue
@@ -663,10 +642,23 @@ def gate_record_problems(at: str, data: Any, gates: set[str]) -> list[str]:
     # keeps that entry while its own record returns to `pending`, so an entry
     # left over from a revision would vouch for a `done` a later acceptance was
     # never written for.
+    # Neither does the latest entry overall, where a gate repeats per phase:
+    # phase 1's acceptance would vouch for a phase-2 `done` nobody recorded a
+    # decision for. A gate whose records carry a `phase` decides per phase, and
+    # only its decisions at the phase now executing count; a gate with no phased
+    # record decides once per run.
+    phase = data["run"].get("phase") if isinstance(data.get("run"), dict) else None
     latest: dict[str, Any] = {}
+    phased: set[str] = set()
     for record in items_of(data.get("gates")):
-        if isinstance(record, dict) and isinstance(record.get("gate"), str):
-            latest[record["gate"]] = record.get("outcome")
+        if not isinstance(record, dict) or not isinstance(record.get("gate"), str):
+            continue
+        gate = record["gate"]
+        if record.get("phase") is not None:
+            phased.add(gate)
+            if record["phase"] != phase:
+                continue  # another phase's decision says nothing about this one
+        latest[gate] = record.get("outcome")
     problems: list[str] = []
     for step in items_of(data.get("steps")):
         if not isinstance(step, dict) or step.get("status") != "done":
@@ -675,9 +667,10 @@ def gate_record_problems(at: str, data: Any, gates: set[str]) -> list[str]:
         if not isinstance(step_id, str) or step_id not in gates:
             continue
         if step_id not in latest:
+            where = f" at phase {phase}" if step_id in phased else ""
             problems.append(
                 f"{at}: gate `{step_id}` is done and no `gates` entry records its "
-                f"outcome — spec §7 keeps every decision"
+                f"outcome{where} — spec §7 keeps every decision"
             )
         elif latest[step_id] not in ("accept", "reject"):
             problems.append(

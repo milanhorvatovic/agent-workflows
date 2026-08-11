@@ -163,6 +163,11 @@
           "minLength": 1,
           "description": "Gate id (spec section 7)."
         },
+        "phase": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The phase this decision belongs to, for a gate that decides once per phase; absent for one that decides once per run (spec section 10)."
+        },
         "transport": {
           "enum": [
             "blocking",
