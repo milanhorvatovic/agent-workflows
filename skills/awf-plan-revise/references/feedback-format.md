@@ -2,7 +2,7 @@
 
 The YAML structure recording what each revision iteration decided: one decision per validation finding, one resolution per question, one entry per item of direction a gate sent back. Produced by `awf-plan-revise` at every iteration — decisions the human supplied (via the plan-approval gate's `revise` outcome) are recorded as theirs; the rest are the planner's own. The file is the audit trail that makes a revised plan explainable: anyone can trace which finding produced which change, what was rejected and why, and who decided.
 
-Only `plan-revise` and the human consume this format. It is working material in the run directory, not a gated artifact.
+Only `plan-revise` and the human consume this format. It is working material in the run directory (spec §8.2), not a declared output and not manifested — which is why nothing downstream may be left depending on it, and why every rule below puts what a contract needs into the plan and repeats it here for the audit rather than the other way round.
 
 ## Naming
 
