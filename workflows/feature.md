@@ -16,7 +16,7 @@ Stages by reference (spec §6.1) — each owns its steps, loop contracts, and ga
 5. [stages/review.md](stages/review.md) — fresh-context findings, verdict, fixes
 6. [stages/delivery.md](stages/delivery.md) — delivery artifact, final validation, delivery gate
 
-A multi-phase run repeats planning → implementation per phase fixed by the phase-1 plan; review and delivery run once, after the final phase. What each risk class skips or batches is encoded once in [overlays.md](overlays.md), never here.
+A multi-phase run repeats planning → implementation per phase, the phase list authored by the phase-1 plan and fixed for the run by `plan-approval`; review and delivery run once, after the final phase. What each risk class skips or batches is encoded once in [overlays.md](overlays.md), never here.
 
 ```yaml
 metadata:

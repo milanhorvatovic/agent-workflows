@@ -6,7 +6,7 @@ run:
   workflow: feature
   risk: R2
   risk_rationale: "single module, no security surface, one phase"
-  protocol: "0.1"
+  protocol: "0.1" # a multi-phase run also carries `phase:` (spec §10)
 steps:
   - id: plan-create
     status: done # outside the revise loop, so it carries no iterations

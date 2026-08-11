@@ -32,6 +32,11 @@
           "minLength": 1,
           "description": "The workflow this run executes, e.g. feature, bugfix, plan (spec section 6.1)."
         },
+        "phase": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The phase the run is executing, where the workflow declares phases (spec sections 6.1 and 10). Absent in a single-phase run. Step records are reused across phases, so this is what says which phase's artifacts a resume materializes and which phase's loop an `iterations` count belongs to."
+        },
         "risk": {
           "enum": [
             "R0",
