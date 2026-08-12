@@ -21,7 +21,7 @@ python3 -m venv .venv && .venv/bin/pip install -r scripts/requirements.txt
 
 CI runs these under the Python version the workflow pins; when a result differs between local and CI, match that interpreter first.
 
-A touched skill also gets the advisory packaging check, one directory per invocation: `npx --yes skills-ref validate skills/<name>`. What each script covers is described in [`scripts/README.md`](scripts/README.md).
+A touched skill also gets the advisory packaging check, one directory per invocation: `npx --yes skills-ref validate skills/<name>`. It is deliberately unpinned, unlike the SHA-pinned actions in the CI workflow: the check is a canary against the current release of the Agent Skills validator, and drift there is part of what it reports. What each script covers is described in [`scripts/README.md`](scripts/README.md).
 
 ## Generated surfaces are edited at their source
 
@@ -51,7 +51,7 @@ Whether a widening is owed at all is spec [§9.1](protocol/spec.md#91-step-and-h
 The natural failure mode of a corrective change is applying the standards it edits to the artifact under correction and never to the correction itself — the findings review then makes cluster in the prose just written, not in the contracts it fixes. Three passes counter that:
 
 - Before review: run everything above against your own diff, and hold your own prose to the rules it states — a change that states a rule can violate it in the stating, and that is exactly what review finds.
-- After every fix: re-check the surfaces that describe the change — the changelog, the commit messages, the PR description — against the change itself. A claim corrected in the contract and left standing in a surface that describes it is the defect the fix itself invites; a grep of the claim across its copies catches it mechanically.
+- After every fix: re-check the surfaces that describe the change — the changelog, the commit messages, the PR description — against the change itself. A claim corrected in the contract and left standing in a surface that describes it is the defect the fix itself invites. A grep of the claim's wording finds the copies that share it; a copy that paraphrases it evades the grep and is re-read, the same semantic bar as above.
 - After review comes back clean: two checks still belong to the author, because they need the final diff. Pair every body touched with its template — the method says what fills each section the template carries, the template has a place for every result the method produces, and a shared template is paired once per consumer, not once per file. Then read each touched file whole: a diff review sees the lines that moved, and neither it nor the pairing sees what a file says together.
 
 ## License
