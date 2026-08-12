@@ -213,6 +213,21 @@ class SetupInitTest(unittest.TestCase):
         self.assertIn("skill awf-alpha: adopted", out)
         self.assertIn(".agents/skills/awf-alpha", self.read_manifest()["entries"])
 
+    def test_directory_digest_sees_empty_subdirectories(self) -> None:
+        skill = self.source / "skills/awf-alpha"
+        before = init.content_digest(skill)
+        (skill / "scratch").mkdir()
+        self.assertNotEqual(before, init.content_digest(skill))
+
+    def test_extra_empty_directory_is_not_adopted_as_identical(self) -> None:
+        shutil.copytree(self.source / "skills/awf-alpha", self.target / ".agents/skills/awf-alpha")
+        (self.target / ".agents/skills/awf-alpha/scratch").mkdir()
+        _, out, _ = self.install()
+        self.assertIn(
+            "skill awf-alpha: skipped — exists but was not installed by setup", out
+        )
+        self.assertTrue((self.target / ".agents/skills/awf-alpha/scratch").is_dir())
+
     def test_empty_file_and_empty_directory_digests_differ(self) -> None:
         empty_file = self.write("empty.md", "")
         empty_dir = self.source / "emptydir"

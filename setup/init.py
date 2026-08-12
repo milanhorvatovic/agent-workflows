@@ -212,14 +212,24 @@ def content_digest(path: Path) -> str:
         digest.update(path.read_bytes())
     else:
         digest.update(b"tree\0")
-        for file in sorted(p for p in path.rglob("*") if p.is_file()):
-            relative = file.relative_to(path)
+        # Directories enter the walk under their own marker: a tree digested
+        # by files alone reads a copy with an extra empty directory as
+        # identical, and adopting it would let a later refresh silently
+        # delete that consumer-owned directory.
+        for entry in sorted(path.rglob("*")):
+            relative = entry.relative_to(path)
             if IGNORED_NAMES & set(relative.parts):
                 continue
-            digest.update(relative.as_posix().encode("utf-8"))
-            digest.update(b"\0")
-            digest.update(file.read_bytes())
-            digest.update(b"\0")
+            if entry.is_dir():
+                digest.update(b"d\0")
+                digest.update(relative.as_posix().encode("utf-8"))
+                digest.update(b"\0")
+            elif entry.is_file():
+                digest.update(b"f\0")
+                digest.update(relative.as_posix().encode("utf-8"))
+                digest.update(b"\0")
+                digest.update(entry.read_bytes())
+                digest.update(b"\0")
     return f"sha256:{digest.hexdigest()}"
 
 
