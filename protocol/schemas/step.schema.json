@@ -49,7 +49,7 @@
               "required": {
                 "type": "boolean",
                 "default": true,
-                "description": "Whether the step blocks when the artifact is missing; false marks the input cacheable (spec section 8.4)."
+                "description": "Whether the step blocks when the artifact is missing; false marks the input cacheable (spec section 8.4), except on a path carrying {P}, which resolves against this run's manifest and so has no earlier run to be cached from (spec section 8.1)."
               }
             }
           }
