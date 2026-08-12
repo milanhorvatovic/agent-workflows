@@ -413,11 +413,58 @@ class SetupInitTest(unittest.TestCase):
                 raise OSError("promotion failed")
             return original_rename(path, target)
 
+        expected = init.content_digest(destination)
         with unittest.mock.patch.object(Path, "rename", failing_promotion):
             with self.assertRaises(OSError):
-                init.write_item(item, destination)
+                init.write_item(item, destination, expected=expected)
         self.assertIn(
             "# awf-alpha", (destination / "SKILL.md").read_text(encoding="utf-8")
+        )
+
+    def test_completed_promotions_survive_a_mid_run_failure(self) -> None:
+        self.install()
+        self.write("skills/awf-alpha/SKILL.md", "---\nname: awf-alpha\n---\n\n# v2\n")
+        self.write("skills/awf-beta/SKILL.md", "---\nname: awf-beta\n---\n\n# v2\n")
+        original = init.write_item
+
+        def dying(item: init.Item, destination: Path, expected: str | None = None) -> None:
+            if item.name == "awf-beta":
+                raise OSError("simulated crash")
+            original(item, destination, expected)
+
+        with unittest.mock.patch.object(init, "write_item", dying):
+            with self.assertRaises(OSError):
+                self.install()
+        self.write("skills/awf-alpha/SKILL.md", "---\nname: awf-alpha\n---\n\n# v3\n")
+        _, out, _ = self.install()
+        self.assertIn("skill awf-alpha: refreshed", out)
+        self.assertNotIn("skill awf-alpha: skipped", out)
+
+    def test_refresh_restores_content_that_changed_after_the_check(self) -> None:
+        self.install()
+        destination = self.target / ".agents/skills/awf-alpha"
+        stale_expected = init.content_digest(destination)
+        (destination / "SKILL.md").write_text("edited in the window\n", encoding="utf-8")
+        item = init.Item(
+            "skill", "awf-alpha", self.source / "skills/awf-alpha", ".agents/skills/awf-alpha"
+        )
+        with self.assertRaises(init.ReplacedContentChanged):
+            init.write_item(item, destination, expected=stale_expected)
+        self.assertEqual(
+            (destination / "SKILL.md").read_text(encoding="utf-8"),
+            "edited in the window\n",
+        )
+
+    def test_install_never_sweeps_content_that_appeared_after_the_check(self) -> None:
+        self.write_target(".agents/skills/awf-alpha/SKILL.md", "appeared late\n")
+        item = init.Item(
+            "skill", "awf-alpha", self.source / "skills/awf-alpha", ".agents/skills/awf-alpha"
+        )
+        with self.assertRaises(init.ReplacedContentChanged):
+            init.write_item(item, self.target / item.target_rel)
+        self.assertEqual(
+            (self.target / ".agents/skills/awf-alpha/SKILL.md").read_text(encoding="utf-8"),
+            "appeared late\n",
         )
 
     def test_deleted_install_is_reinstalled(self) -> None:

@@ -366,7 +366,12 @@ def render_selected(
     ]
 
 
-def write_item(item: Item, destination: Path) -> None:
+class ReplacedContentChanged(Exception):
+    """The content renamed aside for a refresh no longer matches what the
+    overwrite decision was made against."""
+
+
+def write_item(item: Item, destination: Path, expected: str | None = None) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     # Staged beside the destination (same filesystem, so every rename is
     # atomic) and renamed into place only after the copy completed: a run that
@@ -387,7 +392,20 @@ def write_item(item: Item, destination: Path) -> None:
             staged.write_bytes(item.source.read_bytes())
         replaced = Path(staging) / "replaced"
         if destination.exists():
+            if expected is None:
+                raise ReplacedContentChanged(
+                    f"{destination}: appeared since it was checked; left untouched"
+                )
             destination.rename(replaced)
+            # The overwrite decision was made against a digest taken earlier;
+            # an edit landing in that window must not be swept aside on the
+            # strength of a stale comparison. The object actually moved is
+            # re-checked, and on mismatch it goes back and the item fails.
+            if expected is not None and content_digest(replaced) != expected:
+                replaced.rename(destination)
+                raise ReplacedContentChanged(
+                    f"{destination}: changed since it was checked; left untouched"
+                )
         try:
             staged.rename(destination)
         except OSError:
@@ -401,6 +419,7 @@ def apply(
     target: Path,
     entries: dict[str, dict[str, str]],
     source_tag: str,
+    manifest_path: Path,
 ) -> tuple[list[str], Counter[str]]:
     report = []
     outcomes: Counter[str] = Counter()
@@ -420,9 +439,14 @@ def apply(
         entry = entries.get(item.target_rel)
         detail = ""
         if current is None:
-            write_item(item, destination)
-            entries[item.target_rel] = {"source_tag": source_tag, "digest": desired}
-            outcome = "installed"
+            try:
+                write_item(item, destination)
+            except ReplacedContentChanged:
+                outcome = "skipped"
+                detail = "changed while setup was writing; left untouched — re-run to retry"
+            else:
+                entries[item.target_rel] = {"source_tag": source_tag, "digest": desired}
+                outcome = "installed"
         elif current == desired:
             if entry is None:
                 entries[item.target_rel] = {"source_tag": source_tag, "digest": desired}
@@ -448,9 +472,14 @@ def apply(
             outcome = "skipped"
             detail = "exists but was not installed by setup; left untouched"
         elif current == entry.get("digest"):
-            write_item(item, destination)
-            entries[item.target_rel] = {"source_tag": source_tag, "digest": desired}
-            outcome = "refreshed"
+            try:
+                write_item(item, destination, expected=current)
+            except ReplacedContentChanged:
+                outcome = "skipped"
+                detail = "changed while setup was writing; left untouched — re-run to retry"
+            else:
+                entries[item.target_rel] = {"source_tag": source_tag, "digest": desired}
+                outcome = "refreshed"
         else:
             outcome = "skipped"
             detail = (
@@ -460,6 +489,11 @@ def apply(
         outcomes[outcome] += 1
         suffix = f" — {detail}" if detail else ""
         report.append(f"{item.kind} {item.name}: {outcome}{suffix}")
+        # Journaled per item: a run that dies later keeps ownership of every
+        # completed promotion, recoverable from any future source version
+        # rather than only from the one that was mid-install.
+        if entries.get(item.target_rel) != entry:
+            save_manifest(manifest_path, entries)
     return report, outcomes
 
 
@@ -555,7 +589,7 @@ def main(argv: list[str] | None = None, ask: Callable[[str], str] | None = None)
         items = skill_items(root) + render_selected(
             root, always, selection, Path(tmp) / "standards"
         )
-        report, outcomes = apply(items, target, entries, source_tag)
+        report, outcomes = apply(items, target, entries, source_tag, manifest_path)
 
     source_stems = set(always)
     for family, names in variants.items():
