@@ -228,6 +228,25 @@ class SetupInitTest(unittest.TestCase):
         )
         self.assertTrue((self.target / ".agents/standards/empty-note.md").is_dir())
 
+    def test_dangling_symlink_at_a_planned_path_is_not_replaced(self) -> None:
+        standards = self.target / ".agents/standards"
+        standards.mkdir(parents=True)
+        (standards / "coding.md").symlink_to(self.target / "nowhere.md")
+        _, out, _ = self.install()
+        self.assertIn(
+            "standard coding.md: skipped — a symlink sits at this path", out
+        )
+        self.assertTrue((standards / "coding.md").is_symlink())
+
+    def test_stale_path_replaced_by_a_dangling_symlink_stays_recorded(self) -> None:
+        self.install({**CONFIG, "ticket_format": "jira"})
+        stale = self.target / ".agents/standards/ticket-jira.md"
+        stale.unlink()
+        stale.symlink_to(self.target / "nowhere.md")
+        _, out, _ = self.install()
+        self.assertIn("standard ticket-jira.md: stale", out)
+        self.assertIn(".agents/standards/ticket-jira.md", self.read_manifest()["entries"])
+
     def test_symlinked_managed_directory_is_refused(self) -> None:
         outside = self.config_dir / "outside"
         outside.mkdir()
@@ -581,6 +600,21 @@ class SetupInitTest(unittest.TestCase):
                 code, _, err = self.install()
                 self.assertNotEqual(code, 0)
                 self.assertIn("entry 'x' is not an install record", err)
+
+    def test_directory_at_the_manifest_path_fails_before_installing(self) -> None:
+        (self.target / init.MANIFEST_PATH).mkdir(parents=True)
+        code, _, err = self.install()
+        self.assertNotEqual(code, 0)
+        self.assertIn("not a regular file", err)
+        self.assertFalse((self.target / ".agents/skills").exists())
+
+    def test_dangling_symlink_at_the_manifest_path_fails(self) -> None:
+        manifest = self.target / init.MANIFEST_PATH
+        manifest.parent.mkdir(parents=True)
+        manifest.symlink_to(self.target / "nowhere.json")
+        code, _, err = self.install()
+        self.assertNotEqual(code, 0)
+        self.assertIn("not a regular file", err)
 
     def test_manifest_save_leaves_no_staging_residue(self) -> None:
         self.install()

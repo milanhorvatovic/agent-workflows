@@ -224,7 +224,12 @@ def content_digest(path: Path) -> str:
 
 
 def load_manifest(path: Path) -> dict[str, dict[str, str]]:
-    if not path.is_file():
+    # Checked without following links: a directory or symlink here would read
+    # as an absent manifest, and the run would proceed unowned only to fail
+    # late — or replace the foreign link — when the manifest is saved.
+    if path.is_symlink() or (path.exists() and not path.is_file()):
+        fail(f"{path}: not a regular file — refusing to treat it as the install manifest")
+    if not path.exists():
         return {}
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
@@ -347,6 +352,15 @@ def apply(
     outcomes: Counter[str] = Counter()
     for item in items:
         destination = target / item.target_rel
+        # A following exists() reads a dangling symlink as absence, and the
+        # promotion rename would then replace the foreign link in place.
+        if destination.is_symlink():
+            outcomes["skipped"] += 1
+            report.append(
+                f"{item.kind} {item.name}: skipped — a symlink sits at this "
+                "path and setup never writes through links; left untouched"
+            )
+            continue
         desired = content_digest(item.source)
         current = content_digest(destination) if destination.exists() else None
         entry = entries.get(item.target_rel)
@@ -403,7 +417,10 @@ def stale_entries(
     report = []
     planned = {item.target_rel for item in items}
     for rel in sorted(set(entries) - planned):
-        if not (target / rel).exists():
+        occupant = target / rel
+        # A dangling symlink still occupies the path; only true absence drops
+        # the record — everything else stays recorded and reported.
+        if not occupant.exists() and not occupant.is_symlink():
             del entries[rel]
             continue
         if rel.startswith(f"{STANDARDS_DIR}/") and Path(rel).stem in source_stems:
