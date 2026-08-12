@@ -30,7 +30,7 @@ The step runs as the analyst producing a final deliverable: precise, evidence-ba
 - `{run}/grounding.md` (required) — the raw analysis, read in full before writing anything; it is the single source of truth. Files it cites may be opened to verify or sharpen a specific finding, but no new exploration happens here: a gap in the grounding is reported as a gap, never filled ad hoc.
 - Specific questions (optional) — the invoker may name questions the report must answer, such as readiness for a migration or the biggest onboarding risks.
 
-No project standard is an input here. This step judges nothing against a bar: `awf-ground` has already read the project's coding and architecture standards to tell what the project committed to from what its code merely exhibits, and recorded the disagreements as grounding. Reading them again here would make this a review of the codebase rather than a report on it, and a departure from a project's own standard is a finding this step inherits and relays, never one it makes.
+No project standard is an input here. The report judges plenty — what a piece of debt costs, whether the coverage is thin, what the architecture is doing — and it judges against the evidence the grounding carries rather than against a bar of its own: `awf-ground` has already read the project's coding and architecture standards to tell what the project committed to from what its code merely exhibits, and recorded the disagreements as grounding. Reading them again here would make this a review of the codebase rather than a report on it, and a departure from a project's own standard is a finding this step inherits and relays, never one it makes.
 
 ## Method
 
