@@ -681,6 +681,15 @@ class SetupInitTest(unittest.TestCase):
         self.assertNotEqual(code, 0)
         self.assertIn("not a directory", err)
 
+    def test_source_shipping_a_symlink_is_refused_before_installing(self) -> None:
+        (self.source / "skills/awf-alpha/references/link.md").symlink_to(
+            self.source / "skills/awf-alpha/SKILL.md"
+        )
+        code, _, err = self.install()
+        self.assertNotEqual(code, 0)
+        self.assertIn("the source ships a symlink", err)
+        self.assertFalse(self.target.exists())
+
     def test_missing_skills_fails(self) -> None:
         shutil.rmtree(self.source / "skills")
         code, _, err = self.install()

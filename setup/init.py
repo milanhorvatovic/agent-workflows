@@ -284,6 +284,20 @@ def save_manifest(path: Path, entries: dict[str, dict[str, str]]) -> None:
     os.replace(staged, path)
 
 
+def guard_source_links(items: list[Item]) -> None:
+    """Refuse a source that ships a symlink, before anything is written: the
+    digest records links as links while the staging copy would dereference
+    them, so an installed tree would immediately read as locally modified —
+    and installing links into a consumer project is not a promise setup
+    makes. No skill ships one; if one ever does, this makes it a decision."""
+    for item in items:
+        if not item.source.is_dir():
+            continue
+        for entry in item.source.rglob("*"):
+            if entry.is_symlink():
+                fail(f"{entry}: the source ships a symlink — setup installs none")
+
+
 def guard_managed_paths(target: Path) -> None:
     """Refuse to install through a symlinked managed directory: a link
     pointing outside the project would carry writes — including refreshes of
@@ -506,6 +520,7 @@ def main(argv: list[str] | None = None, ask: Callable[[str], str] | None = None)
         items = skill_items(root) + render_selected(
             root, always, selection, Path(tmp) / "standards"
         )
+        guard_source_links(items)
         report, outcomes = apply(items, target, entries, source_tag)
 
     source_stems = set(always)
