@@ -430,6 +430,9 @@ def apply(
                 # refresh and the manifest save leaves exactly this state, and
                 # keeping the stale digest would misread the unmodified
                 # install as locally modified on the next source change.
+                # Content byte-identical to the source is the source's by the
+                # same rule adoption applies, whichever hand wrote it —
+                # ownership here is content-addressed, deliberately.
                 if entry.get("digest") != desired:
                     entries[item.target_rel] = {
                         "source_tag": source_tag,
