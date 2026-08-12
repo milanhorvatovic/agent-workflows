@@ -435,6 +435,31 @@ class ValidateConformanceTest(unittest.TestCase):
         )
         self.assert_problem('unknown placeholder "{phase}"')
 
+    def test_the_completed_phase_placeholder_is_known(self) -> None:
+        """`{P}` joins `{N}` in the vocabulary: one artifact per completed phase,
+        for the stages that run after the last one and for a step reading what
+        the phases behind it bound."""
+        self.write(
+            "workflows/stages/build.md",
+            frontmatter("build")
+            + "\n"
+            + STEP_BLOCK.replace("{run}/brief.md", "{run}/phase-{P}-impl-log.md"),
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_phase_set_output_is_reported(self) -> None:
+        """A step produces one artifact, so `{P}` — one per completed phase —
+        cannot name an output. The two tokens differ by a character in otherwise
+        identical paths, which is exactly when a check earns its place."""
+        self.write(
+            "workflows/stages/build.md",
+            frontmatter("build")
+            + "\n"
+            + STEP_BLOCK.replace('artifact: "{run}/grounding.md"', 'artifact: "{run}/phase-{P}-x.md"'),
+        )
+        self.assert_problem("declares {P}, which resolves to one artifact per completed phase")
+
     def test_artifacts_placeholder_rejected_with_spec_pointer(self) -> None:
         block = STEP_BLOCK.replace("{run}/brief.md", "{artifacts}/runs/x/brief.md")
         self.write("workflows/stages/build.md", frontmatter("build") + "\n" + block)

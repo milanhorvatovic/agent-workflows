@@ -77,7 +77,7 @@ FIXTURE_DIR = SCHEMA_DIR / "examples"
 STRUCTURES = ("step", "loop", "trigger")  # metadata.workflow structures, one schema each
 RUN_STATE = "run-state"
 
-PLACEHOLDERS = {"run", "N", "machine-checks"}  # spec §8.1 and §9.2
+PLACEHOLDERS = {"run", "N", "P", "machine-checks"}  # spec §8.1 and §9.2
 # {token} occurrences; the lookbehind skips ${...} shell expansions in commands.
 PLACEHOLDER = re.compile(r"(?<!\$)\{([^{}]*)\}")
 
@@ -215,6 +215,27 @@ def placeholder_problems(at: str, workflow: Any) -> list[str]:
     return problems
 
 
+def phase_set_output_problems(at: str, workflow: Any) -> list[str]:
+    """Spec §8.1: a step MUST NOT declare `{P}` in its output.
+
+    `{P}` resolves to one artifact per completed phase, and a step produces one
+    artifact (§9.1) — a phase-set of outputs is a stage that repeats, not a step
+    that fans out. Checked because the two tokens differ by one character in
+    paths that are otherwise identical, and an output written with the input's
+    token would declare something no step can produce.
+    """
+    if not isinstance(workflow, dict) or not isinstance(workflow.get("step"), dict):
+        return []
+    artifact = output_artifact(workflow["step"])
+    if isinstance(artifact, str) and "{P}" in artifact:
+        return [
+            f"{at}: output {artifact} declares {{P}}, which resolves to one artifact "
+            f"per completed phase — a step produces one (spec §8.1, §9.1); a stage "
+            f"that repeats per phase names the phase it is executing with {{N}}"
+        ]
+    return []
+
+
 def declared_template(workflow: dict) -> str | None:
     step = workflow.get("step")
     output = step.get("output") if isinstance(step, dict) else None
@@ -248,6 +269,7 @@ def validate_workflow_block(
     for structure in declared:
         problems += schema_problems(block.at, structure, validators[structure], workflow)
     problems += placeholder_problems(block.at, workflow)
+    problems += phase_set_output_problems(block.at, workflow)
     template = declared_template(workflow)
     if template_dir is not None and template is not None:
         problems += template_problems(block.at, template, template_dir)

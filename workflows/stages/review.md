@@ -7,7 +7,7 @@ description: Fresh-context review of the implemented change — reviewer finding
 
 Independent scrutiny of the implemented change. Reviewer and validator always run with fresh context (spec §4) — fresh eyes are the point. The reviewer reports findings and renders no verdict; the validator renders the verdict; the arbiter resolves disagreement between them. The loop contract routes the stage (spec §9.2).
 
-This stage runs **once, after the final phase** ([feature](../feature.md)), so it has no current phase. `{N}` in the step blocks below therefore ranges over every completed phase rather than naming one: a multi-phase run has a plan and a log per phase, the change under review is their sum, and every one is read — the same treatment `deliver-validate` states for the other stage that runs after the last phase. The loop's declared scope is the union of what those plans declare. For the same reason nothing this stage writes is phase-indexed: `review-fix` records its iterations in the run-scoped `{run}/review-fixes.md`, alongside the four stage outputs that were already run-scoped.
+This stage runs **once, after the final phase** ([feature](../feature.md)), so it has no current phase to name. Its step blocks read the phases behind it with `{P}` (spec §8.1), which resolves to one artifact per completed phase: a multi-phase run has a plan and a log per phase, the change under review is their sum, and every one is read — the same token the other after-the-last-phase stage uses. The loop's declared scope is the union of what those plans declare. For the same reason nothing this stage writes is phase-indexed: `review-fix` records its iterations in the run-scoped `{run}/review-fixes.md`, alongside the four stage outputs that were already run-scoped.
 
 ## Steps
 
@@ -22,9 +22,9 @@ metadata:
     step:
       role: reviewer
       inputs:
-        - artifact: "{run}/phase-{N}-plan.md"
+        - artifact: "{run}/phase-{P}-plan.md"
           required: true
-        - artifact: "{run}/phase-{N}-impl-log.md"
+        - artifact: "{run}/phase-{P}-impl-log.md"
           required: true
         - artifact: "{run}/review-fixes.md"
           required: false
@@ -43,7 +43,7 @@ metadata:
     step:
       role: reviewer
       inputs:
-        - artifact: "{run}/phase-{N}-impl-log.md"
+        - artifact: "{run}/phase-{P}-impl-log.md"
           required: true
         - artifact: "{run}/brief.md"
           required: true
@@ -66,9 +66,9 @@ metadata:
           required: true
         - artifact: "{run}/security-findings.md"
           required: false
-        - artifact: "{run}/phase-{N}-impl-log.md"
+        - artifact: "{run}/phase-{P}-impl-log.md"
           required: true
-        - artifact: "{run}/phase-{N}-plan.md"
+        - artifact: "{run}/phase-{P}-plan.md"
           required: true
         - artifact: "{run}/review-fixes.md"
           required: false
@@ -116,7 +116,7 @@ metadata:
           required: false
         - artifact: "{run}/review-validation.md"
           required: true
-        - artifact: "{run}/phase-{N}-plan.md"
+        - artifact: "{run}/phase-{P}-plan.md"
           required: true
       output:
         artifact: "{run}/review-fixes.md"
@@ -140,7 +140,7 @@ metadata:
         signal: no-artifact-delta
         action: escalate
       scope:
-        declared_from: "{run}/phase-{N}-plan.md"
+        declared_from: "{run}/phase-{P}-plan.md"
         on_drift: flag
 ```
 

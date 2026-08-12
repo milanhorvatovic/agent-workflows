@@ -16,7 +16,7 @@ metadata:
           required: false
         - artifact: "{run}/review-validation.md"
           required: true
-        - artifact: "{run}/phase-{N}-plan.md"
+        - artifact: "{run}/phase-{P}-plan.md"
           required: true
       output:
         artifact: "{run}/review-fixes.md"
@@ -37,7 +37,7 @@ The step runs as the implementer: minimal, focused changes that fix what the fin
 - `{run}/review-findings.md` (required) — the code review's findings: part of the working list when no resolution exists, the traceability behind it when one does.
 - `{run}/security-findings.md` (optional) — the security pass's findings, where that step ran: the rest of the working list when no resolution folded them in. Usable only when its `Run` and `Iteration` headers both match this pass: the path is run-scoped while the security step is conditional, so a skipped iteration leaves the previous one's report in place, and being optional it may also be cache-satisfied from another run entirely (spec §8.4). A report failing either check is treated as absent, the same guard the arbiter's resolution carries.
 - `{run}/review-validation.md` (required) — the verdict and the validator's own `F-…` findings, which are part of the working list whenever no current-iteration resolution folded them in: the verdict can fail on what both passes missed, and a list blind to those findings would iterate to the cap without ever clearing the one that blocked. Required rather than optional for two reasons — `review-validate` runs immediately before this step in every class where the review stage runs at all, so the artifact always exists; and an optional input MAY be satisfied from an earlier run (spec §8.4), which would let a stale verdict stand in for this iteration's and recreate exactly the blindness this input closes.
-- `{run}/phase-{N}-plan.md` (required) — the file-scope declaration every fix is bound to (spec §9.2). The review stage runs once after the final phase, so `{N}` ranges over every completed phase: the change under review is the sum of them, and the scope binding this step is the union of what their plans declare. A fix inside phase 2's scope is in scope even when phase 4 was the last one planned.
+- `{run}/phase-{P}-plan.md` (required) — the file-scope declaration every fix is bound to (spec §9.2). The review stage runs once after the final phase, so the path takes `{P}`, one artifact per completed phase (spec §8.1): the change under review is the sum of them, and the scope binding this step is the union of what their plans declare. A fix inside phase 2's scope is in scope even when phase 4 was the last one planned.
 - The project's coding and testing standards, where they exist — the same rules the implementation followed, applied to every fix and every test a finding forces. A fix written outside them trades one finding for another on the next iteration.
 
 ## Method

@@ -16,6 +16,8 @@ metadata:
           required: false
         - artifact: "{run}/phase-1-plan.md"
           required: false
+        - artifact: "{run}/phase-{P}-impl-validation.md"
+          required: false
       output:
         artifact: "{run}/phase-{N}-plan.md"
         template: references/plan.template.md
@@ -39,6 +41,7 @@ The step runs as the planner: decompose into ordered, verifiable work, sequence 
 - `{run}/grounding.md` (optional, cacheable) — the verified codebase analysis; its constraints-on-the-solution-space section is the planning input. When absent, read the relevant code directly before planning — a plan referencing unverified paths or patterns will fail validation.
 - `{run}/ideation.md` (optional) — where ideation ran, the recommended approach is the plan's starting point, not a suggestion to re-litigate; the plan turns it into steps.
 - `{run}/phase-1-plan.md` (optional) — the fixed phase list, for every phase after the first: what this phase owns, what earlier phases already delivered, and what later ones will. Optional because at `{N}` 1 it does not exist — it is this step's own output — and not because it is dispensable afterwards: planning phase 2 without it means inventing a decomposition the run already fixed, so where `{N}` is greater than 1 and it is absent, stop and escalate rather than plan around the gap. Never satisfied from another run — spec §8.4's cache reaches optional inputs, but a decomposition made for a different brief is the wrong list — so check the plan's `Run` header against this run and stop if it disagrees.
+- `{run}/phase-{P}-impl-validation.md` (optional) — what every phase already built binds for this one: the **Cross-phase impact** section each implementation validation fills, naming a rollout order, a migration step, a compatibility guarantee. Those are the constraints that leave no trace in the tree this step otherwise reads, so without the declaration they reach the planner only where a human remembers to carry them. `{P}` rather than `{N}` for the reason spec §8.1 gives: the phase being planned has produced no implementation yet, and a binding set in phase 1 can still govern phase 4. Optional because phase 1 has no phase behind it, where empty is the ordinary state rather than a missing input. §8.4's cache reaches optional inputs, so check each report's `Run` header against this run — another run's phase 2 bound another run's phase 3.
 - The project's coding, architecture, and testing standards, where they exist — the rules the steps, their test requirements, and the phase's testing approach must conform to, so the implementer inherits them instead of rediscovering them mid-work. A step that must depart from a standard says so and why; a plan that contradicts one silently is a `plan-validate` finding.
 
 ## Method

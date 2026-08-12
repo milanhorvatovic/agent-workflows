@@ -32,6 +32,8 @@ metadata:
           required: false
         - artifact: "{run}/phase-1-plan.md"
           required: false
+        - artifact: "{run}/phase-{P}-impl-validation.md"
+          required: false
       output:
         artifact: "{run}/phase-{N}-plan.md"
       on:
@@ -57,6 +59,8 @@ metadata:
           required: true
         - artifact: "{run}/phase-1-plan.md"
           required: true
+        - artifact: "{run}/phase-{P}-impl-validation.md"
+          required: false
       output:
         artifact: "{run}/phase-{N}-plan-validation.md"
 ```
