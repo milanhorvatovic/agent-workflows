@@ -260,6 +260,16 @@ class SetupInitTest(unittest.TestCase):
         self.assertIn("skill awf-alpha: skipped — locally modified since install", out)
         self.assertTrue(skill_file.is_symlink())
 
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "mkfifo not available")
+    def test_special_file_keeps_a_copy_from_reading_as_identical(self) -> None:
+        shutil.copytree(self.source / "skills/awf-alpha", self.target / ".agents/skills/awf-alpha")
+        os.mkfifo(self.target / ".agents/skills/awf-alpha/pipe")
+        _, out, _ = self.install()
+        self.assertIn(
+            "skill awf-alpha: skipped — exists but was not installed by setup", out
+        )
+        self.assertTrue((self.target / ".agents/skills/awf-alpha/pipe").exists())
+
     def test_empty_file_and_empty_directory_digests_differ(self) -> None:
         empty_file = self.write("empty.md", "")
         empty_dir = self.source / "emptydir"

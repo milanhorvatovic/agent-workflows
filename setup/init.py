@@ -243,6 +243,11 @@ def content_digest(path: Path) -> str:
                 payload = entry.read_bytes()
                 digest.update(b"f\0" + name + b"\0")
                 digest.update(str(len(payload)).encode("ascii") + b"\0" + payload)
+            else:
+                # FIFOs, sockets, devices: hashed by name under their own
+                # marker, so a tree carrying one never reads as identical to
+                # a source, which ships only files and directories.
+                digest.update(b"o\0" + name + b"\0")
     return f"sha256:{digest.hexdigest()}"
 
 
