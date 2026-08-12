@@ -406,6 +406,12 @@ def write_item(item: Item, destination: Path, expected: str | None = None) -> No
                 raise ReplacedContentChanged(
                     f"{destination}: changed since it was checked; left untouched"
                 )
+        # The promotion is a plain rename, which on POSIX replaces a
+        # destination that appeared in the syscall-wide window since the
+        # checks above. That residue is deliberate: no-replace rename does
+        # not exist portably for directories, and content appearing there
+        # means a concurrent process is mutating the managed tree during an
+        # install — outside the single-writer model an installer assumes.
         try:
             staged.rename(destination)
         except OSError:
