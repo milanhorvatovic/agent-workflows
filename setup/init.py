@@ -284,16 +284,23 @@ def save_manifest(path: Path, entries: dict[str, dict[str, str]]) -> None:
     os.replace(staged, path)
 
 
-def guard_source_links(items: list[Item]) -> None:
-    """Refuse a source that ships a symlink, before anything is written: the
-    digest records links as links while the staging copy would dereference
-    them, so an installed tree would immediately read as locally modified —
-    and installing links into a consumer project is not a promise setup
-    makes. No skill ships one; if one ever does, this makes it a decision."""
-    for item in items:
-        if not item.source.is_dir():
+def guard_source_tree(root: Path) -> None:
+    """Refuse a source that ships a symlink, before anything is read or
+    written: the digest records links as links while the staging copy would
+    dereference them, so an installed tree would immediately read as locally
+    modified — and installing links into a consumer project is not a promise
+    setup makes. Checked at the containers, the packages, the standards
+    sources, and every descendant, because a link at the top levels is
+    invisible to a per-item walk and rendering would launder a linked
+    standard into a regular temporary file before any later guard saw it.
+    No skill ships one; if one ever does, this makes it a decision."""
+    for container in ("skills", "standards"):
+        base = root / container
+        if base.is_symlink():
+            fail(f"{base}: the source ships a symlink — setup installs none")
+        if not base.is_dir():
             continue
-        for entry in item.source.rglob("*"):
+        for entry in base.rglob("*"):
             if entry.is_symlink():
                 fail(f"{entry}: the source ships a symlink — setup installs none")
 
@@ -501,6 +508,7 @@ def main(argv: list[str] | None = None, ask: Callable[[str], str] | None = None)
     if target == root or root in target.parents:
         fail(f"{target}: target is inside the framework repository at {root}")
     guard_managed_paths(target)
+    guard_source_tree(root)
 
     always, variants = discover_standards(root)
     interactive = args.config is None
@@ -520,7 +528,6 @@ def main(argv: list[str] | None = None, ask: Callable[[str], str] | None = None)
         items = skill_items(root) + render_selected(
             root, always, selection, Path(tmp) / "standards"
         )
-        guard_source_links(items)
         report, outcomes = apply(items, target, entries, source_tag)
 
     source_stems = set(always)

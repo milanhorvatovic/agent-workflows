@@ -690,6 +690,31 @@ class SetupInitTest(unittest.TestCase):
         self.assertIn("the source ships a symlink", err)
         self.assertFalse(self.target.exists())
 
+    def test_symlinked_skill_package_is_refused(self) -> None:
+        aside = self.source / "real-alpha"
+        shutil.move(str(self.source / "skills/awf-alpha"), str(aside))
+        (self.source / "skills/awf-alpha").symlink_to(aside)
+        code, _, err = self.install()
+        self.assertNotEqual(code, 0)
+        self.assertIn("the source ships a symlink", err)
+
+    def test_symlinked_standard_source_is_refused(self) -> None:
+        aside = self.source / "real-coding.md"
+        shutil.move(str(self.source / "standards/coding.md"), str(aside))
+        (self.source / "standards/coding.md").symlink_to(aside)
+        code, _, err = self.install()
+        self.assertNotEqual(code, 0)
+        self.assertIn("the source ships a symlink", err)
+        self.assertFalse(self.target.exists())
+
+    def test_symlinked_standards_container_is_refused(self) -> None:
+        aside = self.source / "real-standards"
+        shutil.move(str(self.source / "standards"), str(aside))
+        (self.source / "standards").symlink_to(aside)
+        code, _, err = self.install()
+        self.assertNotEqual(code, 0)
+        self.assertIn("the source ships a symlink", err)
+
     def test_missing_skills_fails(self) -> None:
         shutil.rmtree(self.source / "skills")
         code, _, err = self.install()
