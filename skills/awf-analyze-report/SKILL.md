@@ -48,4 +48,6 @@ Close with the **Quick Reference**: key files, entry points, configuration, and 
 
 Write the report to `{run}/report.md`, scaffolded from `references/report.template.md` (spec §8.3 — the executor scaffolds it by script; load the template before structuring the report, since it fixes the section order and the quick-reference tables; fill every placeholder, omitting only the sections it marks conditional).
 
+Its **Scope** is the grounding's rather than the codebase's: general where the analysis was general, and naming the focus areas where the brief pointed at particular parts of the system, since a focused report that reads as a survey overstates what it covers.
+
 The report is self-contained — fully understandable without the grounding — and actionable: readers know what to do after reading it.
