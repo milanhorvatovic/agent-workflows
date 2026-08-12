@@ -43,7 +43,7 @@ Every standard outside the three format families (`commit`, `pr`, `ticket`) alwa
 
 Setup never silently overwrites what it did not install, and never overwrites what the consumer changed:
 
-- A path the manifest does not record is skipped and reported; a pre-existing directory byte-identical to the source is adopted into the manifest without a write.
+- A path the manifest does not record is skipped and reported; a pre-existing path — a skill directory or a rendered standard — byte-identical to what setup would write is adopted into the manifest without a write.
 - A recorded install the consumer modified is skipped and reported — remove it and re-run to reinstall. Rendered standards are the project's to customize (see [`standards/README.md`](../standards/README.md)), and a customized standard is precisely a modified install, so upgrades report it rather than clobber it.
 - A recorded install left unmodified is refreshed when the source changed, and reported up to date when it did not — a re-run against an unchanged source changes nothing.
 - A recorded install the current run no longer ships or selects is reported stale, never deleted.

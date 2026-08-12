@@ -516,6 +516,14 @@ def main(argv: list[str] | None = None, ask: Callable[[str], str] | None = None)
     # the disk fills; installing into the framework checkout is never right.
     if target == root or root in target.parents:
         fail(f"{target}: target is inside the framework repository at {root}")
+    # A tree that ships its own installer is installed by that installer, so
+    # the renderer and placeholder vocabulary always match the standards they
+    # render; --root stays for trees that carry only the data.
+    if root != DEFAULT_ROOT and (root / "setup" / "init.py").is_file():
+        fail(
+            f"{root}: ships its own installer — run its setup/init.py instead, "
+            "so its renderer matches its standards"
+        )
     guard_managed_paths(target)
     guard_source_tree(root)
 

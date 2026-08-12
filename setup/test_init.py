@@ -316,6 +316,12 @@ class SetupInitTest(unittest.TestCase):
         self.assertNotEqual(code, 0)
         self.assertIn("inside the framework repository", err)
 
+    def test_root_shipping_its_own_installer_is_refused(self) -> None:
+        self.write("setup/init.py", "# another checkout's installer\n")
+        code, _, err = self.install()
+        self.assertNotEqual(code, 0)
+        self.assertIn("run its setup/init.py instead", err)
+
     def test_identical_foreign_standard_is_adopted(self) -> None:
         self.write_target(
             ".agents/standards/coding.md",
