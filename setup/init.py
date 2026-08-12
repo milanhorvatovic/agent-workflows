@@ -1,0 +1,449 @@
+#!/usr/bin/env python3
+"""Install the framework into a consuming project.
+
+Copies every skill package from skills/ into the project's .agents/skills/
+(the canonical cross-client path) and renders the project's standards from
+the standards/ single source into .agents/standards/ per the consumer's
+answers — collected at the prompt, or supplied as a JSON config for
+non-interactive/CI onboarding.
+
+Re-runs are idempotent and never silently overwrite: an install manifest
+(.agents/awf-install-manifest.json) records every installed path with a
+content digest and the framework source tag, so a re-run refreshes what it
+installed and the consumer left unmodified, and reports — without touching —
+what the consumer changed or what setup never installed.
+
+Usage:
+    python3 setup/init.py --target /path/to/project
+        # interactive: answers collected at the prompt
+    python3 setup/init.py --target /path/to/project --config setup.json
+        # non-interactive: answers supplied as JSON
+"""
+
+from __future__ import annotations
+
+import argparse
+import contextlib
+import hashlib
+import io
+import json
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from collections import Counter
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Callable, NoReturn
+
+# Repository scripts are plain files, not a package; the path entry makes the
+# placeholder vocabulary and rendering machinery in scripts/ importable here.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+import render_standards  # noqa: E402
+
+DEFAULT_ROOT = Path(__file__).resolve().parent.parent
+
+SKILLS_DIR = ".agents/skills"
+STANDARDS_DIR = ".agents/standards"
+MANIFEST_PATH = ".agents/awf-install-manifest.json"
+MANIFEST_VERSION = 1
+
+# Artifact-format families: a project picks at most one variant per family,
+# while every standard outside these families always renders. A stem in
+# standards/ encodes its family as the prefix before the first dash.
+FORMAT_FAMILIES = ("commit", "pr", "ticket")
+NO_VARIANT = "none"
+
+# Junk the copy and the digest both skip, so checkouts on different platforms
+# agree about what an installed directory contains.
+IGNORED_NAMES = {"__pycache__", ".DS_Store"}
+
+
+def fail(message: str) -> NoReturn:
+    sys.exit(f"setup: {message}")
+
+
+@dataclass(frozen=True)
+class Selection:
+    """The consumer's answers: placeholder values plus one chosen variant per
+    format family (families left out render nothing)."""
+
+    placeholders: dict[str, str]
+    formats: dict[str, str]
+
+
+@dataclass(frozen=True)
+class Item:
+    """One installable unit: a skill directory or a rendered standard file."""
+
+    kind: str
+    name: str
+    source: Path
+    target_rel: str
+
+
+def discover_standards(root: Path) -> tuple[list[str], dict[str, list[str]]]:
+    """Split the standards/ stems into the always-rendered set and the
+    per-family variant choices."""
+    stems = [path.stem for path in render_standards.source_paths(root)]
+    prefixes = tuple(f"{family}-" for family in FORMAT_FAMILIES)
+    always = sorted(stem for stem in stems if not stem.startswith(prefixes))
+    variants = {
+        family: sorted(
+            stem[len(family) + 1 :]
+            for stem in stems
+            if stem.startswith(f"{family}-")
+        )
+        for family in FORMAT_FAMILIES
+    }
+    return always, variants
+
+
+def load_setup_config(path: Path, variants: dict[str, list[str]]) -> Selection:
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as error:
+        fail(f"{path}: {error.strerror or error}")
+    except json.JSONDecodeError as error:
+        fail(f"{path}: invalid JSON — {error}")
+    if not isinstance(raw, dict):
+        fail(f"{path}: config must be a JSON object")
+    known = {"placeholders", *(f"{family}_format" for family in FORMAT_FAMILIES)}
+    unknown = sorted(set(raw) - known)
+    if unknown:
+        fail(
+            f"{path}: unknown key(s): {', '.join(unknown)} "
+            f"(known: {', '.join(sorted(known))})"
+        )
+    if "placeholders" not in raw:
+        fail(f'{path}: missing "placeholders" object')
+    placeholders = render_standards.validate_config(
+        raw["placeholders"], f"{path}: placeholders"
+    )
+    formats = {}
+    for family in FORMAT_FAMILIES:
+        value = raw.get(f"{family}_format", NO_VARIANT)
+        if not isinstance(value, str):
+            fail(f'{path}: "{family}_format" must be a string')
+        if value == NO_VARIANT:
+            continue
+        if value not in variants[family]:
+            available = ", ".join(variants[family]) or "(none shipped)"
+            fail(
+                f'{path}: unknown {family} format "{value}" '
+                f"(available: {available}, or {NO_VARIANT})"
+            )
+        formats[family] = value
+    return Selection(placeholders, formats)
+
+
+def interview(
+    variants: dict[str, list[str]], default_project: str, ask: Callable[[str], str]
+) -> Selection:
+    placeholders = {}
+    # The vocabulary's own order puts PROJECT_NAME — the one answer with a
+    # default — first, which is also the natural interview order.
+    for name, meaning in render_standards.PLACEHOLDERS.items():
+        default = default_project if name == "PROJECT_NAME" else ""
+        suffix = f" [{default}]" if default else ""
+        answer = ""
+        while not answer:
+            answer = ask(f"{name} — {meaning}{suffix}: ").strip() or default
+        placeholders[name] = answer
+    formats = {}
+    for family in FORMAT_FAMILIES:
+        options = variants[family]
+        if not options:
+            continue
+        prompt = f"{family} format ({', '.join(options)}) [{NO_VARIANT}]: "
+        while True:
+            answer = ask(prompt).strip() or NO_VARIANT
+            if answer == NO_VARIANT or answer in options:
+                break
+        if answer != NO_VARIANT:
+            formats[family] = answer
+    return Selection(placeholders, formats)
+
+
+def replay_config(selection: Selection) -> str:
+    """The JSON that repeats an interactive run non-interactively."""
+    raw: dict[str, object] = {"placeholders": selection.placeholders}
+    for family, variant in selection.formats.items():
+        raw[f"{family}_format"] = variant
+    return json.dumps(raw, indent=2)
+
+
+def resolve_source_tag(root: Path, override: str | None) -> str:
+    if override:
+        return override
+    # A vendored copy can sit inside some other project's git repository, and
+    # describing that repository would record the wrong provenance — so git is
+    # asked only when the framework root is itself a checkout.
+    if (root / ".git").exists():
+        try:
+            described = subprocess.run(
+                ["git", "-C", str(root), "describe", "--tags", "--always", "--dirty"],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+        except (OSError, subprocess.CalledProcessError):
+            described = ""
+        if described:
+            return described
+    changelog = root / "CHANGELOG.md"
+    if changelog.is_file():
+        for line in changelog.read_text(encoding="utf-8").splitlines():
+            match = re.match(r"^## \[(\d+\.\d+\.\d+)\]", line)
+            if match:
+                return match.group(1)
+    return "unknown"
+
+
+def content_digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    if path.is_file():
+        digest.update(path.read_bytes())
+    else:
+        for file in sorted(p for p in path.rglob("*") if p.is_file()):
+            relative = file.relative_to(path)
+            if IGNORED_NAMES & set(relative.parts):
+                continue
+            digest.update(relative.as_posix().encode("utf-8"))
+            digest.update(b"\0")
+            digest.update(file.read_bytes())
+            digest.update(b"\0")
+    return f"sha256:{digest.hexdigest()}"
+
+
+def load_manifest(path: Path) -> dict[str, dict[str, str]]:
+    if not path.is_file():
+        return {}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as error:
+        fail(f"{path}: {error.strerror or error}")
+    except json.JSONDecodeError as error:
+        fail(f"{path}: invalid JSON — {error}")
+    if not isinstance(raw, dict) or not isinstance(raw.get("entries"), dict):
+        fail(f"{path}: not an install manifest")
+    if raw.get("manifest_version") != MANIFEST_VERSION:
+        fail(
+            f"{path}: manifest_version {raw.get('manifest_version')!r} is not "
+            f"{MANIFEST_VERSION} — written by an incompatible setup version"
+        )
+    return raw["entries"]
+
+
+def save_manifest(path: Path, entries: dict[str, dict[str, str]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "manifest_version": MANIFEST_VERSION,
+        "entries": {rel: entries[rel] for rel in sorted(entries)},
+    }
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def skill_items(root: Path) -> list[Item]:
+    skills = root / "skills"
+    directories = (
+        sorted(p for p in skills.iterdir() if p.is_dir() and (p / "SKILL.md").is_file())
+        if skills.is_dir()
+        else []
+    )
+    if not directories:
+        fail(f"no skill packages under {skills} — is --root a framework checkout?")
+    return [
+        Item("skill", path.name, path, f"{SKILLS_DIR}/{path.name}")
+        for path in directories
+    ]
+
+
+def render_selected(
+    root: Path, always: list[str], selection: Selection, out: Path
+) -> list[Item]:
+    names = always + [
+        f"{family}-{variant}" for family, variant in selection.formats.items()
+    ]
+    # render() narrates every file it writes; those paths name a temporary
+    # directory here, so the narration is suppressed and this installer's own
+    # report speaks for each standard instead. Failures still exit loudly.
+    with contextlib.redirect_stdout(io.StringIO()):
+        render_standards.render(root, selection.placeholders, out, sorted(names))
+    return [
+        Item("standard", path.name, path, f"{STANDARDS_DIR}/{path.name}")
+        for path in sorted(out.glob("*.md"))
+    ]
+
+
+def write_item(item: Item, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    # Staged beside the destination (same filesystem, so the rename is atomic)
+    # and renamed into place only after the copy completed: a run that dies
+    # mid-copy must not leave a half-written install at the real name, which
+    # later runs would permanently skip as foreign. A refresh removes the old
+    # directory only after the staged copy is whole — the old content is
+    # replaced wholesale so deletions in the source arrive too — and a crash
+    # in that last gap leaves the destination absent, which the next run
+    # simply reinstalls.
+    with tempfile.TemporaryDirectory(dir=destination.parent) as staging:
+        staged = Path(staging) / item.name
+        if item.source.is_dir():
+            shutil.copytree(
+                item.source, staged, ignore=shutil.ignore_patterns(*IGNORED_NAMES)
+            )
+        else:
+            staged.write_bytes(item.source.read_bytes())
+        if destination.is_dir():
+            shutil.rmtree(destination)
+        elif destination.exists():
+            destination.unlink()
+        staged.rename(destination)
+
+
+def apply(
+    items: list[Item],
+    target: Path,
+    entries: dict[str, dict[str, str]],
+    source_tag: str,
+) -> tuple[list[str], Counter[str]]:
+    report = []
+    outcomes: Counter[str] = Counter()
+    for item in items:
+        destination = target / item.target_rel
+        desired = content_digest(item.source)
+        current = content_digest(destination) if destination.exists() else None
+        entry = entries.get(item.target_rel)
+        detail = ""
+        if current is None:
+            write_item(item, destination)
+            entries[item.target_rel] = {"source_tag": source_tag, "digest": desired}
+            outcome = "installed"
+        elif current == desired:
+            if entry is None:
+                entries[item.target_rel] = {"source_tag": source_tag, "digest": desired}
+                outcome = "adopted"
+                detail = "already identical to this source; recorded in the manifest"
+            else:
+                # The entry keeps its install-time tag: the content still is
+                # that install's, and leaving it untouched keeps a re-run
+                # byte-idempotent even when only the source's tag moved.
+                outcome = "up to date"
+        elif entry is None:
+            outcome = "skipped"
+            detail = "exists but was not installed by setup; left untouched"
+        elif current == entry.get("digest"):
+            write_item(item, destination)
+            entries[item.target_rel] = {"source_tag": source_tag, "digest": desired}
+            outcome = "refreshed"
+        else:
+            outcome = "skipped"
+            detail = (
+                "locally modified since install; left untouched "
+                "(remove it and re-run to reinstall)"
+            )
+        outcomes[outcome] += 1
+        suffix = f" — {detail}" if detail else ""
+        report.append(f"{item.kind} {item.name}: {outcome}{suffix}")
+    return report, outcomes
+
+
+def stale_entries(
+    items: list[Item],
+    target: Path,
+    entries: dict[str, dict[str, str]],
+    source_stems: set[str],
+) -> list[str]:
+    """Manifest entries this run did not plan: report the ones still on disk,
+    drop the ones the consumer already removed."""
+    report = []
+    planned = {item.target_rel for item in items}
+    for rel in sorted(set(entries) - planned):
+        if not (target / rel).exists():
+            del entries[rel]
+            continue
+        if rel.startswith(f"{STANDARDS_DIR}/") and Path(rel).stem in source_stems:
+            reason = "not selected by this run"
+        else:
+            reason = "no longer shipped by this source"
+        kind = "skill" if rel.startswith(f"{SKILLS_DIR}/") else "standard"
+        report.append(
+            f"{kind} {Path(rel).name}: stale — installed by an earlier run but "
+            f"{reason}; remove manually if unwanted"
+        )
+    return report
+
+
+def main(argv: list[str] | None = None, ask: Callable[[str], str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument(
+        "--target",
+        type=Path,
+        required=True,
+        help="consuming project directory to install into",
+    )
+    parser.add_argument(
+        "--config", type=Path, help="JSON answers for non-interactive setup"
+    )
+    parser.add_argument(
+        "--source-tag",
+        help="provenance tag recorded in the manifest (default: git describe, "
+        "then the CHANGELOG's latest release, then unknown)",
+    )
+    parser.add_argument(
+        "--root",
+        type=Path,
+        default=DEFAULT_ROOT,
+        help="framework repository root to install from (default: this script's repository)",
+    )
+    args = parser.parse_args(argv)
+    root = args.root.resolve()
+    target = args.target.resolve()
+    if target.exists() and not target.is_dir():
+        fail(f"{target}: not a directory")
+
+    always, variants = discover_standards(root)
+    interactive = args.config is None
+    if interactive:
+        if ask is None:
+            if not sys.stdin.isatty():
+                fail("no terminal to ask on — pass --config for non-interactive setup")
+            ask = input
+        selection = interview(variants, target.name, ask)
+    else:
+        selection = load_setup_config(args.config, variants)
+
+    source_tag = resolve_source_tag(root, args.source_tag)
+    entries = load_manifest(target / MANIFEST_PATH)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        items = skill_items(root) + render_selected(
+            root, always, selection, Path(tmp) / "standards"
+        )
+        report, outcomes = apply(items, target, entries, source_tag)
+
+    source_stems = set(always)
+    for family, names in variants.items():
+        source_stems.update(f"{family}-{name}" for name in names)
+    stale = stale_entries(items, target, entries, source_stems)
+    save_manifest(target / MANIFEST_PATH, entries)
+
+    for line in report + stale:
+        print(line)
+    print(
+        f"setup: {outcomes['installed']} installed, {outcomes['refreshed']} refreshed, "
+        f"{outcomes['up to date']} up to date, {outcomes['adopted']} adopted, "
+        f"{outcomes['skipped']} skipped, {len(stale)} stale — {target} "
+        f"(source tag {source_tag})"
+    )
+    if interactive:
+        print(
+            "\nTo repeat this setup non-interactively, save this as setup.json "
+            "and pass --config setup.json:\n" + replay_config(selection)
+        )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

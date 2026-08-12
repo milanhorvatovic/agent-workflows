@@ -29,9 +29,27 @@ jobs:
         run: python3 -m pip install -r scripts/requirements.txt
       - name: Script unit tests
         run: python3 -m unittest discover -s scripts
+      - name: Setup unit tests
+        run: python3 -m unittest discover -s setup
       - name: Index consistency
         run: python3 scripts/generate_index.py --check
       - name: Conformance validation
         run: python3 scripts/validate_conformance.py
       - name: Standards placeholder integrity
         run: python3 scripts/render_standards.py --check
+      - name: Setup smoke install
+        # Installs this repository into a scratch project twice. The spot
+        # checks prove the first run really installed (hash equality alone
+        # would pass on two empty trees); the hash comparison is the
+        # idempotency bar — a second run changes nothing.
+        run: |
+          tmp=$(mktemp -d)
+          printf '%s' '{"placeholders":{"PROJECT_NAME":"smoke","TECH_STACK":"Python","ARCHITECTURE_TYPE":"modular monolith"},"commit_format":"conventional","pr_format":"github","ticket_format":"github-issues"}' > "$tmp/setup.json"
+          python3 setup/init.py --target "$tmp/project" --config "$tmp/setup.json"
+          test -f "$tmp/project/.agents/skills/awf-ground/SKILL.md"
+          test -f "$tmp/project/.agents/standards/coding.md"
+          test -f "$tmp/project/.agents/awf-install-manifest.json"
+          first=$(cd "$tmp/project" && find . -type f -exec sha256sum {} + | sort)
+          python3 setup/init.py --target "$tmp/project" --config "$tmp/setup.json"
+          second=$(cd "$tmp/project" && find . -type f -exec sha256sum {} + | sort)
+          test "$first" = "$second"

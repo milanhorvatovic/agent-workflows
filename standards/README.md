@@ -37,8 +37,10 @@ Single-brace text (`/users/{id}`, JSON examples) is ordinary content, not placeh
 
 ## Rendering
 
+[`setup/init.py`](../setup/README.md) renders into a consuming project's `.agents/standards/` as part of an install; the direct invocation below serves re-renders and other layouts:
+
 ```sh
-python3 scripts/render_standards.py --config project.json --out .ai/config/standards
+python3 scripts/render_standards.py --config project.json --out .agents/standards
 ```
 
 where `project.json` supplies the placeholder values:

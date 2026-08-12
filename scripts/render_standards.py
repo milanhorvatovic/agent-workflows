@@ -233,6 +233,20 @@ def check(root: Path) -> int:
     return 0
 
 
+def validate_config(raw: object, source: str) -> dict[str, str]:
+    """Validate a placeholder → value mapping wherever it was parsed from;
+    `source` labels the findings (also reused by setup/init.py)."""
+    if not isinstance(raw, dict):
+        fail(f"{source}: config must be a JSON object of placeholder → value")
+    known = ", ".join(sorted(PLACEHOLDERS))
+    for key, value in raw.items():
+        if key not in PLACEHOLDERS:
+            fail(f'{source}: unknown placeholder "{key}" (registered: {known})')
+        if not isinstance(value, str) or not value.strip():
+            fail(f'{source}: "{key}" must be a non-empty string')
+    return {key: value.strip() for key, value in raw.items()}
+
+
 def load_config(path: Path) -> dict[str, str]:
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
@@ -240,15 +254,7 @@ def load_config(path: Path) -> dict[str, str]:
         fail(f"{path}: {error.strerror or error}")
     except json.JSONDecodeError as error:
         fail(f"{path}: invalid JSON — {error}")
-    if not isinstance(raw, dict):
-        fail(f"{path}: config must be a JSON object of placeholder → value")
-    known = ", ".join(sorted(PLACEHOLDERS))
-    for key, value in raw.items():
-        if key not in PLACEHOLDERS:
-            fail(f'{path}: unknown placeholder "{key}" (registered: {known})')
-        if not isinstance(value, str) or not value.strip():
-            fail(f'{path}: "{key}" must be a non-empty string')
-    return {key: value.strip() for key, value in raw.items()}
+    return validate_config(raw, str(path))
 
 
 def substitute(text: str, values: dict[str, str]) -> str:
