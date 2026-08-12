@@ -280,6 +280,27 @@ class SetupInitTest(unittest.TestCase):
         self.assertFalse(destination.exists())
         self.assertEqual(list((self.target / ".agents/skills").iterdir()), [])
 
+    def test_failed_promotion_restores_the_old_install(self) -> None:
+        self.install()
+        self.write("skills/awf-alpha/SKILL.md", "---\nname: awf-alpha\n---\n\n# v2\n")
+        destination = self.target / ".agents/skills/awf-alpha"
+        item = init.Item(
+            "skill", "awf-alpha", self.source / "skills/awf-alpha", ".agents/skills/awf-alpha"
+        )
+        original_rename = Path.rename
+
+        def failing_promotion(path: Path, target: Path) -> Path:
+            if Path(target) == destination and path.name == "awf-alpha":
+                raise OSError("promotion failed")
+            return original_rename(path, target)
+
+        with unittest.mock.patch.object(Path, "rename", failing_promotion):
+            with self.assertRaises(OSError):
+                init.write_item(item, destination)
+        self.assertIn(
+            "# awf-alpha", (destination / "SKILL.md").read_text(encoding="utf-8")
+        )
+
     def test_deleted_install_is_reinstalled(self) -> None:
         self.install()
         shutil.rmtree(self.target / ".agents/skills/awf-alpha")

@@ -293,14 +293,15 @@ def render_selected(
 
 def write_item(item: Item, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
-    # Staged beside the destination (same filesystem, so the rename is atomic)
-    # and renamed into place only after the copy completed: a run that dies
-    # mid-copy must not leave a half-written install at the real name, which
-    # later runs would permanently skip as foreign. A refresh removes the old
-    # directory only after the staged copy is whole — the old content is
-    # replaced wholesale so deletions in the source arrive too — and a crash
-    # in that last gap leaves the destination absent, which the next run
-    # simply reinstalls.
+    # Staged beside the destination (same filesystem, so every rename is
+    # atomic) and renamed into place only after the copy completed: a run that
+    # dies mid-copy must not leave a half-written install at the real name,
+    # which later runs would permanently skip as foreign. A refresh swaps the
+    # old content aside by rename rather than deleting it in place — a
+    # recursive delete interrupted midway would leave a partial destination in
+    # the same permanently-skipped state — restores it if promotion fails, and
+    # otherwise lets the staging cleanup take it; a crash between the two
+    # renames leaves the destination absent, which the next run reinstalls.
     with tempfile.TemporaryDirectory(dir=destination.parent) as staging:
         staged = Path(staging) / item.name
         if item.source.is_dir():
@@ -309,11 +310,15 @@ def write_item(item: Item, destination: Path) -> None:
             )
         else:
             staged.write_bytes(item.source.read_bytes())
-        if destination.is_dir():
-            shutil.rmtree(destination)
-        elif destination.exists():
-            destination.unlink()
-        staged.rename(destination)
+        replaced = Path(staging) / "replaced"
+        if destination.exists():
+            destination.rename(replaced)
+        try:
+            staged.rename(destination)
+        except OSError:
+            if replaced.exists():
+                replaced.rename(destination)
+            raise
 
 
 def apply(
