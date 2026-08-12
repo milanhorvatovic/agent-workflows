@@ -1,6 +1,6 @@
 ---
 name: awf-analyze-report
-description: Distills an existing grounding artifact into a polished, prioritized codebase report for humans — executive summary, architecture and module map, dependency and testing health, technical debt ranked by impact, actionable recommendations, and a developer quick reference — optionally answering specific questions with evidence. Standalone (no stage binds it); triggers when a completed grounding needs a readable deliverable, such as onboarding material, an architecture review, or a codebase health check. It does not explore the codebase itself — producing the grounding first is awf-ground.
+description: Distills an existing grounding artifact into a polished, prioritized codebase report for humans — executive summary, architecture and module map, tech stack and key patterns, dependency and testing health, technical debt ranked by impact, actionable recommendations, and a developer quick reference — optionally answering specific questions with evidence. Standalone (no stage binds it); triggers when a completed grounding needs a readable deliverable, such as onboarding material, an architecture review, or a codebase health check. It does not explore the codebase itself — producing the grounding first is awf-ground.
 license: MIT
 metadata:
   workflow:
