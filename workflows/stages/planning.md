@@ -32,6 +32,8 @@ metadata:
           required: false
         - artifact: "{run}/phase-1-plan.md"
           required: false
+        - artifact: "{run}/phase-{P}-impl-validation.md"
+          required: false
       output:
         artifact: "{run}/phase-{N}-plan.md"
       on:
@@ -57,6 +59,8 @@ metadata:
           required: true
         - artifact: "{run}/phase-1-plan.md"
           required: true
+        - artifact: "{run}/phase-{P}-impl-validation.md"
+          required: false
       output:
         artifact: "{run}/phase-{N}-plan-validation.md"
 ```
@@ -79,6 +83,8 @@ metadata:
         - artifact: "{run}/phase-1-plan.md"
           required: true
         - artifact: "{run}/phase-{N}-impl-log.md"
+          required: false
+        - artifact: "{run}/phase-{P}-impl-validation.md"
           required: false
       output:
         artifact: "{run}/phase-{N}-plan.md"
@@ -108,4 +114,4 @@ metadata:
 
 ## Gates
 
-- **plan-approval** — after a passing validation. Transport per risk class ([overlays](../overlays.md)); blocking wherever planning runs. Outcomes: `accept` proceeds to the next stage in composition order, and where the accepted list places phases after this one the run enters the next phase and this stage repeats, `run.phase` advancing with it (spec §10) — after the phases before it were implemented, and their decisions reach it as code rather than as a document, `plan-create` reading the tree those phases left. No declaration carries one forward: `plan-create` declares no previous phase's plan or implementation report, and `{N}` names the phase being planned rather than any before it. In the `plan` workflow planning is the final stage and nothing is built between phases, so that carrier is absent too and `accept` completes the run with the phase-1 plan and the list it authored, later phases being planned by the run that executes them; `revise` returns to `plan-revise` — an explicit edge overriding the spec §7 default of returning to the step that produced the artifact, because a plan that passed validation on its first pass was produced by `plan-create`, and sending a human's direction there returns an existing plan to the step that writes one from scratch; revision is surgery on the plan the gate read, which is `plan-revise`'s whole contract, and it already declares every input this route needs — carrying the human's decisions and answers, recorded in the plan's **Gate direction** section before the outcome rather than in the gate record (spec §7), and carried from there into the revised plan, with the revision's feedback audit repeating it as working detail; `reject` ends the run, at every phase and whether or not this gate has accepted a list. Before acceptance there is nothing else it could do — the list is provisional, nothing names a next phase, and there is no `run.phase` to advance (spec §10). After acceptance the phase branch spec §7 allows would need what an executor here cannot establish: the list states which phases must complete before which others, so ending only the rejected phase is sound only where nothing after it depends on that phase, and the list records its sequencing as prose rather than as structure. Dropping a phase from a run that continues is direction on a `revise`, which the phase-1 plan can act on, rather than a `reject`.
+- **plan-approval** — after a passing validation. Transport per risk class ([overlays](../overlays.md)); blocking wherever planning runs. Outcomes: `accept` proceeds to the next stage in composition order, and where the accepted list places phases after this one the run enters the next phase and this stage repeats, `run.phase` advancing with it (spec §10) — after the phases before it were implemented, and their decisions reach it as code rather than as a document, `plan-create` reading the tree those phases left. What carries them is declared: all three steps of this stage take `{run}/phase-{P}-impl-validation.md`, one report per earlier phase (spec §8.1), so a binding an earlier phase set — a rollout order, a migration step — reaches the plan and the validation that checks it rather than only the tree. The earlier phase's *plan* still travels no further than the phase-1 list, which is the decomposition rather than the decisions. In the `plan` workflow planning is the final stage and nothing is built between phases, so that carrier is absent too and `accept` completes the run with the phase-1 plan and the list it authored, later phases being planned by the run that executes them; `revise` returns to `plan-revise` — an explicit edge overriding the spec §7 default of returning to the step that produced the artifact, because a plan that passed validation on its first pass was produced by `plan-create`, and sending a human's direction there returns an existing plan to the step that writes one from scratch; revision is surgery on the plan the gate read, which is `plan-revise`'s whole contract, and it already declares every input this route needs — carrying the human's decisions and answers, recorded in the plan's **Gate direction** section before the outcome rather than in the gate record (spec §7), and carried from there into the revised plan, with the revision's feedback audit repeating it as working detail; `reject` ends the run, at every phase and whether or not this gate has accepted a list. Before acceptance there is nothing else it could do — the list is provisional, nothing names a next phase, and there is no `run.phase` to advance (spec §10). After acceptance the phase branch spec §7 allows would need what an executor here cannot establish: the list states which phases must complete before which others, so ending only the rejected phase is sound only where nothing after it depends on that phase, and the list records its sequencing as prose rather than as structure. Dropping a phase from a run that continues is direction on a `revise`, which the phase-1 plan can act on, rather than a `reject`.

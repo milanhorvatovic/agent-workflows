@@ -16,8 +16,10 @@ Seven checks:
   §9) — validates against the schema of each structure it declares (`step`,
   `loop`, `trigger`); unknown sibling keys are tolerated per the 0.x
   degradation rules (spec §9.4). Placeholders in declared strings must be
-  spec-defined — {run}, {N}, {machine-checks} — and a declared output
-  template must exist relative to the declaring file.
+  spec-defined — {run}, {N}, {P}, {machine-checks} — and a declared output
+  template must exist relative to the declaring file. A step's output may not
+  carry {P}, which the step schema rejects: one path per phase cannot name the
+  one artifact a step produces (spec §8.1, §9.1).
 - Frontmatter: roles, workflows, stages, and skills carry an Agent Skills
   conformant `name` (lowercase alphanumeric plus hyphens, ≤64 chars, equal
   to the file slug) and `description` (non-empty, ≤1024 chars); skills
@@ -77,7 +79,7 @@ FIXTURE_DIR = SCHEMA_DIR / "examples"
 STRUCTURES = ("step", "loop", "trigger")  # metadata.workflow structures, one schema each
 RUN_STATE = "run-state"
 
-PLACEHOLDERS = {"run", "N", "machine-checks"}  # spec §8.1 and §9.2
+PLACEHOLDERS = {"run", "N", "P", "machine-checks"}  # spec §8.1 and §9.2
 # {token} occurrences; the lookbehind skips ${...} shell expansions in commands.
 PLACEHOLDER = re.compile(r"(?<!\$)\{([^{}]*)\}")
 

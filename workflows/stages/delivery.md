@@ -22,15 +22,15 @@ metadata:
       inputs:
         - artifact: "{run}/brief.md"
           required: true
-        - artifact: "{run}/phase-{N}-impl-log.md"
+        - artifact: "{run}/phase-{P}-impl-log.md"
           required: true
-        - artifact: "{run}/phase-{N}-impl-validation.md"
+        - artifact: "{run}/phase-{P}-impl-validation.md"
           required: false
         - artifact: "{run}/review-validation.md"
           required: false
         - artifact: "{run}/review-fixes.md"
           required: false
-        - artifact: "{run}/phase-{N}-plan.md"
+        - artifact: "{run}/phase-{P}-plan.md"
           required: false
         - artifact: "{run}/delivery.md"
           required: false
@@ -57,15 +57,15 @@ metadata:
           required: true
         - artifact: "{run}/brief.md"
           required: true
-        - artifact: "{run}/phase-{N}-impl-log.md"
+        - artifact: "{run}/phase-{P}-impl-log.md"
           required: true
-        - artifact: "{run}/phase-{N}-impl-validation.md"
+        - artifact: "{run}/phase-{P}-impl-validation.md"
           required: false
         - artifact: "{run}/review-validation.md"
           required: false
         - artifact: "{run}/review-fixes.md"
           required: false
-        - artifact: "{run}/phase-{N}-plan.md"
+        - artifact: "{run}/phase-{P}-plan.md"
           required: false
       output:
         artifact: "{run}/delivery-validation.md"
@@ -77,6 +77,6 @@ metadata:
 
 ## Notes
 
-- `{N}` ranges over every completed phase in this stage's inputs, rather than naming the current phase as it does in the per-phase stages ([planning](planning.md)): delivery closes the run, so a multi-phase run's artifact and its validation cover every phase's log and verdicts, not just the last one's.
+- This stage's inputs use `{P}`, one artifact per completed phase, rather than the `{N}` of the per-phase stages ([planning](planning.md)), which names the phase being executed (spec §8.1): delivery closes the run, so a multi-phase run's artifact and its validation cover every phase's log and verdicts, not just the last one's.
 - Risk-class reductions of the delivery artifact — R1's minimal change-note content, R0's free-form exit note — are encoded once in [overlays](../overlays.md), never here.
 - At R1 `deliver-validate` is skipped and no verdict exists: `deliver-prepare`'s `on` edges are waived per the skip-resolution rules ([overlays](../overlays.md)), and the gate still fires in composition order.

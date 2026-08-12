@@ -1,0 +1,17 @@
+# Starter variant: a loop in a stage that runs after the last phase.
+# `declared_from` carries {P}, so it resolves to one plan per phase and the loop
+# is bound to the union of what those plans declare — a loop contract has no
+# output and so no phase of its own, which is why {P} there excludes nothing
+# (spec §8.1, §9.2).
+protocol: "0.1"
+loop:
+  exit_criteria:
+    - artifact: "{run}/review-validation.md"
+      verdict: PASS
+  max_iterations: 3
+  stall:
+    signal: no-artifact-delta
+    action: escalate
+  scope:
+    declared_from: "{run}/phase-{P}-plan.md"
+    on_drift: flag

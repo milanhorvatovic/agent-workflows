@@ -8,9 +8,9 @@ metadata:
     step:
       role: reviewer
       inputs:
-        - artifact: "{run}/phase-{N}-plan.md"
+        - artifact: "{run}/phase-{P}-plan.md"
           required: true
-        - artifact: "{run}/phase-{N}-impl-log.md"
+        - artifact: "{run}/phase-{P}-impl-log.md"
           required: true
         - artifact: "{run}/review-fixes.md"
           required: false
@@ -29,8 +29,8 @@ The step runs as the reviewer, always with fresh context (spec §4) — fresh ey
 
 ## Inputs
 
-- `{run}/phase-{N}-plan.md` (required) — what was supposed to be built: the steps, the acceptance criteria, and the file-scope declaration the change is bound to. This stage runs once after the final phase, so `{N}` ranges over every completed phase rather than naming a current one: a multi-phase run has a plan per phase and every one is read, since the change under review is their sum and a step reviewed against the wrong phase's plan is reviewed against nothing.
-- `{run}/phase-{N}-impl-log.md` (required) — the implementer's account: deviations declared, issues hit, machine-check evidence, commits. `{N}` ranges the same way — one log per phase, all of them read.
+- `{run}/phase-{P}-plan.md` (required) — what was supposed to be built: the steps, the acceptance criteria, and the file-scope declaration the change is bound to. This stage runs once after the final phase, so the path takes `{P}` — one artifact per completed phase (spec §8.1) — rather than the `{N}` of a stage that names the phase it is executing: a multi-phase run has a plan per phase and every one is read, since the change under review is their sum and a step reviewed against the wrong phase's plan is reviewed against nothing.
+- `{run}/phase-{P}-impl-log.md` (required) — the implementer's account: deviations declared, issues hit, machine-check evidence, commits. `{P}` again — one log per phase, all of them read.
 - `{run}/review-fixes.md` (optional) — what the previous iteration fixed, what it disputed rather than fixed, and the loop's current machine-check result and commits, which `review-fix` refreshes in place there. Optional because it does not exist on the first iteration, which is availability rather than caution. Optional makes it reachable by §8.4's cache, so the freshness half of the same rule binds: usable only where its `Run` header matches this run, a fix record from another run describing another change entirely, and its **Iteration** read to confirm it is the previous iteration's record rather than one left behind by an earlier run's loop. From the second it is what stops this pass re-raising a finding already answered, and what puts an open dispute in front of the fresh eyes meant to decide it — a dispute this pass never sees is one the loop can iterate past.
 - The change itself, read directly — the whole diff under review and its tests, which in a multi-phase run is the sum of every completed phase rather than one phase's work. The diff is the subject; the plans and logs are the context it is judged in.
 - The project's coding, architecture, and testing standards, and its review checklist where one exists — the rules the review enforces, read before reviewing any code. The architecture standard is what makes a structural finding more than a matter of taste: a change that crosses a boundary the project has declared is a finding against the standard, not against the reviewer's preference.

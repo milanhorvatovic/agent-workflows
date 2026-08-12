@@ -39,7 +39,9 @@ STEP_SCHEMA = {
                     "additionalProperties": False,
                     "required": ["artifact"],
                     "properties": {
-                        "artifact": {"type": "string"},
+                        # {P} resolves to one path per phase and a step produces
+                        # one artifact, so the real schema forbids it here.
+                        "artifact": {"type": "string", "not": {"pattern": r"\{P\}"}},
                         "template": {"type": "string"},
                     },
                 },
@@ -434,6 +436,32 @@ class ValidateConformanceTest(unittest.TestCase):
             frontmatter("build") + "\n" + STEP_BLOCK.replace("{run}/brief.md", "{phase}/brief.md"),
         )
         self.assert_problem('unknown placeholder "{phase}"')
+
+    def test_the_completed_phase_placeholder_is_known(self) -> None:
+        """`{P}` joins `{N}` in the vocabulary: one artifact per completed phase,
+        for the stages that run after the last one and for a step reading what
+        the phases behind it bound."""
+        self.write(
+            "workflows/stages/build.md",
+            frontmatter("build")
+            + "\n"
+            + STEP_BLOCK.replace("{run}/brief.md", "{run}/phase-{P}-impl-log.md"),
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_phase_set_output_is_reported(self) -> None:
+        """A step produces one artifact, so `{P}` — one path per phase — cannot
+        name an output. Held by the step schema rather than by this script, so
+        any standard validator catches it too, and with a negative fixture of
+        its own like every other schema rule here."""
+        self.write(
+            "workflows/stages/build.md",
+            frontmatter("build")
+            + "\n"
+            + STEP_BLOCK.replace('artifact: "{run}/grounding.md"', 'artifact: "{run}/phase-{P}-x.md"'),
+        )
+        self.assert_problem("should not be valid")
 
     def test_artifacts_placeholder_rejected_with_spec_pointer(self) -> None:
         block = STEP_BLOCK.replace("{run}/brief.md", "{artifacts}/runs/x/brief.md")

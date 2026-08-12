@@ -4,13 +4,21 @@
   "title": "agent-workflows loop contract (protocol 0.1)",
   "description": "Validates a `metadata.workflow` block that declares a loop contract: the exit-criteria conjunction, the iteration cap, stall detection, and scope binding (spec section 9.2). Sibling structures and unknown keys are tolerated per the 0.x degradation rules (spec section 9.4).",
   "type": "object",
-  "required": ["protocol", "loop"],
+  "required": [
+    "protocol",
+    "loop"
+  ],
   "properties": {
-    "protocol": { "$ref": "#/$defs/protocol" },
+    "protocol": {
+      "$ref": "#/$defs/protocol"
+    },
     "loop": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["exit_criteria", "max_iterations"],
+      "required": [
+        "exit_criteria",
+        "max_iterations"
+      ],
       "properties": {
         "exit_criteria": {
           "description": "A conjunction: every criterion must hold for the loop to exit (spec section 9.2).",
@@ -18,8 +26,12 @@
           "minItems": 1,
           "items": {
             "oneOf": [
-              { "$ref": "#/$defs/artifactCriterion" },
-              { "$ref": "#/$defs/commandCriterion" }
+              {
+                "$ref": "#/$defs/artifactCriterion"
+              },
+              {
+                "$ref": "#/$defs/commandCriterion"
+              }
             ]
           }
         },
@@ -32,7 +44,10 @@
           "description": "Detects spinning inside the cap; the declared action fires instead of burning remaining iterations (spec section 9.2).",
           "type": "object",
           "additionalProperties": false,
-          "required": ["signal", "action"],
+          "required": [
+            "signal",
+            "action"
+          ],
           "properties": {
             "signal": {
               "const": "no-artifact-delta",
@@ -48,15 +63,20 @@
           "description": "Binds the loop to the file scope its plan declared; drift signals feed mid-run reclassification (spec sections 5.3 and 9.2).",
           "type": "object",
           "additionalProperties": false,
-          "required": ["declared_from"],
+          "required": [
+            "declared_from"
+          ],
           "properties": {
             "declared_from": {
               "type": "string",
               "minLength": 1,
-              "description": "The plan artifact whose file-scope section declares the allowed scope."
+              "description": "The plan artifact whose file-scope section declares the allowed scope; a path carrying {P} resolves to one plan per phase and binds the loop to the union of what they declare (spec sections 8.1 and 9.2)."
             },
             "on_drift": {
-              "enum": ["flag", "escalate"],
+              "enum": [
+                "flag",
+                "escalate"
+              ],
               "default": "flag",
               "description": "flag records the signal; escalate stops for a human (spec section 9.2)."
             }
@@ -74,7 +94,10 @@
     "artifactCriterion": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["artifact", "verdict"],
+      "required": [
+        "artifact",
+        "verdict"
+      ],
       "properties": {
         "artifact": {
           "type": "string",
@@ -82,7 +105,11 @@
           "description": "Artifact that must exist and carry the required verdict (spec section 9.2)."
         },
         "verdict": {
-          "enum": ["PASS", "PASS_WITH_CONDITIONS", "FAIL"],
+          "enum": [
+            "PASS",
+            "PASS_WITH_CONDITIONS",
+            "FAIL"
+          ],
           "description": "The verdict the artifact must carry (spec section 3.3)."
         }
       }
@@ -90,7 +117,9 @@
     "commandCriterion": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["command"],
+      "required": [
+        "command"
+      ],
       "properties": {
         "command": {
           "type": "string",

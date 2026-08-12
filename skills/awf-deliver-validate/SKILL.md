@@ -12,15 +12,15 @@ metadata:
           required: true
         - artifact: "{run}/brief.md"
           required: true
-        - artifact: "{run}/phase-{N}-impl-log.md"
+        - artifact: "{run}/phase-{P}-impl-log.md"
           required: true
-        - artifact: "{run}/phase-{N}-impl-validation.md"
+        - artifact: "{run}/phase-{P}-impl-validation.md"
           required: false
         - artifact: "{run}/review-validation.md"
           required: false
         - artifact: "{run}/review-fixes.md"
           required: false
-        - artifact: "{run}/phase-{N}-plan.md"
+        - artifact: "{run}/phase-{P}-plan.md"
           required: false
       output:
         artifact: "{run}/delivery-validation.md"
@@ -39,10 +39,10 @@ The step runs as the validator, always with fresh context (spec §4): profession
 
 - `{run}/delivery.md` (required) — the artifact under validation, read in full before judging: its summary, change list, acceptance-criteria table, verification evidence, and change description.
 - `{run}/brief.md` (required) — the bar. Its goal, constraints, and acceptance criteria are what "delivered" means; criteria are walked one by one, never sampled.
-- `{run}/phase-{N}-impl-log.md` (required) — where the artifact's evidence claims come from: machine-check results, commits, declared deviations. A multi-phase run has one log per phase and every one is read; a claim sourced from a log is checked against that log and then against the diff.
+- `{run}/phase-{P}-impl-log.md` (required) — where the artifact's evidence claims come from: machine-check results, commits, declared deviations. A multi-phase run has one log per phase and every one is read; a claim sourced from a log is checked against that log and then against the diff.
 - `{run}/review-fixes.md` (optional) — the same evidence for the review loop, which `review-fix` refreshes in place there: the commits that loop produced and its current machine-check result. Optional on two counts: the review stage is skipped at R0 and R1, and even where it runs, `review-fix` only runs on an iteration the loop has not exited — so a review that passes on its first pass produces no fix record at all. Optional makes it reachable by §8.4's cache, so the freshness check binds here too: usable only where its `Run` header matches this run, and its **Iteration** is the loop's last — an earlier run's fix record would supply commits and a check result belonging to a different change. It matters most to this step of all of them: stale machine-check evidence is one of the things a delivery verdict must call out, and where a review loop ran, the implementation logs *are* the stale copy — checking a "checks pass" claim against them alone would confirm it from evidence predating every fix the review forced.
-- `{run}/phase-{N}-impl-validation.md` and `{run}/review-validation.md` (optional) — the verdicts the artifact quotes. Optional not because this step ever runs without a validator upstream by design, but because reclassification applies the new class's defaults to subsequent steps only (spec §5.3): a run bumped upward mid-implementation reaches this step with no implementation validation behind it. Absent is therefore a fact to check the artifact against, and never satisfied from another run — the grounding cache of spec §8.4 does not apply to a record of this run. Where they exist, they are what the artifact's verdict claims and conditions are checked against; the artifact's own word is never the source.
-- `{run}/phase-{N}-plan.md` (optional) — the same plans `deliver-prepare` reads, and for the same reason: the rollback path it reports is worked out in each plan's **Rollback** section, so without them a truthfully assembled rollback claim would trace to nothing this step holds and be reported unsupported. Optional on the same terms, planning being skipped at R0 and R1. Never satisfied from another run — a plan whose `Run` header names a different one is treated as absent, since the grounding cache of spec §8.4 does not apply to a record of this run.
+- `{run}/phase-{P}-impl-validation.md` and `{run}/review-validation.md` (optional) — the verdicts the artifact quotes. Optional not because this step ever runs without a validator upstream by design, but because reclassification applies the new class's defaults to subsequent steps only (spec §5.3): a run bumped upward mid-implementation reaches this step with no implementation validation behind it. Absent is therefore a fact to check the artifact against, and never satisfied from another run — the grounding cache of spec §8.4 does not apply to a record of this run. Where they exist, they are what the artifact's verdict claims and conditions are checked against; the artifact's own word is never the source.
+- `{run}/phase-{P}-plan.md` (optional) — the same plans `deliver-prepare` reads, and for the same reason: the rollback path it reports is worked out in each plan's **Rollback** section, so without them a truthfully assembled rollback claim would trace to nothing this step holds and be reported unsupported. Optional on the same terms, planning being skipped at R0 and R1. Never satisfied from another run — a plan whose `Run` header names a different one is treated as absent, since the grounding cache of spec §8.4 does not apply to a record of this run.
 - The change itself, read directly — the diff, its tests, and the machine-check evidence are ground truth for every claim the artifact makes. Where the diff and the artifact disagree, the diff wins and the disagreement is a finding.
 - The project's rendered PR or change-note standard, where one exists — the shape the change description is held to, and what the report's Standards checklist row is checked against; the same standard `deliver-prepare` wrote against.
 

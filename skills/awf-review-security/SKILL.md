@@ -8,7 +8,7 @@ metadata:
     step:
       role: reviewer
       inputs:
-        - artifact: "{run}/phase-{N}-impl-log.md"
+        - artifact: "{run}/phase-{P}-impl-log.md"
           required: true
         - artifact: "{run}/brief.md"
           required: true
@@ -27,7 +27,7 @@ The step runs as the reviewer, always with fresh context (spec §4), thinking in
 
 ## Inputs
 
-- `{run}/phase-{N}-impl-log.md` (required) — what was changed and why: the files touched, dependency changes, machine-check evidence. This stage runs once after the final phase, so `{N}` ranges over every completed phase rather than naming a current one: a multi-phase run has one log per phase and every one is read, since a dependency added in phase 2 is part of the surface this pass examines whatever phase came last.
+- `{run}/phase-{P}-impl-log.md` (required) — what was changed and why: the files touched, dependency changes, machine-check evidence. This stage runs once after the final phase, so the path takes `{P}` — one artifact per completed phase (spec §8.1) — rather than the `{N}` of a stage that names the phase it is executing: a multi-phase run has one log per phase and every one is read, since a dependency added in phase 2 is part of the surface this pass examines whatever phase came last.
 - `{run}/brief.md` (required) — its `## Routing` section, where `awf-risk-route` records the security-surface reading whether or not it fired, alongside the goal and constraints that reading was made against. Spec §5.2's rule has two halves — any security-surface signal proposes at least R2 *and* enables security review — and this line is where the second half is written down; a reading nothing downstream consumes is a reading nobody can be wrong about. Required rather than optional because the brief exists wherever this step runs: `brief-confirm` is the first step of every workflow in every risk class, so no run reaches review without one.
 - The change itself, read directly — the whole diff under review, which in a multi-phase run is every completed phase's work together, plus enough surrounding code to trace how untrusted data reaches it.
 - The project's security context: the kind of data it handles (PII, credentials, financial, health), its trust boundaries, and any security standards or checklist the project provides.
