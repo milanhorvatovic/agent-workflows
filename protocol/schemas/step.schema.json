@@ -4,17 +4,32 @@
   "title": "agent-workflows step/handoff (protocol 0.1)",
   "description": "Validates a `metadata.workflow` block that declares a step: the role that acts, the input handoff contract, the declared output, and the verdict-routed state-machine edges (spec section 9.1). Sibling structures (loop, trigger) and unknown keys are tolerated per the 0.x degradation rules (spec section 9.4).",
   "type": "object",
-  "required": ["protocol", "step"],
+  "required": [
+    "protocol",
+    "step"
+  ],
   "properties": {
-    "protocol": { "$ref": "#/$defs/protocol" },
+    "protocol": {
+      "$ref": "#/$defs/protocol"
+    },
     "step": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["role", "output"],
+      "required": [
+        "role",
+        "output"
+      ],
       "properties": {
         "role": {
           "description": "The role that performs this step (spec section 3.1).",
-          "enum": ["analyst", "planner", "implementer", "reviewer", "validator", "arbiter"]
+          "enum": [
+            "analyst",
+            "planner",
+            "implementer",
+            "reviewer",
+            "validator",
+            "arbiter"
+          ]
         },
         "inputs": {
           "description": "The handoff contract: artifacts this step consumes. A required input that is missing blocks the step; an optional input may be satisfied from the grounding cache (spec sections 8.4 and 9.1).",
@@ -22,7 +37,9 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["artifact"],
+            "required": [
+              "artifact"
+            ],
             "properties": {
               "artifact": {
                 "type": "string",
@@ -41,9 +58,18 @@
           "description": "The artifact this step produces, optionally scaffolded from a template (spec sections 8.3 and 9.1).",
           "type": "object",
           "additionalProperties": false,
-          "required": ["artifact"],
+          "required": [
+            "artifact"
+          ],
           "properties": {
-            "artifact": { "type": "string", "minLength": 1 },
+            "artifact": {
+              "type": "string",
+              "minLength": 1,
+              "not": {
+                "pattern": "\\{P\\}"
+              },
+              "description": "The artifact produced. May not carry {P}, which resolves to one path per phase: a step produces one artifact, and a phase-set of outputs is a stage that repeats rather than a step that fans out (spec sections 8.1 and 9.1)."
+            },
             "template": {
               "type": "string",
               "minLength": 1,
@@ -52,14 +78,23 @@
           }
         },
         "on": {
-          "description": "State-machine edges: maps each verdict the validation of this step's output can produce to the next step or gate id. Omitted entirely when the output has no validation (the step then proceeds in composition order); when declared, PASS and FAIL are mandatory — every verdict source produces them. The structure does not declare the verdict source, so this schema cannot conditionally require PASS_WITH_CONDITIONS; routing it wherever a validator is the source is an authoring rule the executor enforces by stopping and escalating on an edgeless verdict (spec sections 3.3 and 9.1).",
+          "description": "State-machine edges: maps each verdict the validation of this step's output can produce to the next step or gate id. Omitted entirely when the output has no validation (the step then proceeds in composition order); when declared, PASS and FAIL are mandatory \u2014 every verdict source produces them. The structure does not declare the verdict source, so this schema cannot conditionally require PASS_WITH_CONDITIONS; routing it wherever a validator is the source is an authoring rule the executor enforces by stopping and escalating on an edgeless verdict (spec sections 3.3 and 9.1).",
           "type": "object",
           "additionalProperties": false,
-          "required": ["PASS", "FAIL"],
+          "required": [
+            "PASS",
+            "FAIL"
+          ],
           "properties": {
-            "PASS": { "$ref": "#/$defs/target" },
-            "PASS_WITH_CONDITIONS": { "$ref": "#/$defs/target" },
-            "FAIL": { "$ref": "#/$defs/target" }
+            "PASS": {
+              "$ref": "#/$defs/target"
+            },
+            "PASS_WITH_CONDITIONS": {
+              "$ref": "#/$defs/target"
+            },
+            "FAIL": {
+              "$ref": "#/$defs/target"
+            }
           }
         }
       }

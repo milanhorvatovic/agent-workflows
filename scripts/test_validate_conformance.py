@@ -39,7 +39,9 @@ STEP_SCHEMA = {
                     "additionalProperties": False,
                     "required": ["artifact"],
                     "properties": {
-                        "artifact": {"type": "string"},
+                        # {P} resolves to one path per phase and a step produces
+                        # one artifact, so the real schema forbids it here.
+                        "artifact": {"type": "string", "not": {"pattern": r"\{P\}"}},
                         "template": {"type": "string"},
                     },
                 },
@@ -449,16 +451,17 @@ class ValidateConformanceTest(unittest.TestCase):
         self.assertEqual(code, 0, output)
 
     def test_a_phase_set_output_is_reported(self) -> None:
-        """A step produces one artifact, so `{P}` — one per completed phase —
-        cannot name an output. The two tokens differ by a character in otherwise
-        identical paths, which is exactly when a check earns its place."""
+        """A step produces one artifact, so `{P}` — one path per phase — cannot
+        name an output. Held by the step schema rather than by this script, so
+        any standard validator catches it too, and with a negative fixture of
+        its own like every other schema rule here."""
         self.write(
             "workflows/stages/build.md",
             frontmatter("build")
             + "\n"
             + STEP_BLOCK.replace('artifact: "{run}/grounding.md"', 'artifact: "{run}/phase-{P}-x.md"'),
         )
-        self.assert_problem("declares {P}, which resolves to one artifact per completed phase")
+        self.assert_problem("should not be valid")
 
     def test_artifacts_placeholder_rejected_with_spec_pointer(self) -> None:
         block = STEP_BLOCK.replace("{run}/brief.md", "{artifacts}/runs/x/brief.md")
