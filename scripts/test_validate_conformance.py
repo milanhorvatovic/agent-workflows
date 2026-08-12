@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import re
 import json
 import tempfile
 import unittest
@@ -103,8 +104,24 @@ RUN_STATE_SCHEMA = {
             "type": "object",
             "additionalProperties": False,
             "required": ["id"],
-            "properties": {"id": {"type": "string"}},
+            "properties": {"id": {"type": "string"}, "phase": {"type": "integer"}},
         },
+        # Enough of the real shape for the manifest check to have something to
+        # read; the schema itself is exercised by its own fixtures.
+        "steps": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["id", "status"],
+                "properties": {
+                    "id": {"type": "string"},
+                    "status": {"type": "string"},
+                    "iterations": {"type": "integer"},
+                },
+            },
+        },
+        "artifacts": {"type": "array", "items": {"type": "string"}},
         "gates": {
             "type": "array",
             "items": {
@@ -113,6 +130,8 @@ RUN_STATE_SCHEMA = {
                 "required": ["gate", "at"],
                 "properties": {
                     "gate": {"type": "string"},
+                    "outcome": {"enum": ["accept", "revise", "reject"]},
+                    "phase": {"type": "integer", "minimum": 1},
                     "at": {"type": "string", "format": "date-time"},
                 },
             },
@@ -371,6 +390,44 @@ class ValidateConformanceTest(unittest.TestCase):
         (self.root / "protocol/schemas/examples/loop.invalid.yaml").unlink()
         self.assert_problem("loop.invalid.yaml: fixture missing")
 
+    def test_valid_variant_fixture_is_validated(self) -> None:
+        # A schema whose document has more than one legal shape proves the
+        # extra shape with a `<name>.valid.<variant>.yaml`, and that fixture
+        # is validated like the required one rather than merely present.
+        self.write(
+            "protocol/schemas/examples/trigger.valid.manual.yaml",
+            'protocol: "0.1"\ntrigger:\n  kind: quantum\n',
+        )
+        output = self.assert_problem("trigger.valid.manual.yaml")
+        self.assertIn("[trigger]", output)
+
+    def test_invalid_variant_fixture_must_still_fail_its_schema(self) -> None:
+        # An invalid variant carries one fault so it covers one rule. A variant
+        # that validates proves nothing, exactly as the required pair's does.
+        self.write(
+            "protocol/schemas/examples/trigger.invalid.pairing.yaml",
+            'protocol: "0.1"\ntrigger:\n  kind: manual\n',
+        )
+        self.assert_problem("the negative test proves nothing")
+
+    def test_valid_variant_fixture_counts_toward_the_tally(self) -> None:
+        # A conforming variant does not fail the run, and the summary counts
+        # it — otherwise a fixture could be silently ignored rather than checked.
+        source = (
+            self.root / "protocol/schemas/examples/run-state.valid.yaml"
+        ).read_text(encoding="utf-8")
+        _, before = self.run_main()
+        self.write("protocol/schemas/examples/run-state.valid.copy.yaml", source)
+        code, after = self.run_main()
+        self.assertEqual(code, 0, after)
+        self.assertEqual(self.fixture_tally(after), self.fixture_tally(before) + 1)
+
+    @staticmethod
+    def fixture_tally(output: str) -> int:
+        match = re.search(r"(\d+) fixtures", output)
+        assert match is not None, output
+        return int(match.group(1))
+
     def test_unknown_placeholder_reported(self) -> None:
         self.write(
             "workflows/stages/build.md",
@@ -568,6 +625,9 @@ metadata:
           required: true
       output:
         artifact: "{run}/b.md"
+      on:
+        PASS: next-step
+        FAIL: fix-step
 ```
 """
 
@@ -586,6 +646,9 @@ metadata:
       output:
         artifact: "{run}/b.md"
         template: references/t.template.md
+      on:
+        PASS: next-step
+        FAIL: fix-step
 ---
 
 # awf-thing
@@ -613,6 +676,18 @@ metadata:
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
 
+    def test_a_standalone_skill_lends_its_output_to_no_run_state_record(self) -> None:
+        """A standalone skill is not a step of any composed workflow, so a
+        run-state record sharing its id must not be held to its output — the
+        manifest rule applies to what the stages compose, and reading the map
+        out of `skills/` would have let any of them lend an artifact to a run
+        that never ran it."""
+        self.write("skills/awf-loner/SKILL.md", self.SKILL.replace("awf-thing", "awf-loner") % "true")
+        self.write("skills/awf-loner/references/t.template.md", "# t\n")
+        self.write_run_state("  - id: loner\n    status: done\n", " []")
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
     def test_standalone_skill_without_a_stage_is_skipped(self) -> None:
         self.write("skills/awf-loner/SKILL.md", self.SKILL.replace("awf-thing", "awf-loner") % "true")
         self.write("skills/awf-loner/references/t.template.md", "# t\n")
@@ -632,6 +707,488 @@ metadata:
     def test_missing_schema_directory_exits(self) -> None:
         message = self.run_main_expecting_exit_with_root(self.root / "elsewhere")
         self.assertIn("not found", message)
+
+    # ---- run-state documents (spec §8.2, §7, §10) ----
+
+    # A stage, not a skill: the manifest check reads what composes the
+    # workflow, so a step it should know about has to be declared by one.
+    PHASED_STAGE = """---
+name: phased
+description: A stage whose step output carries the phase placeholder.
+---
+
+# Stage: phased
+
+### phased (planner)
+
+Prose.
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.1"
+    step:
+      role: planner
+      inputs:
+        - artifact: "{run}/a.md"
+          required: true
+      output:
+        artifact: "{run}/phase-{N}-plan.md"
+```
+"""
+
+    def write_run_state(self, steps: str, artifacts: str, run: str = "") -> None:
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            f"run:\n  id: demo\n{run}steps:\n{steps}gates: []\nartifacts:{artifacts}\n",
+        )
+
+    def test_done_step_output_missing_from_the_manifest_is_reported(self) -> None:
+        self.write_pair()
+        self.write_run_state("  - id: thing\n    status: done\n", " []")
+        self.assert_problem("`thing` is done and its output {run}/b.md is not in the manifest")
+
+    def test_manifest_listing_the_done_step_output_passes(self) -> None:
+        self.write_pair()
+        self.write_run_state("  - id: thing\n    status: done\n", '\n  - "{run}/b.md"')
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_reset_record_is_not_held_to_the_manifest(self) -> None:
+        """A `pending` record may still have produced its output — a `revise`
+        routing back to it, or entering a phase, resets the record and leaves
+        the artifact where it was. Its absence from the manifest proves nothing
+        either way, so only `done` is checked."""
+        self.write_pair()
+        self.write_run_state(
+            "  - id: thing\n    status: pending\n    iterations: 1\n", " []"
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_gate_record_has_no_output_to_look_for(self) -> None:
+        """Gates take `steps` entries and declare no output, so a `done` gate
+        must not be read as an artifact the manifest is missing."""
+        self.write_pair()
+        self.write_run_state("  - id: plan-approval\n    status: done\n", " []")
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_the_phase_placeholder_resolves_from_run_phase(self) -> None:
+        """`{N}` in a declared output resolves from `run.phase`, so a phase-2
+        run wants phase 2's artifact and phase 1's does not stand in for it."""
+        self.write("workflows/stages/phased.md", self.PHASED_STAGE)
+        self.write_run_state(
+            "  - id: phased\n    status: done\n",
+            '\n  - "{run}/phase-1-plan.md"',
+            run="  phase: 2\n",
+        )
+        self.assert_problem("its output {run}/phase-2-plan.md is not in the manifest")
+
+    def test_a_decided_gate_without_a_record_is_reported(self) -> None:
+        """§7 keeps every gate decision and §10 makes a gate's own entry `done`
+        only once its decision stands, so a `done` gate with no `gates` entry
+        has lost one — the intake gate's especially, that being what accepted
+        the class `run.risk` holds."""
+        self.write("workflows/stages/gated.md", self.GATED_STAGE)
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            "run:\n  id: demo\nsteps:\n  - id: demo-approval\n    status: done\n"
+            "gates: []\nartifacts: []\n",
+        )
+        self.assert_problem("gate `demo-approval` is done and no `gates` entry records")
+
+    def test_a_duplicate_step_id_is_reported(self) -> None:
+        """§10 keeps at most one record per step, and the schema cannot: it
+        would have to say "unique by this property" for an open set of ids, and
+        `uniqueItems` compares whole records — `done` and `pending` for the same
+        id are two distinct items and both pass."""
+        self.write_pair()
+        self.write_run_state(
+            "  - id: thing\n    status: done\n  - id: thing\n    status: pending\n",
+            '\n  - "{run}/b.md"',
+        )
+        self.assert_problem("`thing` has 2 records in `steps`")
+
+    def test_the_schema_alone_does_not_catch_a_duplicate_step_id(self) -> None:
+        """The reason the rule lives here rather than in the schema, pinned so
+        a later reader does not move it back and lose the coverage."""
+        schema = json.loads(
+            (self.root / "protocol/schemas/run-state.schema.json").read_text()
+        )
+        validator = validate_conformance.Draft202012Validator(schema)
+        doc = {
+            "run": {"id": "demo"},
+            "gates": [],
+            "steps": [
+                {"id": "thing", "status": "done"},
+                {"id": "thing", "status": "pending"},
+            ],
+        }
+        self.assertEqual(list(validator.iter_errors(doc)), [])
+
+    def test_repeated_gate_entries_are_not_duplicates(self) -> None:
+        """`gates` carries one entry per decision, so a gate decided twice
+        appears twice by design and must not be reported."""
+        self.write("workflows/stages/gated.md", self.GATED_STAGE)
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            "run:\n  id: demo\nsteps:\n  - id: demo-approval\n    status: done\n"
+            "gates:\n  - gate: demo-approval\n    at: '2026-08-11T09:00:00Z'\n"
+            "    outcome: revise\n  - gate: demo-approval\n"
+            "    at: '2026-08-11T10:00:00Z'\n    outcome: accept\nartifacts: []\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_done_gate_whose_latest_outcome_is_revise_is_reported(self) -> None:
+        """The regression the presence check missed: a `revise` leaves its entry
+        in `gates` while the gate returns to `pending`, so an entry alone does
+        not say a decision stands. If the later acceptance is never written but
+        the status reaches `done`, the stale revision would vouch for it."""
+        self.write("workflows/stages/gated.md", self.GATED_STAGE)
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            "run:\n  id: demo\nsteps:\n  - id: demo-approval\n    status: done\n"
+            "gates:\n  - gate: demo-approval\n    at: '2026-08-11T09:00:00Z'\n"
+            "    outcome: revise\nartifacts: []\n",
+        )
+        self.assert_problem("its latest outcome is `revise`")
+
+    def test_a_phased_gate_needs_a_decision_at_the_current_phase(self) -> None:
+        """A gate a phase repeats decides once per phase, so an earlier phase's
+        acceptance must not vouch for a `done` at this one — the entries would
+        otherwise be indistinguishable."""
+        self.write("workflows/stages/phasedgate.md", self.PHASED_GATED_STAGE)
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            "run:\n  id: demo\n  phase: 2\nsteps:\n  - id: demo-approval\n"
+            "    status: done\ngates:\n  - gate: demo-approval\n    phase: 1\n"
+            "    at: '2026-08-11T09:00:00Z'\n    outcome: accept\nartifacts: []\n",
+        )
+        self.assert_problem(
+            "is done at phase 2 and its latest decision records phase 1"
+        )
+
+    def test_a_phased_gate_with_this_phase_decision_stands(self) -> None:
+        self.write("workflows/stages/phasedgate.md", self.PHASED_GATED_STAGE)
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            "run:\n  id: demo\n  phase: 2\nsteps:\n  - id: demo-approval\n"
+            "    status: done\ngates:\n  - gate: demo-approval\n    phase: 1\n"
+            "    at: '2026-08-11T09:00:00Z'\n    outcome: accept\n"
+            "  - gate: demo-approval\n    phase: 2\n"
+            "    at: '2026-08-11T10:00:00Z'\n    outcome: accept\nartifacts: []\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_an_unphased_record_satisfies_no_phase(self) -> None:
+        """Whether a gate needs a `phase` comes from its stage, never from the
+        records — inferring it from what a record carries would let an omitted
+        field decide the field was never required. Reading it from the stage
+        closes that without demanding the field back: an entry with no phase
+        simply stands for no phase's approval."""
+        self.write("workflows/stages/phasedgate.md", self.PHASED_GATED_STAGE)
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            "run:\n  id: demo\n  phase: 2\nsteps:\n  - id: demo-approval\n"
+            "    status: done\ngates:\n  - gate: demo-approval\n"
+            "    at: '2026-08-11T09:00:00Z'\n    outcome: accept\nartifacts: []\n",
+        )
+        self.assert_problem(
+            "is done at phase 2 and its latest decision records no phase"
+        )
+
+    def test_a_stale_decision_does_not_hide_a_newer_one(self) -> None:
+        """The latest entry is what has to stand, not the best one on file.
+        Discarding the entries that do not match the phase before choosing let a
+        `phase: 2` acceptance vouch for a gate whose newest decision, recorded
+        after it, was a revise."""
+        self.write("workflows/stages/phasedgate.md", self.PHASED_GATED_STAGE)
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            "run:\n  id: demo\n  phase: 2\nsteps:\n  - id: demo-approval\n"
+            "    status: done\ngates:\n  - gate: demo-approval\n    phase: 2\n"
+            "    at: '2026-08-11T09:00:00Z'\n    outcome: accept\n"
+            "  - gate: demo-approval\n    phase: 2\n"
+            "    at: '2026-08-11T11:00:00Z'\n    outcome: revise\nartifacts: []\n",
+        )
+        self.assert_problem("its latest outcome is `revise`")
+
+    def test_a_decision_from_before_the_run_had_phases_is_left_alone(self) -> None:
+        """A re-cut may turn a single-phase run into a multi-phase one (§10),
+        and the decisions taken before it had phases were correctly recorded
+        without one. Demanding a phase of them would make conformance reject a
+        state a supported transition produces, and backfilling would rewrite an
+        audit record to say something that was not true when it was written."""
+        self.write("workflows/stages/phasedgate.md", self.PHASED_GATED_STAGE)
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            "run:\n  id: demo\n  phase: 1\nsteps:\n  - id: demo-approval\n"
+            "    status: blocked\ngates:\n  - gate: demo-approval\n"
+            "    at: '2026-08-11T09:00:00Z'\n    outcome: accept\nartifacts: []\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_an_unphased_gate_in_a_phased_run_is_judged_on_its_latest(self) -> None:
+        """A gate that decides once per run records no phase, so scoping its
+        decision to `run.phase` would make intake unapprovable in a multi-phase
+        run."""
+        self.write("workflows/stages/gated.md", self.GATED_STAGE)
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            "run:\n  id: demo\n  phase: 2\nsteps:\n  - id: demo-approval\n"
+            "    status: done\ngates:\n  - gate: demo-approval\n"
+            "    at: '2026-08-11T09:00:00Z'\n    outcome: accept\nartifacts: []\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_done_gate_takes_the_last_entry_naming_it(self) -> None:
+        """`gates` is appended in decision order, so a revision followed by an
+        acceptance stands — and the reverse does not."""
+        self.write("workflows/stages/gated.md", self.GATED_STAGE)
+        head = ("run:\n  id: demo\nsteps:\n  - id: demo-approval\n    status: done\n"
+                "gates:\n")
+        entry = ("  - gate: demo-approval\n    at: '2026-08-11T0{n}:00:00Z'\n"
+                 "    outcome: {o}\n")
+        for first, second, ok in (("revise", "accept", True), ("accept", "revise", False)):
+            self.write(
+                "protocol/schemas/examples/run-state.valid.yaml",
+                head + entry.format(n=9, o=first) + entry.format(n=10 % 10, o=second)
+                + "artifacts: []\n",
+            )
+            with self.subTest(order=f"{first} then {second}"):
+                code, output = self.run_main()
+                self.assertEqual(code, 0 if ok else 1, output)
+
+    def test_a_waiting_or_skipped_gate_owes_no_record(self) -> None:
+        """`blocked` is a gate still waiting and `skipped` one that never
+        decided; neither has an outcome to have lost."""
+        self.write("workflows/stages/gated.md", self.GATED_STAGE)
+        for status in ("blocked", "skipped", "pending"):
+            self.write(
+                "protocol/schemas/examples/run-state.valid.yaml",
+                f"run:\n  id: demo\nsteps:\n  - id: demo-approval\n    status: {status}\n"
+                "gates: []\nartifacts: []\n",
+            )
+            with self.subTest(status=status):
+                code, output = self.run_main()
+                self.assertEqual(code, 0, output)
+
+    # A stage a phase repeats — its step writes a per-phase output — declaring a
+    # gate. Whether that gate needs a `phase` is read from this, never from the
+    # records being checked.
+    PHASED_GATED_STAGE = """---
+name: phasedgate
+description: A stage a phase repeats, declaring a gate.
+---
+
+# Stage: phasedgate
+
+### phasedgate (planner)
+
+Prose.
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.1"
+    step:
+      role: planner
+      inputs:
+        - artifact: "{run}/a.md"
+          required: true
+      output:
+        artifact: "{run}/phase-{N}-thing.md"
+```
+
+## Gates
+
+- **demo-approval** — collects the human decision.
+"""
+
+    GATED_STAGE = """---
+name: gated
+description: A stage that declares a gate.
+---
+
+# Stage: gated
+
+## Gates
+
+- **demo-approval** — collects the human decision.
+"""
+
+    def test_a_prior_phase_output_is_not_required(self) -> None:
+        """A phase the run has left owes this tool nothing it can check.
+        Records are one per step and reset on entering a phase, so a `skipped`
+        record may have run in an earlier phase and a running one may have been
+        skipped there — reading either as evidence about the phase before is
+        inference, and this check has been wrong in both directions doing it.
+        §8.2 still binds the executor; the document cannot confirm it until run
+        state records per-phase participation the way `gates` records the phase
+        a decision belongs to.
+        """
+        self.write("workflows/stages/phased.md", self.PHASED_STAGE)
+        self.write_run_state(
+            "  - id: phased\n    status: done\n",
+            '\n  - "{run}/phase-2-plan.md"',  # phase 1's is absent and stays legal
+            run="  phase: 2\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_the_phase_placeholder_defaults_to_phase_one(self) -> None:
+        self.write("workflows/stages/phased.md", self.PHASED_STAGE)
+        self.write_run_state(
+            "  - id: phased\n    status: done\n", '\n  - "{run}/phase-1-plan.md"'
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_the_spec_run_state_example_is_checked_too(self) -> None:
+        """The spec's own example is a run-state document like any other, and
+        the tally counts it — a normative example nothing checks is the one
+        most likely to drift."""
+        _, output = self.run_main()
+        match = re.search(r"(\d+) run-state documents", output)
+        assert match is not None, output
+        self.assertGreaterEqual(int(match.group(1)), 2)
+
+    # ---- malformed declarations stay reportable ----
+    #
+    # Every check accumulates problems and `main` prints nothing until all of
+    # them have run, so a check that raises takes the whole report down with
+    # it. These run over documents the schema pass faults rather than instead
+    # of it, which is exactly when malformed shapes reach them.
+
+    def test_scalar_output_on_a_standalone_skill_is_reported_not_raised(self) -> None:
+        self.write(
+            "skills/awf-loner/SKILL.md",
+            self.SKILL.replace("awf-thing", "awf-loner").replace(
+                '      output:\n        artifact: "{run}/b.md"\n'
+                "        template: references/t.template.md",
+                "      output: invalid",
+            )
+            % "true",
+        )
+        self.assert_problem("is not of type 'object'")
+
+    def test_scalar_output_on_a_step_bound_skill_is_reported_not_raised(self) -> None:
+        """The parity check reads the same field, so the guard has to cover it
+        too — and there a malformed value is still a value to compare, which is
+        why it reads as drift against the stage's well-formed one."""
+        self.write_pair()
+        self.write(
+            "skills/awf-thing/SKILL.md",
+            self.SKILL.replace(
+                '      output:\n        artifact: "{run}/b.md"\n'
+                "        template: references/t.template.md",
+                "      output: invalid",
+            )
+            % "true",
+        )
+        output = self.assert_problem("is not of type 'object'")
+        self.assertIn("step output artifact differs from the one", output)
+
+    def test_a_non_string_step_id_is_reported_not_raised(self) -> None:
+        self.write_pair()
+        self.write_run_state("  - id: [thing]\n    status: done\n", " []")
+        self.assert_problem("is not of type 'string'")
+
+    HOSTILE = (5, "str", [], {}, None, [1, 2], {"a": "b"}, True, 3.5)
+
+    RUN_STATE_SHAPES = (
+        "run: %s\ngates: []\n",
+        "run:\n  id: demo\n  phase: %s\nsteps:\n  - id: thing\n    status: done\ngates: []\n",
+        "run:\n  id: demo\nsteps: %s\ngates: []\n",
+        "run:\n  id: demo\nsteps:\n  - %s\ngates: []\n",
+        "run:\n  id: demo\nsteps:\n  - id: %s\n    status: done\ngates: []\n",
+        "run:\n  id: demo\nsteps:\n  - id: thing\n    status: %s\ngates: []\n",
+        "run:\n  id: demo\nsteps:\n  - id: thing\n    status: done\ngates: []\nartifacts: %s\n",
+        "run:\n  id: demo\nsteps:\n  - id: thing\n    status: done\ngates: []\nartifacts:\n  - %s\n",
+    )
+
+    def test_no_malformed_shape_stops_the_report(self) -> None:
+        """Whatever shape a document arrives in, `main` has to reach its print —
+        reporting or passing, but never raising. Which of the two it is belongs
+        to the schema; that it gets there at all is what this asserts.
+
+        These checks read declarations by shape, and they run over documents
+        the schema pass has *faulted* rather than instead of them — that pass
+        records a problem and carries on, and nothing prints until every check
+        has run. So each field they touch must tolerate a value the schema
+        would reject, and the guard belongs on all of them at once: the first
+        version covered the manifest and left `steps`, its neighbour, raising.
+        """
+        self.write_pair()
+        pristine = (self.root / "protocol/schemas/examples/run-state.valid.yaml").read_text()
+        skill = (self.root / "skills/awf-thing/SKILL.md").read_text()
+        output_block = (
+            '      output:\n        artifact: "{run}/b.md"\n'
+            "        template: references/t.template.md"
+        )
+        for value in self.HOSTILE:
+            encoded = json.dumps(value)
+            for shape in self.RUN_STATE_SHAPES:
+                self.write(
+                    "protocol/schemas/examples/run-state.valid.yaml", shape % encoded
+                )
+                with self.subTest(field="run-state", value=encoded, shape=shape[:24]):
+                    self.assertIn(self.run_main()[0], (0, 1))
+            self.write("protocol/schemas/examples/run-state.valid.yaml", pristine)
+            for field in ("output", "role", "inputs", "on"):
+                mutated = (
+                    skill.replace(output_block, f"      output: {encoded}")
+                    if field == "output"
+                    else re.sub(
+                        # The key line may carry a scalar (`role: analyst`) or
+                        # open a block; matching only the block form left `role`
+                        # and `on` substituting nothing, which reads in the
+                        # results as a field that tolerated every hostile value.
+                        rf"^      {field}:[^\n]*(?:\n        [^\n]*)*",
+                        f"      {field}: {encoded}",
+                        skill,
+                        count=1,
+                        flags=re.MULTILINE,
+                    )
+                )
+                self.assertNotEqual(
+                    mutated,
+                    skill,
+                    f"the {field} mutation changed nothing — the subtest below "
+                    "would assert tolerance of a value never written",
+                )
+                self.write("skills/awf-thing/SKILL.md", mutated)
+                with self.subTest(field=field, value=encoded):
+                    self.assertIn(self.run_main()[0], (0, 1))
+            self.write("skills/awf-thing/SKILL.md", skill)
+
+    def test_a_non_iterable_step_list_is_reported_not_raised(self) -> None:
+        """`steps` and `artifacts` are the two arrays a run-state document
+        offers, so both go through one guard — the first version of it covered
+        the manifest and left this one raising."""
+        self.write_pair()
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            'run:\n  id: demo\nsteps: 5\ngates: []\nartifacts:\n  - "{run}/b.md"\n',
+        )
+        self.assert_problem("is not of type 'array'")
+
+    def test_a_non_iterable_manifest_is_reported_not_raised(self) -> None:
+        """A scalar manifest is the shape that bites: a string iterates into
+        characters and merely computes nonsense, where a number cannot be
+        iterated at all."""
+        self.write_pair()
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            "run:\n  id: demo\nsteps:\n  - id: thing\n    status: done\n"
+            "gates: []\nartifacts: 5\n",
+        )
+        self.assert_problem("is not of type 'array'")
 
     def run_main_expecting_exit_with_root(self, root: Path) -> str:
         with contextlib.redirect_stdout(io.StringIO()):

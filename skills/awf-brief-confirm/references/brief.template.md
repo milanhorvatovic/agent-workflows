@@ -11,9 +11,9 @@
 
 ## Constraints
 
-[What bounds the solution — compatibility that must hold, performance that must not regress, deadlines, dependencies the project will not take on, approaches already ruled out. Each marked stated or inferred, so the gate can strike an inference cheaply. "None" when the request states no constraint and none was inferred.]
+[What bounds the solution — compatibility that must hold, performance that must not regress, deadlines, dependencies the project will not take on, approaches already ruled out. Each marked stated, inferred, or directed, so the gate can strike an inference cheaply and can tell its own additions from the requester's: directed is a constraint the human added at a gate, which the request neither stated nor implied and which must not be recorded as either. "None" only when the request states no constraint, none was inferred, and no gate directed one.]
 
-- [constraint] — [stated | inferred]
+- [constraint] — [stated | inferred | directed]
 
 ## Acceptance criteria
 
@@ -29,12 +29,21 @@
 
 ## Assumptions and clarification
 
-[Assumptions taken where the request did not say, each naming the part of the request that left it open. Where the clarifying-question gate fired: the question asked and the content of the answer — folded into the sections above, not left only here. "None" when the request was restatable without either.]
+[Assumptions taken where the request did not say, each naming the part of the request that left it open. Where a gate sent something back: the question asked and the content of the answer at clarifying-question, or what an intake-approval revise asked for — folded into the sections above, not left only here, since this section records what was asked while those sections are what the run is measured against. "None" when the request was restatable with none of them.]
 
 ## Routing
 
 [Filled by risk-route; left as scaffolded until then.]
 
 **Proposed class:** [R0 | R1 | R2 | R3 — or "withheld", where ambiguity above threshold routed back to the clarifying question instead]
-**Rationale:** [one line naming the signals that decided it — transcribed verbatim into `run.risk_rationale`; where the class is withheld, what could not be pinned down]
+**Rationale:** [one line naming the signals that decided it — transcribed verbatim into `run.risk_rationale` where the human accepts this class; where they override it, run state takes their reason from **Accepted rationale** below instead and this line stays the proposal it always was; where the class is withheld, what could not be pinned down]
 **Security surface:** [the value begins with yes or no, written as a bare word with no formatting around it, then what decided the reading either way — for yes, what triggers it, which also enables security review; for no, what was checked and found absent]
+
+[Filled at `intake-approval` on an `accept`, by whoever records the decision, never by risk-route. A `revise` or `reject` accepts no class: leave both fields as scaffolded and strike anything a previous acceptance left, since a class recorded here that this gate did not accept is the proposal impersonating a decision that risk-route refuses to write.]
+
+**Accepted class:** [the class the human accepted, written as `R0`–`R3` even where it matches the proposal — this is what run state carries, and a pointer back to the proposed class would make an executor dereference a second field to fill `run.risk`]
+**Accepted rationale:** [where they overrode, their one-line reason: this is what run state transcribes into `run.risk_rationale`, which is why the **Rationale** line above stays the router's proposal. Omit where the class was accepted as proposed, the **Rationale** line above being the reason in that case]
+
+## Gate direction
+
+[What the human asked for at a gate that sent this artifact back, recorded before the outcome so it survives the decision (spec §7). One entry per item, quoted or restated. The step that revises this artifact folds each into the sections it is about and returns this one to "None" — anything other than "None" in an artifact that has left its stage is direction nobody applied. "None" until a gate sends something back, and "None" again once it has been applied. A class override at `intake-approval` is not direction and does not land here: it is an `accept`, so no step re-reads this artifact to apply anything, and its rationale is recorded in the Routing block above.]

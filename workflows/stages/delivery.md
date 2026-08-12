@@ -11,7 +11,7 @@ Closes the run: assemble what shipped, validate it against the brief one last ti
 
 ### deliver-prepare (analyst)
 
-Synthesize the delivery artifact from the run's evidence — brief, implementation logs, the review loop's own fix record, validations — into a summary of what changed and why, verification evidence, and a ready-to-use change description for the project's normal shipping channel (for example, a pull request). The implementation logs are required — implementation runs in every class where this step does, one log per completed phase; the validation artifacts stay optional, validator steps being skipped at R1. `{run}/review-fixes.md` is optional too, and this step states the §9.1 freshness check that optional makes necessary: its `Run` header must match this run and its **Iteration** be the loop's last, since where a review loop ran it holds the current machine-check result and commit list while the logs hold the state as of implementation.
+Synthesize the delivery artifact from the run's evidence — brief, implementation logs, the review loop's own fix record, validations — into a summary of what changed and why, verification evidence, and a ready-to-use change description for the project's normal shipping channel (for example, a pull request). The implementation logs are required — implementation runs in every class where this step does, one log per completed phase; the validation artifacts stay optional, validator steps being skipped at R1. `{run}/review-fixes.md` is optional too, and this step states the §9.1 freshness check that optional makes necessary: its `Run` header must match this run and its **Iteration** be the loop's last, since where a review loop ran it holds the current machine-check result and commit list while the logs hold the state as of implementation. The step also declares its own output optionally — which is where a returning human's direction is waiting, in its **Gate direction** section (spec §7) rather than in a declaration of its own: a `delivery-approval` `revise` returns here, and rewriting the artifact against the human's direction is an instruction that depends on it (spec §9.1), absent only on the first pass where nothing precedes the step that writes it.
 
 ```yaml
 metadata:
@@ -31,6 +31,8 @@ metadata:
         - artifact: "{run}/review-fixes.md"
           required: false
         - artifact: "{run}/phase-{N}-plan.md"
+          required: false
+        - artifact: "{run}/delivery.md"
           required: false
       output:
         artifact: "{run}/delivery.md"
@@ -71,7 +73,7 @@ metadata:
 
 ## Gates
 
-- **delivery-approval** — every verdict routes here: the gate fires as the run's last checkpoint regardless, and the human decides with the verdict in view. Transport per risk class ([overlays](../overlays.md)). Outcomes: `accept` completes the run — the change ships by the project's normal channel, with `{run}/delivery.md` as the ready description; `revise` returns to `deliver-prepare`; `reject` ends the run — a rejection of the change itself, not just its description, and the human MAY re-enter an earlier stage in a new phase or run.
+- **delivery-approval** — every verdict routes here: the gate fires as the run's last checkpoint regardless, and the human decides with the verdict in view. Transport per risk class ([overlays](../overlays.md)). Outcomes: `accept` completes the run — the change ships by the project's normal channel, with `{run}/delivery.md` as the ready description; `revise` returns to `deliver-prepare`, carrying what the human wants changed about the description — recorded in the artifact's **Gate direction** section before the outcome and never in the gate record (spec §7), for `deliver-prepare` to rewrite against and empty rather than to ship; `reject` ends the run — a rejection of the change itself, not just its description, and the human MAY re-enter an earlier stage in a new phase or run.
 
 ## Notes
 

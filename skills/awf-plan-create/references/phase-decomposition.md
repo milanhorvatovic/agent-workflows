@@ -1,6 +1,6 @@
-# Phase decomposition — fixing the phase list
+# Phase decomposition — authoring the phase list
 
-How a phase-1 plan cuts multi-phase work into phases. Loaded when the brief's work exceeds one deliverable increment; a single-phase run skips this entirely. The phase list this produces goes in the plan's Phase list section and is fixed for the run — later phases plan against it, and changing it mid-run is a cross-phase escalation (`awf-plan-revise`), never a silent edit.
+How a phase-1 plan cuts multi-phase work into phases. Loaded when the brief's work exceeds one deliverable increment; a single-phase run skips this entirely. The phase list this produces goes in the plan's Phase list section, provisional until `plan-approval` fixes it for the run — later phases plan against it, and changing it mid-run is a cross-phase escalation (`awf-plan-revise`), never a silent edit.
 
 ## Cutting phases
 

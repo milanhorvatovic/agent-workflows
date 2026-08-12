@@ -11,7 +11,7 @@
 
 ## Phase list
 
-[Phase-1 plans only — this section fixes the run's phase list; later phases' plans mark it "fixed by phase-1 plan". A single-phase run states that here. Per phase: name, scope, out of scope, key deliverables, dependencies on other phases, and relative complexity — see the phase-decomposition reference.]
+[Phase-1 plans only — this section authors the run's phase list, which `plan-approval` then fixes; later phases' plans mark it "fixed at plan-approval, authored by the phase-1 plan". A single-phase run states that here. Per phase: name, scope, out of scope, key deliverables, dependencies on other phases, and relative complexity — see the phase-decomposition reference.]
 
 ## Prerequisites
 
@@ -69,4 +69,8 @@
 
 ## Open questions
 
-[Ambiguities the planner could not confidently resolve, each specific and answerable, with proposed alternatives. "None" when everything is decided.]
+[Ambiguities the planner could not confidently resolve, each specific and answerable, with proposed alternatives. Escalations land here too — every item of the human's *direction* a revision could not apply, whatever blocked it: a phase list that approval has already fixed, infeasibility, a constraint in the brief, a project standard it would depart from. Each states what it would require and what stood in the way, because this section is what the gate reads and the feedback audit is not an artifact it is given, so direction escalated only there is direction nobody sees. What does not come here is an unresolved validation *finding* — a plan that cannot cover a requirement is defective rather than awaiting a decision, so it stays a finding for the validator, since this is the section the gate reads and the feedback audit is not an artifact it is given. "None" when everything is decided.]
+
+## Gate direction
+
+[What the human asked for at a gate that sent this artifact back, recorded before the outcome so it survives the decision (spec §7). One entry per item, quoted or restated. The step that revises this artifact folds each into the sections it is about and returns this one to "None" — anything other than "None" in an artifact that has left its stage is direction nobody applied. "None" until a gate sends something back, and "None" again once it has been applied.]

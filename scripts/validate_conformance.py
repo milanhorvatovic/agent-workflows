@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate the protocol surface against the schemas in protocol/schemas/.
 
-Five checks:
+Seven checks:
 
 - Fixtures: every `protocol/schemas/examples/<name>.valid.yaml` must satisfy
   its schema and every `<name>.invalid.yaml` must be rejected — the
@@ -25,6 +25,18 @@ Five checks:
   standalone.
 - Skill budget: every `skills/*/SKILL.md` body stays within the 500-line /
   ~5000-token budget.
+- Step parity: a step-bound skill restates the step block its stage declares,
+  identically — two copies of one contract drift silently, and spec §9.1
+  makes the input declaration the executor's whole view of a step.
+- Run-state documents: every one this repo ships is checked for three
+  semantics its schema cannot hold — a manifest current with the steps
+  recorded `done`, a gate recorded `done` carrying a standing decision, and
+  at most one record per step. In every run-state document this repo ships, a step
+  recorded `done` has its declared output in the manifest, `{N}` resolved
+  from `run.phase` (spec §8.2). The map from step id to output is read off
+  the stage contracts, since a run's steps are the composed workflow's, and
+  bounded to the phase now executing — what an earlier phase owes cannot be
+  read from records the phase reset, see `manifest_problems`.
 
 YAML is parsed as YAML 1.2 (ruamel.yaml) — under PyYAML's YAML 1.1 the `on:`
 key of a step block reads as boolean true, spuriously failing every step
@@ -242,15 +254,35 @@ def validate_workflow_block(
     return problems
 
 
+
+def fixture_paths(root: Path, name: str) -> list[tuple[str, Path]]:
+    """The fixtures for one schema: the required pair, plus any variants.
+
+    `<name>.valid.yaml` and `<name>.invalid.yaml` are mandatory — their absence
+    is a problem. Either kind may add `<name>.<kind>.<variant>.yaml` for a shape
+    the pair does not reach: a further legal shape, or a further way to be
+    illegal. One invalid fixture proves only that a document with several faults
+    is rejected, which says nothing about any single rule — a constraint gets
+    its own negative fixture or it has no coverage at all.
+    """
+    directory = root / FIXTURE_DIR
+    found: list[tuple[str, Path]] = []
+    for kind in ("valid", "invalid"):
+        found.append((kind, directory / f"{name}.{kind}.yaml"))
+        found.extend(
+            (kind, path) for path in sorted(directory.glob(f"{name}.{kind}.*.yaml"))
+        )
+    return found
+
+
 def check_fixtures(
     root: Path, validators: dict[str, Draft202012Validator]
 ) -> tuple[int, list[str]]:
     problems: list[str] = []
     checked = 0
     for name in sorted(validators):
-        for kind in ("valid", "invalid"):
-            rel = (FIXTURE_DIR / f"{name}.{kind}.yaml").as_posix()
-            path = root / rel
+        for kind, path in fixture_paths(root, name):
+            rel = path.relative_to(root).as_posix()
             if not path.is_file():
                 problems.append(f"{rel}: fixture missing")
                 continue
@@ -428,6 +460,33 @@ def step_of(block: Block | None) -> Any:
     return None
 
 
+def items_of(value: Any) -> list[Any]:
+    """The entries of a value the schema declares as an array, or nothing.
+
+    A value of the wrong shape is the schema pass's to report and these checks
+    run over documents it has already faulted, so a scalar must read as empty
+    here rather than raise mid-iteration. Both array fields a run-state
+    document offers go through this, so guarding one and not its neighbour is
+    not a thing that can be done by accident.
+    """
+    return value if isinstance(value, list) else []
+
+
+def output_artifact(step: Any) -> Any:
+    """The `artifact` a step declares as its output.
+
+    Returns the raw `output` value where that value is not a mapping. These
+    checks run over frontmatter the schema pass has faulted rather than instead
+    of it, and `main` prints nothing until every check has run — so a malformed
+    declaration must read as a value here and be reported there, never raise
+    and take the accumulated problems down with it.
+    """
+    output = step.get("output") if isinstance(step, dict) else None
+    if not isinstance(output, dict):
+        return output
+    return output.get("artifact")
+
+
 def stage_steps(root: Path, problems: list[str]) -> dict[str, tuple[str, Any]]:
     """Every step a stage contract declares, keyed by its `### <id>` heading.
 
@@ -476,13 +535,225 @@ def check_step_parity(root: Path) -> tuple[int, list[str]]:
                     f"{rel}: step `{field}` differs from the one {at} declares "
                     f"for `{step_id}`; two copies of one contract must agree"
                 )
-        skill_out = (step.get("output") or {}).get("artifact")
-        stage_out = (declared.get("output") or {}).get("artifact")
+        skill_out = output_artifact(step)
+        stage_out = output_artifact(declared)
         if skill_out != stage_out:
             problems.append(
                 f"{rel}: step output artifact differs from the one {at} declares "
                 f"for `{step_id}`; two copies of one contract must agree"
             )
+    return checked, problems
+
+
+def step_outputs(root: Path) -> dict[str, str]:
+    """Every output a stage contract declares, keyed by step id.
+
+    Read from the stages rather than from `skills/`, because a run's `steps`
+    are the composed workflow's steps and it is the stages that compose it. The
+    two are not the same set in either direction: a standalone skill is not a
+    step, so keying by skill would let one lend its output to any run-state
+    record that happened to share its id, and a stage step whose skill is
+    missing would be silently exempt from the manifest rule instead of held to
+    the output its stage declares. Parse problems are discarded here — every
+    stage file is a markdown file, so `check_workflow_blocks` reports them
+    already, and `check_step_parity` reports them again from its own read.
+    """
+    found: dict[str, str] = {}
+    for step_id, (_, step) in stage_steps(root, []).items():
+        # Stricter than the parity check's use of the same field, and for the
+        # opposite reason: parity compares whatever is declared, so a malformed
+        # value is a value to compare, while a step id mapped to a malformed
+        # value here would be read back as an artifact path and reported as
+        # missing from a manifest that could never have listed it.
+        output = step.get("output") if isinstance(step, dict) else None
+        artifact = output.get("artifact") if isinstance(output, dict) else None
+        if isinstance(artifact, str):
+            found[step_id] = artifact
+    return found
+
+
+def manifest_problems(at: str, data: Any, outputs: dict[str, str]) -> list[str]:
+    """Spec §8.2: the manifest lists what the run has produced, so the output
+    of a step recorded `done` belongs in it.
+
+    Only `done` is checked, and deliberately. A record reading `pending` may
+    still have produced its output — a `revise` routing back to it, or entering
+    a phase, resets the record and leaves the artifact where it was — so its
+    absence from the manifest proves nothing either way. `done` is the one
+    status that always implies the output landed.
+    """
+    if not isinstance(data, dict) or not isinstance(data.get("run"), dict):
+        return []
+    phase = data["run"].get("phase", 1)
+    manifest = {x for x in items_of(data.get("artifacts")) if isinstance(x, str)}
+    problems: list[str] = []
+    # Only the phase now executing is checked. What a prior phase owes cannot
+    # be read from this document: records are one per step and are reset when a
+    # phase is entered, so a `skipped` record may have run in an earlier phase
+    # and a running one may have been skipped there — reading either as evidence
+    # about the phase before is inference, not fact, and it has been wrong in
+    # both directions here. §8.2's growth rule still binds the executor across
+    # phases; nothing here can confirm it until run state records per-phase
+    # participation the way `gates` now records the phase a decision belongs to.
+    for step in items_of(data.get("steps")):
+        if not isinstance(step, dict) or step.get("status") != "done":
+            continue
+        step_id = step.get("id")
+        if not isinstance(step_id, str):
+            continue  # not a usable id; check_fixtures faults it against the schema
+        artifact = outputs.get(step_id)
+        if artifact is None:
+            continue  # a gate, or a step no skill declares
+        resolved = artifact.replace("{N}", str(phase))
+        if resolved not in manifest:
+            problems.append(
+                f"{at}: `{step_id}` is done and its output {resolved} is not in "
+                f"the manifest — spec §8.2 has the executor keep it current"
+            )
+    return problems
+
+
+GATE_HEADING = re.compile(r"^- \*\*(?P<id>[a-z][a-z0-9-]*)\*\*", re.MULTILINE)
+
+
+def gate_scopes(root: Path) -> dict[str, bool]:
+    """Every gate a stage declares, mapped to whether a phase repeats it.
+
+    A stage repeats per phase when its steps write per-phase outputs — `{N}` in
+    a declared output artifact — and the gates it declares repeat with it. Read
+    from the stage contracts rather than from the records being checked: whether
+    a gate needs a `phase` cannot be inferred from whether its records carry
+    one, or omitting the field would decide that the field was never required
+    and bypass the check it exists for.
+    """
+    found: dict[str, bool] = {}
+    for path in sorted(root.glob("workflows/stages/*.md")):
+        rel = path.relative_to(root).as_posix()
+        text = path.read_text(encoding="utf-8")
+        phased = any(
+            isinstance(artifact, str) and "{N}" in artifact
+            for artifact in (
+                output_artifact(step_of(block))
+                for block in yaml_blocks(text, rel, [])
+                if step_of(block) is not None
+            )
+        )
+        section = text.split("## Gates", 1)
+        if len(section) == 2:
+            for match in GATE_HEADING.finditer(section[1]):
+                found[match.group("id")] = phased
+    return found
+
+
+def gate_record_problems(at: str, data: Any, gates: dict[str, bool]) -> list[str]:
+    """Spec §5.3 and §7: a gate's decision is recorded in `gates` like any other
+    outcome, and §10 makes its own `steps` entry `done` only once that decision
+    stands. So a gate recorded `done` with no entry has lost the decision — the
+    intake gate's especially, since that is what accepted the class `run.risk`
+    holds. Only `done` is checked: `blocked` is a gate still waiting, `pending`
+    one not yet reached, and `skipped` one that never decided anything.
+    """
+    if not isinstance(data, dict):
+        return []
+    # `gates` is appended in decision order (§10), so the last entry naming a
+    # gate is its latest — and it is that entry which has to stand, never the
+    # best one on file. Filtering the others out first would let a stale accept
+    # vouch for a gate whose newest decision was a revise.
+    phase = data["run"].get("phase") if isinstance(data.get("run"), dict) else None
+    latest: dict[str, Any] = {}
+    for record in items_of(data.get("gates")):
+        if isinstance(record, dict) and isinstance(record.get("gate"), str):
+            latest[record["gate"]] = record
+    problems: list[str] = []
+    for step in items_of(data.get("steps")):
+        if not isinstance(step, dict) or step.get("status") != "done":
+            continue
+        step_id = step.get("id")
+        if not isinstance(step_id, str) or step_id not in gates:
+            continue
+        record = latest.get(step_id)
+        if record is None:
+            problems.append(
+                f"{at}: gate `{step_id}` is done and no `gates` entry records its "
+                f"outcome — spec §7 keeps every decision"
+            )
+            continue
+        # A gate a phase repeats decides once per phase, so its standing
+        # decision is the one taken at the phase now executing. An entry naming
+        # another phase, or none — recorded before the run had phases, which a
+        # re-cut does not reach back into (§10) — is not this phase's.
+        if phase is not None and gates[step_id] and record.get("phase") != phase:
+            named = record.get("phase")
+            says = f"phase {named}" if named is not None else "no phase"
+            problems.append(
+                f"{at}: gate `{step_id}` is done at phase {phase} and its latest "
+                f"decision records {says} — spec §10 has a decision taken while the "
+                f"run is phased name the phase it was taken in"
+            )
+        elif record.get("outcome") not in ("accept", "reject"):
+            problems.append(
+                f"{at}: gate `{step_id}` is done and its latest outcome is "
+                f"`{record.get('outcome')}` — spec §7 has a `revise` return the gate "
+                f"to `pending`, so only an accept or a reject stands"
+            )
+    return problems
+
+
+def duplicate_record_problems(at: str, data: Any) -> list[str]:
+    """Spec §10: at most one record per step and per gate.
+
+    The schema cannot hold this one. `uniqueItems` compares whole records, so
+    `plan-create: done` and `plan-create: pending` are two distinct items and
+    both pass, and JSON Schema has no way to say "unique by this property" for
+    an open set of ids. It is left to this check for that reason rather than as
+    an oversight, and it has no negative fixture for the same reason: an invalid
+    fixture here must fail its schema, and a document with duplicate ids does
+    not.
+
+    `gates` is deliberately not checked. It carries one entry per decision, so a
+    gate decided more than once appears more than once by design (§10).
+    """
+    counts: dict[str, int] = {}
+    for step in items_of(data.get("steps")) if isinstance(data, dict) else []:
+        if isinstance(step, dict) and isinstance(step.get("id"), str):
+            counts[step["id"]] = counts.get(step["id"], 0) + 1
+    return [
+        f"{at}: `{step_id}` has {n} records in `steps` — spec §10 keeps at most "
+        f"one per step, and resume and `iterations` have no single record to read"
+        for step_id, n in sorted(counts.items())
+        if n > 1
+    ]
+
+
+def check_manifests(root: Path) -> tuple[int, list[str]]:
+    """Every run-state document this repo ships models a state an executor may
+    resume from, so a stale manifest in one is a nonconforming example rather
+    than a cosmetic slip: §8.5 resumes into a run whose artifacts it can only
+    find here."""
+    outputs = step_outputs(root)
+    gates = gate_scopes(root)
+    problems: list[str] = []
+    checked = 0
+    for kind, path in fixture_paths(root, RUN_STATE):
+        if kind != "valid" or not path.is_file():
+            continue
+        rel = path.relative_to(root).as_posix()
+        try:
+            data = jsonify(YAML_LOADER.load(path.read_text(encoding="utf-8")))
+        except YAMLError:
+            continue  # check_fixtures reports the parse failure
+        checked += 1
+        problems += manifest_problems(rel, data, outputs)
+        problems += gate_record_problems(rel, data, gates)
+        problems += duplicate_record_problems(rel, data)
+    spec = root / SPEC
+    if spec.is_file():
+        for block in yaml_blocks(spec.read_text(encoding="utf-8"), SPEC.as_posix(), []):
+            if isinstance(block.data, dict) and "run" in block.data:
+                checked += 1
+                problems += manifest_problems(block.at, block.data, outputs)
+                problems += gate_record_problems(block.at, block.data, gates)
+                problems += duplicate_record_problems(block.at, block.data)
     return checked, problems
 
 
@@ -514,8 +785,9 @@ def main(argv: list[str] | None = None) -> int:
     files, frontmatter_problems = check_frontmatter(root)
     skills, skill_problems = check_skill_budgets(root)
     bound, parity_problems = check_step_parity(root)
+    manifests, manifest_faults = check_manifests(root)
     problems += spec_problems + block_problems + frontmatter_problems + skill_problems
-    problems += parity_problems
+    problems += parity_problems + manifest_faults
 
     for problem in problems:
         print(problem)
@@ -525,7 +797,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"conformance: OK — {fixtures} fixtures, {examples} spec examples, "
         f"{blocks} workflow blocks, {files} frontmatter files, {skills} skill bodies, "
-        f"{bound} step-bound skills"
+        f"{bound} step-bound skills, {manifests} run-state documents"
     )
     return 0
 

@@ -1,0 +1,86 @@
+# Starter: a multi-phase run mid-way through phase 2, at R3.
+# `run.phase` says which phase is executing, which step records cannot: their
+# ids repeat per phase, so this is what a resume reads to know that
+# `{run}/phase-{N}-plan.md` resolves to phase 2 and that plan-validate's
+# `iterations` counts against phase 2's loop (spec §10, §9.2).
+# Entering phase 2 returned the repeated planning and implementation steps to
+# `pending` and cleared what they accumulated in phase 1 (spec §10).
+run:
+  id: 2026-08-11-feature-slug
+  workflow: feature
+  phase: 2
+  risk: R3
+  risk_rationale: "multi-phase, migration touches released API surface"
+  protocol: "0.1"
+steps:
+  - id: brief-confirm
+    status: done
+  - id: clarifying-question
+    status: skipped
+  - id: risk-route
+    status: done
+  - id: intake-approval
+    status: done
+  - id: ground
+    status: done
+  - id: ideate
+    status: done
+  - id: ideate-validate
+    status: done
+    iterations: 1
+    stall_flags: []
+  - id: ideate-revise
+    status: skipped
+  - id: plan-create # returned to pending when phase 2 was entered, and has since run
+    status: done
+  - id: plan-revise # phase 2's plan passed first time, so this iteration never
+    status: skipped # ran; it precedes its validator because a plan-approval
+                    # `revise` makes both pending at once (spec §10)
+  - id: plan-validate
+    status: done
+    iterations: 1 # phase 2's loop; entering the phase cleared phase 1's count
+    stall_flags: []
+  - id: plan-approval
+    status: blocked
+  - id: implement # phase 1's implementation is done; this record was reset for phase 2
+    status: pending
+  - id: implement-validate
+    status: pending
+  - id: review-code # review and delivery run once, after the final phase
+    status: pending
+  - id: review-security # mandatory at R3
+    status: pending
+  - id: review-validate
+    status: pending
+  - id: review-arbitrate # mandatory at R3
+    status: pending
+  - id: review-fix # conditional, like every revising loop member: it runs only
+    status: skipped # where the loop has not exited, so the verdict routes to it
+  - id: deliver-prepare
+    status: pending
+  - id: deliver-validate
+    status: pending
+  - id: delivery-approval
+    status: pending
+gates:
+  - gate: intake-approval
+    transport: blocking
+    outcome: accept
+    at: "2026-08-11T08:02:00Z"
+  - gate: plan-approval # planning repeats per phase, so the decision names one
+    phase: 1
+    transport: blocking
+    outcome: accept
+    at: "2026-08-11T09:15:00Z"
+artifacts: # cumulative across phases: phase 1's records were reset to `pending`
+  # for phase 2, and the manifest is what still says its outputs exist (spec §8.2)
+  - "{run}/brief.md"
+  - "{run}/grounding.md"
+  - "{run}/ideation.md"
+  - "{run}/ideation-validation.md"
+  - "{run}/phase-1-plan.md"
+  - "{run}/phase-1-plan-validation.md"
+  - "{run}/phase-1-impl-log.md"
+  - "{run}/phase-1-impl-validation.md"
+  - "{run}/phase-2-plan.md"
+  - "{run}/phase-2-plan-validation.md"

@@ -1,0 +1,12 @@
+# INVALID on purpose — schema validation MUST reject this fixture:
+# - run.phase is 0, below the minimum of 1: phases are 1-based (spec §10)
+run:
+  id: 2026-08-11-bad-phase
+  workflow: feature
+  phase: 0
+  risk: R2
+  risk_rationale: "one module"
+  protocol: "0.1"
+steps: []
+gates: []
+artifacts: []

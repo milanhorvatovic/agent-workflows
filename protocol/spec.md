@@ -24,7 +24,8 @@ The key words MUST, MUST NOT, SHOULD, SHOULD NOT, and MAY are to be interpreted 
 - **Step** — the smallest unit of execution: one role applying one skill to declared inputs, producing a declared output.
 - **Stage** — a named sub-workflow (steps, loop contracts, gates) that workflows compose.
 - **Gate** — a point where a human decision is required or collected (see [Gates](#7-gates)).
-- **Artifact** — a file produced or consumed by a step, addressed relative to the run directory.
+- **Artifact** — a file a step declares as an input or an output, addressed relative to the run directory.
+- **Working material** — a file a step writes into the run directory and declares as neither ([8.2](#82-manifest)). Not an artifact, and nothing outside the invocation that wrote it may depend on it.
 - **Verdict** — a categorical validation outcome: `PASS`, `PASS_WITH_CONDITIONS`, or `FAIL`.
 - **Brief** — the confirmed statement of intent produced by the `intake` stage.
 
@@ -64,7 +65,7 @@ Validation steps produce exactly one verdict: `PASS`, `PASS_WITH_CONDITIONS`, or
 
 ## 5. Risk classes
 
-Every run is classified into exactly one of four risk classes at the `intake` stage. The class and a one-line rationale MUST be recorded in run state.
+Every run that proceeds past the `intake` stage is classified into exactly one of four risk classes there. The class the human accepts, and a one-line rationale for it, MUST be recorded in run state — a run rejected at either intake gate ends without one, which is not an unrecorded classification but the absence of a decision to record — and are recorded nowhere in it before that, the fields carrying a decision rather than the proposal that preceded it ([5.3](#53-override-and-reclassification)).
 
 ### 5.1 The four classes
 
@@ -99,7 +100,7 @@ Two rules constrain the rubric:
 
 ### 5.3 Override and reclassification
 
-The human sees the proposed classification at the intake gate ([6.2](#62-intake)) and MAY override it. The gate's decision is recorded in the `gates` record like any other outcome ([7](#7-gates)); the class the human accepts — overridden or not — is what `run.risk` and `risk_rationale` carry. Mid-run, stall or scope-drift signals (see [Loop contracts](#92-loop-contracts)) MAY trigger reclassification upward, never downward. A reclassification updates `run.risk` in run state and applies the new class's defaults to all subsequent steps.
+The human sees the proposed classification at the intake gate ([6.2](#62-intake)) and MAY override it. The gate's decision is recorded in the `gates` record like any other outcome ([7](#7-gates)); the decision the human accepts — overridden or not — is what run state carries: `run.risk` takes the accepted class, `risk_rationale` the one-line reason for it. Both are absent until then. They hold a decision, and a proposal written into them would be a proposal impersonating one, so run state exists through intake without them and the two appear together when the gate accepts ([10](#10-run-state)). An override MAY fall below a floor one of the rubric's binding rules sets ([5.2](#52-classification-rubric)) — the human decides and the router only proposes, which is what that gate is for — but MUST NOT do so silently. `risk_rationale` justifies the class run state carries, so where the human overrides it takes the human's reason rather than the router's line for the class it displaced; a rationale arguing for a class `run.risk` does not hold is precisely what makes an override invisible. An override MUST therefore carry one: `risk_rationale` is required and non-empty ([10](#10-run-state)), and a decision that supplies nothing leaves the field holding an argument for the class the human just rejected. It is recorded with the accepted class in the brief's routing record, alongside the router's proposal rather than over it — one field cannot hold both the argument for the class proposed and the reason for rejecting it, and those disagree in exactly the case this clause is about. It is not direction in the sense of [7](#7-gates): an override is an `accept`, so no step re-reads the brief to apply it, and what reads it is the executor transcribing `risk_rationale`. It takes that clause's ordering even so, and the whole order is stated rather than half of it: the accepted class and its rationale are written to the brief first, then `run.risk` takes that class and `risk_rationale` that rationale, and the gate outcome is recorded last. A retried decision that no longer accepts that class clears both run-state fields before recording its own outcome, the pairing that stops them being half-written stopping them being half-cleared ([10](#10-run-state)): a `reject` would otherwise end a run carrying a class nobody accepted, and a `revise` would re-enter intake while run state still claims a decision. Ordering only the brief write would leave the other two free of each other, and a crash between them resumes past an accepted gate carrying the class it rejected — so every stage after it runs at the wrong one. Recording the outcome last means a crash costs a decision re-asked rather than a decision misapplied, and excluded from §7 these fields would have inherited no ordering at all. The executor MUST surface the conflict rather than resolve it, and MUST NOT amend the classifier's recorded reading to agree with the accepted class: the disagreement between that reading and `run.risk` is the whole record that a floor was crossed, so erasing it is how the override becomes silent. A security-surface signal accepted below R2 is the case this exists for — the review stage does not run there, so no later step re-derives the reading and nothing in the run can catch it. Mid-run, stall or scope-drift signals (see [Loop contracts](#92-loop-contracts)) MAY trigger reclassification upward, never downward. A reclassification updates `run.risk` and `risk_rationale` together and applies the new class's defaults to all subsequent steps. Both, because the rationale justifies the class the field beside it holds: moving the class alone leaves the argument for the one it replaced, which is the same mismatch this paragraph forbids an override from creating, reached by the one path that is not a gate decision. The new rationale is the signal that triggered the reclassification — the stall or the scope drift and what it was — written before the new class's defaults take effect, so the run never runs under a class whose reason is unrecorded.
 
 ## 6. Workflows and stages
 
@@ -132,7 +133,33 @@ A gate is where the protocol collects a human decision. Gates come in two transp
 
 Which gates exist and which transport they default to is a property of the risk class ([5.1](#51-the-four-classes)). At R3, transports MAY be configured per gate.
 
-Every gate decision has exactly one outcome: `accept`, `revise`, or `reject`. Unless a stage declares otherwise, outcomes route by default: `accept` proceeds to the next step in composition order; `revise` returns to the step that produced the gated artifact; `reject` ends the run — or the phase, where the workflow declares phases. A stage MAY override these defaults with explicit edges.
+Every gate decision has exactly one outcome: `accept`, `revise`, or `reject`. Unless a stage declares otherwise, outcomes route by default: `accept` proceeds to the next step in composition order; `revise` returns to the step that produced the gated artifact; `reject` ends the run — or the phase, where the workflow declares phases *and* the run has an accepted list to name the next one; before that acceptance there is no phase to advance to and the run ends. Ending only the phase carries a further precondition, because a phase list states which phases must complete before which others: it is sound only where nothing the list places after the rejected phase depends on it, and an executor that cannot establish that MUST end the run. It cannot establish it from run state, which carries the phase number and not the list, nor generally from the list itself, which records its sequencing as prose for a reader rather than as structure. So a rejected phase ends the run wherever these workflows are concerned, and dropping one phase from a run that continues is a `revise` carrying that direction rather than a `reject`. A stage MAY override these defaults with explicit edges.
+
+A gate decision MAY carry the human's direction — what they want changed, or the content of an answer to a question the gate asked. A gate record holds the outcome and never that content: its shape is closed to the fields the instrumentation requirement below names ([10](#10-run-state)) — which gate, which phase where a phase repeats it, how the decision was collected, the outcome, and when — so this is enforced rather than asked for.
+
+Direction that outlives the decision has to be written down, and the executor MUST record it in the gated artifact — in a section reserved for it, never woven into the content — before recording the outcome. Resume is defined entirely by run state and requires no other memory ([8.5](#85-resume)), and an `inbox` transport is asynchronous by construction, so a decision may reach a driver other than the one that requested it: direction held only in the session that collected it survives neither.
+
+The reserved section is what keeps an instruction an instruction. Written into the surrounding content it would pre-apply the change the human asked for, or become indistinguishable from what the artifact already said. The direction therefore needs no input declaration of its own and no lifecycle rule either: the step reads the section, folds what it asks for into the parts of the artifact it is about, and its rewrite returns the section to `None`, the empty-state marker the artifact templates use.
+
+That rests on the destination reading the artifact, which the routing does not otherwise guarantee: the default route names the step that *produced* the gated artifact, and producing it means declaring it as an output, not as an input — an executor materializes only declared inputs ([9.1](#91-step-and-handoff)). Wherever an outcome may carry direction — every `revise`, and the one `accept` scoped below — the gate MUST therefore route it to a step that declares the gated artifact among its inputs, by the default route where the producer also reads it and by an explicit edge where it does not. A route that ends the run or leaves the stage carries no direction and is outside this, which is what an `accept` completing a run or a `reject` ending one does. Routing direction to a step that only writes the artifact hands it something it cannot see. An artifact that leaves its stage with anything other than `None` in that section carries direction nobody applied — which is the check the section buys, and why the empty state is a marker rather than an absence: a section left blank is indistinguishable from one a producer forgot to scaffold.
+
+The ordering also decides which failure a crash produces, wherever the gate fires once run state exists: recording the direction first re-asks a question whose answer is already on disk, where recording the outcome first loses the answer and keeps a decision nothing can act on.
+
+That rests on a resume returning to the gate rather than continuing past it, which the step statuses have to say. A gate has its own `steps` entry — the starter fixture models `plan-approval` that way beside the `plan-create` entry that produced the artifact — and it is that entry, not the producer's, which MUST NOT be marked `done` while the outcome is unrecorded: it stays `blocked` ([10](#10-run-state)). §8.5 resumes at the first step that is neither `done` nor `skipped`, so the resume lands on the gate and asks it again, where blocking the producer instead would re-run the step that wrote the artifact and never reach the gate at all.
+
+Recording the outcome is not the last write, wherever the outcome routes the run onward. Where it does, the outcome and that routing MUST land together, in one write that leaves the run resumable: a gate whose outcome is recorded with nothing un-`done` after it resumes to no step at all, which loses the decision on the far side of the window this ordering closes on the near one. What that write contains is the routing below; the gate's own status within it is the outcome's, stated there rather than assumed here. A `revise` always routes onward, and so does an `accept` a stage sends back to a step rather than forward; an `accept` that proceeds in composition order needs no routing write only where the step it proceeds to already has a record; where the decision is what determines the records — the accepted class deciding which later steps a risk class skips — that gate populates the remaining entries as `pending` or `skipped` before its own becomes `done`, or it resumes to nothing having decided what the rest of the run was going to be. The terminal outcomes are the other case: they end something rather than routing to a step, and the write they make is that ending. Where what ends is the run — a `reject` in a workflow with no phases, an `accept` at the last gate — every record still `pending` or `blocked` becomes `skipped` with the outcome, every one but the deciding gate's own, which is `done`, its decision being what ended the run rather than work the ending skipped. A resume looks for the first record that is neither `done` nor `skipped`, and without the bulk write it would walk into work the rejection ended; without the exemption the gate that decided would read as a step nobody reached.
+
+Where what ends is the phase — which is what a `reject` ends wherever the workflow declares them, the run has an accepted phase list, and the precondition in [7](#7-gates) holds; failing any of those the run ends and the run-bounded write above is the right one — the same write is bounded by the phase instead: the records of the phase being abandoned go `skipped`, the deciding gate is `done`, and the run moves to the next phase by the transition below — or, if that phase was the last, ends as above. Sweeping every remaining record would end the run instead of the phase and take the phases nobody rejected with it. A gate that fires once later steps already have records — and after `intake-approval` they do — leaves exactly that behind if it marks only itself.
+
+Re-entry resets more than the step it re-enters, and by the same write. A step run again — by a `revise` routing back to it, or by a loop iterating — invalidates what its output fed: the validator that must re-check it, the gate that must decide again. Those leave `done` when the step does, or the guarantee holds for exactly one step: the run resumes into the revision, and once that finishes finds nothing un-`done` after it and stops with the revised artifact never re-validated and never re-approved. What a re-entry invalidates is what actually ran on the artifact, which differs by route and MUST be read from the stage rather than assumed: the validator where the stage has one, the classifier that read the artifact at intake, the gate that must decide again. Intake has no validator and re-entering `brief-confirm` invalidates `risk-route`, which is not one; a validator the risk class skipped stays `skipped` and is not resurrected by a rule expecting it. Resetting a fixed shape would both miss a dependent and run a step the overlay excludes.
+
+A gate's own status in that write is its outcome's. On a `revise` it returns to `pending` with the steps it invalidated, ordered so the re-entered step is the first a resume finds: the gate decided that the artifact must change, which is a decision to run this cycle again rather than one the run proceeds past. On an `accept` the run proceeds past, and on a `reject` the run ends, so the entry is `done` — the decision stands and this gate is not asked about this artifact again.
+
+Writes staged for a decision belong to that decision. A gate re-asked after a crash may resolve differently from the one whose writes were already on disk, and those writes are then nobody's: before recording the retried outcome the executor MUST clear or replace what the abandoned one staged. Direction written for a `revise` that comes back `accept` or `reject` would otherwise ride out of the stage inside the artifact, which is exactly the state above calls direction nobody applied — reached not by a step forgetting to clear it but by a decision that never happened. Marked `done` before its outcome exists, the step is skipped on resume and the run continues past a gate nobody answered — which would leave outcome-last ordering buying detection rather than recovery. That holds at every gate, because none of them fires before run state exists: the file is created when the run starts and carries no class until one is accepted ([10](#10-run-state)), so a gate reached during intake has the same state to be resumed from as one reached later. What the reserved section buys at every gate, durable or not, is the separation above — the human's instruction reaches the step as an instruction rather than as content already folded into the artifact.
+
+A `revise` SHOULD carry direction. The protocol cannot judge whether a direction is adequate, so it is not a MUST, but a `revise` carrying none returns the run to a step whose inputs are unchanged, and nothing then distinguishes its next output from the one the gate has just declined.
+
+An `accept` MAY carry direction only where the stage routes it to a step that re-reads the gated artifact, which is the clarifying question ([6.2](#62-intake)): its `accept` returns through the step that restates the brief before the run continues, rather than proceeding past it. That the outcome is `accept` says the answer settled the question, not that nothing is left to apply. Everywhere else `accept` means accepted — the run proceeds to a step that treats the artifact as settled, so a change the human wants there is a `revise`. Direction attached to such an `accept` would be recorded and never applied, and would travel inside the artifact that carries it.
 
 **Instrumentation requirement:** every gate outcome MUST be recorded in run state with its gate id, transport, outcome, and timestamp (the `at` field, [10](#10-run-state)). This record is not optional bookkeeping — accumulated gate outcomes are the evidence for tuning gate placement, and a client that skips recording does not conform.
 
@@ -144,11 +171,11 @@ Each run owns a directory, `{artifacts}/runs/<run-id>/`, referred to in metadata
 
 ### 8.2 Manifest
 
-The run state carries a manifest listing the artifacts the run has produced. The executor maintaining the run state MUST keep the manifest current as outputs land.
+The run state carries a manifest listing the artifacts the run has produced. The executor maintaining the run state MUST keep the manifest current as outputs land. What it lists are artifacts — the outputs steps declare ([9.1](#91-step-and-handoff)). A step MAY also write working material into `{run}`: a decision audit, an intermediate it re-reads within its own invocation. It declares that as neither input nor output and the manifest does not list it. A step MUST NOT depend on working material — another step's, or its own from an earlier invocation — because §9.1 obliges it to declare whatever its instructions depend on, and declaring it is exactly what would stop it being working material. So anything a contract needs is an artifact, declared and manifested, whatever a step keeps beside it for a human reader. The manifest records what was produced rather than what is current work, so it only grows within a run: a step record returned to `pending` by a re-entry, or reset when a phase is entered ([10](#10-run-state)), does not unmake the output that step already wrote, and removing it would hide a phase's artifacts from every reader after the phase that produced them.
 
 ### 8.3 Templates
 
-Where an output declares a template, the artifact is scaffolded from that template by script — not generated freehand — so structure is guaranteed before content is written. Placeholders in templates are contracts: a scaffolded artifact MUST contain every placeholder its template defines until the step fills it.
+Where an output declares a template, the artifact is scaffolded from that template by script — not generated freehand — so structure is guaranteed before content is written. Scaffolding creates and MUST NOT overwrite: a step revising, re-entering, or appending to an artifact is given one that already exists, and re-scaffolding it would discard the content it was given to work from, a gate's recorded direction ([7](#7-gates)) included. Placeholders in templates are contracts: a scaffolded artifact MUST contain every placeholder its template defines until the step fills it.
 
 ### 8.4 Grounding cache
 
@@ -156,7 +183,7 @@ Inputs marked optional (`required: false`) MAY be satisfied from a previous run'
 
 ### 8.5 Resume
 
-Resuming a run is defined entirely by run state: read it, find the first step whose status is not `done` or `skipped`, and continue there. No other memory is required.
+Resuming a run is defined entirely by run state: read it, continue at the `active` record if there is one, and otherwise at the first step whose status is not `done` or `skipped`. No other memory is required. The `active` record takes precedence because it names the step that was running, where position only describes what has not run yet ([10](#10-run-state)).
 
 ## 9. Orchestration metadata
 
@@ -260,24 +287,86 @@ run:
   workflow: feature
   risk: R2
   risk_rationale: "single module, no security surface, one phase"
-  protocol: "0.1"
-steps:
-  - id: plan-create
+  protocol: "0.1" # single-phase run, so no `phase` field
+steps: # one record per step and gate of the composed workflow; `intake-approval` populated them (§7)
+  - id: brief-confirm
     status: done # pending | active | blocked | done | skipped
-    iterations: 2
+  - id: clarifying-question # conditional; it never fired
+    status: skipped
+  - id: risk-route
+    status: done
+  - id: intake-approval
+    status: done
+  - id: ground
+    status: done
+  - id: ideate
+    status: done
+  - id: ideate-validate
+    status: done
+    iterations: 1
     stall_flags: []
-gates:
+  - id: ideate-revise # the loop exited on the first verdict
+    status: skipped
+  - id: plan-create
+    status: done # outside the revise loop, so no iterations
+  - id: plan-revise # the revise outcome's destination, and the first entry a resume finds
+    status: pending
+    iterations: 1 # one revision already run; the cap is the loop's (spec 9.2)
+    stall_flags: []
+  - id: plan-validate # must re-check what the revision changes
+    status: pending
+    iterations: 2 # it validated the created plan and the first revision
+  - id: plan-approval # decides again; a gate is `done` only where its decision stands
+    status: pending
+  - id: implement
+    status: pending
+  - id: implement-validate
+    status: pending
+  - id: review-code
+    status: pending
+  - id: review-security # conditional at R2, and the brief records no security surface
+    status: skipped
+  - id: review-validate
+    status: pending
+  - id: review-arbitrate # at R2 only on reviewer/validator disagreement
+    status: skipped
+  - id: review-fix # conditional, like every revising member: the verdict routes to it
+    status: skipped
+  - id: deliver-prepare
+    status: pending
+  - id: deliver-validate
+    status: pending
+  - id: delivery-approval
+    status: pending
+gates: # every decided gate, not only the latest (§5.3, §7)
+  - gate: intake-approval # the decision that accepted the class `run.risk` holds
+    transport: inbox
+    outcome: accept
+    at: 2026-08-03T13:40:00Z
   - gate: plan-approval
     transport: blocking # blocking | inbox
     outcome: revise # accept | revise | reject
     at: 2026-08-03T14:12:00Z
 instrumentation: # optional enrichment (tokens, duration) per step
-artifacts: [] # run manifest, see spec §8.2
+artifacts: # run manifest, see §8.2 — `plan-revise` and `plan-validate` read
+  # `pending` above and their outputs are still here: a reset record does not
+  # unmake what the step already wrote
+  - "{run}/brief.md"
+  - "{run}/grounding.md"
+  - "{run}/ideation.md"
+  - "{run}/ideation-validation.md"
+  - "{run}/phase-1-plan.md"
+  - "{run}/phase-1-plan-validation.md"
 ```
 
 - `run` identifies the run: id, workflow, risk class with rationale ([5](#5-risk-classes)), and the protocol version the run executes under.
-- `steps` records each step's `status` (`pending` | `active` | `blocked` | `done` | `skipped`), its `iterations` count against the loop cap, and any accumulated `stall_flags`.
-- `gates` is the instrumentation record required by [section 7](#7-gates).
+- `run.risk` and `risk_rationale` MUST be absent before the intake gate accepts a class and present from then on, and they move together. The schema enforces the pairing and not the timing: whether that gate has decided is not visible in this document — gate ids are workflow vocabulary rather than protocol vocabulary, and a clarifying question also records `accept` while no class exists — so the timing is one of the semantics this prose carries for a structure the schema defines. Run state exists before either field: it is created when the run starts, which is what gives a gate reached during intake something to resume from.
+- `steps` holds at most one record per step *and per gate*, not one per invocation. A gate is not a Step in the sense [2](#2-conformance-language-and-terms) defines — no role, no skill, no declared output — and it takes an entry here because resume is defined over this list and a gate is something a run stops at ([7](#7-gates)). The field is named for what mostly fills it, not for a claim that everything in it is a step. What follows holds for both: a step that runs again reuses its record and `iterations` counts how many times it has run in the current loop instance — invocations, not re-entries, so a step that has run once carries 1 and the cap in [9.2](#92-loop-contracts) counts the same units it is written in. The list is complete from the intake gate's acceptance onward, and not before: the class that gate accepts is what decides which steps the risk-class overlays skip ([6.1](#61-composition)), so until it has decided, a record for every composed step could not say what its `status` is. Until then the list holds the intake steps alone — the starter fixture models exactly that — and that acceptance is the write that populates the rest, each record entering `pending` or `skipped` by the same reading: `pending` where the run's path reaches the step, `skipped` where the class excludes it or a condition has yet to fire. The list is ordered so that the first entry which is neither `done` nor `skipped` is the next step to run — that is what makes resume ([8.5](#85-resume)) mean anything, and a transition that re-enters steps keeps it true. Two things make that ordering well-defined rather than a guess, because more than one record can be neither `done` nor `skipped` at once. `active` is the record of the step currently running, a run has at most one, and a resume returns to it ahead of position: a re-entry invalidates what its output fed by the same write that starts it, so the step running and the validator waiting on it are both un-`done` together, and without that rule the order alone would decide which a resume picked. Position settles what is left, which is a route that makes several records `pending` and starts none of them — a gate `revise` returns the run to one step and invalidates the others in the same write, so its destination MUST precede every record it invalidates. That constraint is not the order a stage introduces its steps in: `plan-approval`'s `revise` returns to `plan-revise` and invalidates `plan-validate`, so the record for the revision comes first, the reverse of the order the planning stage reads in. Each record carries an `id` and a `status` (`pending` | `active` | `blocked` | `done` | `skipped`), and those two are all a record must have. `iterations` appears where the step is inside a loop and has a cap to count against; `stall_flags` where signals have accumulated. A step that has run once outside a loop carries neither, which is why the schema requires neither. Reusing one record per step leaves the run needing to say which phase it is in, and `run.phase` is that: step ids repeat across phases, so a resume reads it to know which `{N}` an artifact path resolves to and which phase's loop an `iterations` count belongs to. It follows the accepted phase list, and every phase-1 `plan-approval` acceptance sets it: to 1 where the accepted list carries more than one phase, since the phase being executed is the one whose plan was just approved, and absent where it carries one. That is a rule about each acceptance rather than only the first, because a phase-1 list can be re-cut after approval where the human authorizes it, and a run accepted as single-phase may become multi-phase or the reverse — a field fixed at the first acceptance would leave `{N}` unresolvable after the second. Before any acceptance nothing knows whether the run has phases, and `{N}` resolves to 1 either way.
+
+Advancing it is a write over the records the new phase repeats, not a counter on its own. The steps a phase runs are `done` from the phase before, and §8.5 skips what is `done` — so a run that only incremented `run.phase` would step over its own planning and implementation and resume in a later stage. Entering a phase therefore returns the steps that phase runs to the status each carries at its stage's entry — `pending` for the ones the path reaches, `skipped` for a conditional member whose condition has not fired in this phase — clears the `iterations` and `stall_flags` they accumulated in the phase before, and sets `run.phase`, in one write: the count is against this phase's loop, and a phase inheriting the last one's would start part-spent. `iterations` counts against the cap of the loop instance it is in, not across the run: a multi-phase workflow repeats a stage per phase ([6.1](#61-composition)), each repetition is its own loop with its own cap ([9.2](#92-loop-contracts)), and the count starts at zero when a phase enters one. Carrying it forward would let a phase that revised twice spend the next phase's allowance, and the caps are per loop precisely so one phase's difficulty is not another's. `blocked` is what a *gate's own* entry wears while it waits on a human — not the entry of the step that produced the artifact, which is `done` by then: it is not `done`, so a resume returns to the gate rather than past it, and blocking the producer instead would re-run the step and never reach the gate ([7](#7-gates), [8.5](#85-resume)). It becomes `done` when its decision stands: an `accept` the run proceeds past, or a `reject` that ends the run. A `revise` is the decision that does not stand — the cycle runs again and this gate decides again — so its entry returns to `pending` with the rest of what the revision invalidates.
+
+`skipped` says the step is not on the run's path as the list currently stands, which covers two cases and is not terminal in either. One is a step the accepted risk class excludes, and nothing will route to it. The other is a step reached only on a condition that has not fired — a loop's revising member before a verdict fails, a gate's conditional branch — and a transition MAY route to such a record, which makes it `active` like any other start. That is what lets the ordering rule above hold: a revising member ordered ahead of the validator whose failure reaches it must not be `pending` before that validator has run, or a resume would return to the revision first and revise an artifact nothing had yet judged. It is `skipped` until the verdict routes to it, which is also how the starter fixtures already read.
+- `gates` is the instrumentation record required by [section 7](#7-gates). It is appended in decision order and a gate decided more than once has an entry per decision, so the last entry naming a gate is its latest: a `revise` recorded there is a decision that did not stand, and what says whether one does now is the entry after it, not the presence of any entry at all. A gate a phase repeats decides once per phase, and a decision taken while the run carries `run.phase` MUST name the `phase` it was taken in — without it the entries for that gate are indistinguishable, and a phase's approval could not be told from the phase before's. A decision taken before the run had phases carries none and belongs to no phase, which is not a gap to backfill: a re-cut may turn a single-phase run into a multi-phase one, and it does not reach back into what was already decided. Such an entry stands for no phase's approval, so nothing is lost by leaving it as it was recorded. Which gates those are is a fact about the stage that declares them, not about what its records happen to carry: a stage a phase repeats is one whose steps write per-phase outputs, and reading the requirement off the records instead would let an omitted `phase` decide the field was never required. A gate that decides once per run records none.
 - `instrumentation` MAY carry per-step enrichment such as token counts and durations.
 - `artifacts` is the run manifest ([8.2](#82-manifest)).
 

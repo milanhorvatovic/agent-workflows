@@ -62,3 +62,7 @@
 ## Follow-ups
 
 [Work this run deliberately left, from the sources this step reads: findings-for-planning the implementation logs raised, findings left open under an accepted validation verdict, and gaps the logs record — each with its id and where it is recorded. "None" when nothing was deferred. Omitted at R1, where the artifact is the minimal change note.]
+
+## Gate direction
+
+[What the human asked for at a gate that sent this artifact back, recorded before the outcome so it survives the decision (spec §7). One entry per item, quoted or restated. The step that revises this artifact folds each into the sections it is about and returns this one to "None" — anything other than "None" in an artifact that has left its stage is direction nobody applied. "None" until a gate sends something back, and "None" again once it has been applied. It is never part of what ships: the change description is written from the artifact's own sections, so direction left here would ship the request alongside the change it was about.]
