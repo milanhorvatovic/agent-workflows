@@ -27,6 +27,7 @@ import contextlib
 import hashlib
 import io
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -233,6 +234,13 @@ def load_manifest(path: Path) -> dict[str, dict[str, str]]:
             f"{path}: manifest_version {raw.get('manifest_version')!r} is not "
             f"{MANIFEST_VERSION} — written by an incompatible setup version"
         )
+    for rel, entry in raw["entries"].items():
+        if (
+            not isinstance(entry, dict)
+            or not isinstance(entry.get("source_tag"), str)
+            or not isinstance(entry.get("digest"), str)
+        ):
+            fail(f"{path}: entry {rel!r} is not an install record")
     return raw["entries"]
 
 
@@ -242,7 +250,13 @@ def save_manifest(path: Path, entries: dict[str, dict[str, str]]) -> None:
         "manifest_version": MANIFEST_VERSION,
         "entries": {rel: entries[rel] for rel in sorted(entries)},
     }
-    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    # Written beside the manifest and swapped in atomically: an in-place
+    # truncate interrupted mid-write would corrupt the one file every re-run
+    # needs to recover ownership state.
+    descriptor, staged = tempfile.mkstemp(dir=path.parent, prefix=path.name)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, indent=2) + "\n")
+    os.replace(staged, path)
 
 
 def skill_items(root: Path) -> list[Item]:
@@ -326,9 +340,17 @@ def apply(
                 outcome = "adopted"
                 detail = "already identical to this source; recorded in the manifest"
             else:
-                # The entry keeps its install-time tag: the content still is
-                # that install's, and leaving it untouched keeps a re-run
-                # byte-idempotent even when only the source's tag moved.
+                # A matching entry keeps its install-time tag, so a re-run is
+                # byte-idempotent even when only the source's tag moved. A
+                # differing one is re-recorded: a run interrupted between a
+                # refresh and the manifest save leaves exactly this state, and
+                # keeping the stale digest would misread the unmodified
+                # install as locally modified on the next source change.
+                if entry.get("digest") != desired:
+                    entries[item.target_rel] = {
+                        "source_tag": source_tag,
+                        "digest": desired,
+                    }
                 outcome = "up to date"
         elif entry is None:
             outcome = "skipped"

@@ -458,6 +458,23 @@ class SetupInitTest(unittest.TestCase):
         entries = self.read_manifest()["entries"]
         self.assertEqual(entries[".agents/skills/awf-alpha"]["source_tag"], "new-tag")
 
+    def test_interrupted_refresh_is_reconciled_not_misread_as_modified(self) -> None:
+        self.install()
+        self.write("skills/awf-alpha/SKILL.md", "---\nname: awf-alpha\n---\n\n# v2\n")
+        # A run that dies between writing the refresh and saving the manifest
+        # leaves the new content on disk under the old record.
+        shutil.rmtree(self.target / ".agents/skills/awf-alpha")
+        shutil.copytree(self.source / "skills/awf-alpha", self.target / ".agents/skills/awf-alpha")
+        _, out, _ = self.install()
+        self.assertIn("skill awf-alpha: up to date", out)
+        self.write("skills/awf-alpha/SKILL.md", "---\nname: awf-alpha\n---\n\n# v3\n")
+        _, out, _ = self.install()
+        self.assertIn("skill awf-alpha: refreshed", out)
+        self.assertIn(
+            "# v3",
+            (self.target / ".agents/skills/awf-alpha/SKILL.md").read_text(encoding="utf-8"),
+        )
+
     def test_source_tag_falls_back_to_the_changelog(self) -> None:
         _, out, _ = self.install()
         self.assertIn("source tag 0.2.0", out)
@@ -507,6 +524,23 @@ class SetupInitTest(unittest.TestCase):
         code, _, err = self.install()
         self.assertNotEqual(code, 0)
         self.assertIn("not an install manifest", err)
+
+    def test_malformed_manifest_entry_fails(self) -> None:
+        for entry in ("a string", {"source_tag": "0.2.0"}, {"digest": 7, "source_tag": "x"}):
+            with self.subTest(entry=entry):
+                self.write_target(
+                    init.MANIFEST_PATH,
+                    json.dumps({"manifest_version": 1, "entries": {"x": entry}}),
+                )
+                code, _, err = self.install()
+                self.assertNotEqual(code, 0)
+                self.assertIn("entry 'x' is not an install record", err)
+
+    def test_manifest_save_leaves_no_staging_residue(self) -> None:
+        self.install()
+        agents = self.target / ".agents"
+        residue = [p.name for p in agents.iterdir() if p.name.startswith("awf-install-manifest.json") and p.name != "awf-install-manifest.json"]
+        self.assertEqual(residue, [])
 
     # --- target and source guards ---
 
