@@ -30,13 +30,19 @@ The step runs as the analyst producing a final deliverable: precise, evidence-ba
 - `{run}/grounding.md` (required) — the raw analysis, read in full before writing anything; it is the single source of truth. Files it cites may be opened to verify or sharpen a specific finding, but no new exploration happens here: a gap in the grounding is reported as a gap, never filled ad hoc.
 - Specific questions (optional) — the invoker may name questions the report must answer, such as readiness for a migration or the biggest onboarding risks.
 
+No project standard is an input here. This step judges nothing against a bar: `awf-ground` has already read the project's coding and architecture standards to tell what the project committed to from what its code merely exhibits, and recorded the disagreements as grounding. Reading them again here would make this a review of the codebase rather than a report on it, and a departure from a project's own standard is a finding this step inherits and relays, never one it makes.
+
 ## Method
 
 Synthesize rather than copy: connect related findings, interpret what they mean for the project, and prioritize — the most important information leads every section. Every claim traces to the grounding and ultimately to cited code.
 
 Open with an executive summary useful to someone who reads nothing else: what the codebase is, its defining characteristics, the highest-priority findings, and a forward-looking close on maintainability or readiness.
 
+Between that summary and the technical debt sit the sections describing the system, and each is a reading rather than a transcription — the grounding already holds the facts, so what this step adds is what they amount to. **Architecture Overview**: how the code is organized, where the component boundaries sit, and whether the architecture is holding, evolving, or drifting from what the project says it is, that last judgment being the one the grounding leaves to this step. **Tech Stack**: languages, frameworks, and tooling grouped by what they are for, with the version constraints that bind them and the places nothing does — an unpinned runtime is a fact about the stack. **Key Patterns**: what a contributor must know to write code that looks like the code already here, and how consistently the codebase follows it, since a convention held in half the modules is a finding rather than a convention. **Module Map**: each internal module's responsibility and its dependencies, with the shapes that cost something named — the core modules, the high-coupling areas, the cycles. **Dependencies**: external dependencies grouped by purpose, the outdated, deprecated, and unmaintained flagged, and the overall health stated rather than left for the reader to total. **Testing Approach**: what is tested, what is not, and what CI enforces without being asked, the bare areas being the ones a reader needs since the well-covered ones cost them nothing.
+
 Rank technical debt by severity and consequence — what it is, why it matters, what leaving it costs. Group recommendations as immediate, short-term, and long-term, each referencing the findings that support it. Answer any invoker questions directly, with evidence, in their own section.
+
+Close with the **Quick Reference**: key files, entry points, configuration, and the commands a developer runs on their first day, each row earning its place by being one they would otherwise have to go looking for. It is the section most likely to be read on its own and the cheapest to get wrong — an entry point that no longer starts anything costs a reader more than an absent table.
 
 ## Output
 
