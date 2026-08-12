@@ -228,6 +228,29 @@ class SetupInitTest(unittest.TestCase):
         )
         self.assertTrue((self.target / ".agents/skills/awf-alpha/scratch").is_dir())
 
+    def test_tree_digest_is_self_delimiting(self) -> None:
+        one = self.source / "one"
+        one.mkdir()
+        # Under a delimiter-only serialization this content forges the exact
+        # byte stream of the two-file tree below.
+        (one / "a.md").write_bytes(b"X\x00f\x00b.md\x00Y")
+        two = self.source / "two"
+        two.mkdir()
+        (two / "a.md").write_bytes(b"X")
+        (two / "b.md").write_bytes(b"Y")
+        self.assertNotEqual(init.content_digest(one), init.content_digest(two))
+
+    def test_file_replaced_by_an_equivalent_symlink_reads_as_modified(self) -> None:
+        self.install()
+        skill_file = self.target / ".agents/skills/awf-alpha/SKILL.md"
+        aside = self.target / "elsewhere.md"
+        aside.write_bytes(skill_file.read_bytes())
+        skill_file.unlink()
+        skill_file.symlink_to(aside)
+        _, out, _ = self.install()
+        self.assertIn("skill awf-alpha: skipped — locally modified since install", out)
+        self.assertTrue(skill_file.is_symlink())
+
     def test_empty_file_and_empty_directory_digests_differ(self) -> None:
         empty_file = self.write("empty.md", "")
         empty_dir = self.source / "emptydir"
@@ -271,6 +294,18 @@ class SetupInitTest(unittest.TestCase):
         self.assertNotEqual(code, 0)
         self.assertIn("managed path is a symlink", err)
         self.assertEqual(list(outside.iterdir()), [])
+
+    def test_file_at_a_managed_path_is_refused_before_installing(self) -> None:
+        self.write_target(".agents/standards", "a file where a directory belongs")
+        code, _, err = self.install()
+        self.assertNotEqual(code, 0)
+        self.assertIn("managed path is not a directory", err)
+        self.assertFalse((self.target / ".agents/skills").exists())
+
+    def test_target_inside_the_framework_root_is_refused(self) -> None:
+        code, _, err = self.run_main("--target", str(self.source / "skills/awf-alpha"))
+        self.assertNotEqual(code, 0)
+        self.assertIn("inside the framework repository", err)
 
     def test_identical_foreign_standard_is_adopted(self) -> None:
         self.write_target(

@@ -212,24 +212,29 @@ def content_digest(path: Path) -> str:
         digest.update(path.read_bytes())
     else:
         digest.update(b"tree\0")
-        # Directories enter the walk under their own marker: a tree digested
-        # by files alone reads a copy with an extra empty directory as
-        # identical, and adopting it would let a later refresh silently
-        # delete that consumer-owned directory.
+        # Every entry kind carries its own marker, and variable-length
+        # payloads are length-prefixed so the stream is self-delimiting —
+        # file bytes embedding the serialization cannot forge another tree.
+        # Directories are hashed too (a tree digested by files alone reads a
+        # copy with an extra empty directory as identical), and a symlink is
+        # hashed as its target string rather than followed, so a file the
+        # consumer replaced with an equivalent link still reads as modified
+        # instead of being refreshed over.
         for entry in sorted(path.rglob("*")):
             relative = entry.relative_to(path)
             if IGNORED_NAMES & set(relative.parts):
                 continue
-            if entry.is_dir():
-                digest.update(b"d\0")
-                digest.update(relative.as_posix().encode("utf-8"))
-                digest.update(b"\0")
+            name = relative.as_posix().encode("utf-8")
+            if entry.is_symlink():
+                link = os.readlink(entry).encode("utf-8", "surrogateescape")
+                digest.update(b"l\0" + name + b"\0")
+                digest.update(str(len(link)).encode("ascii") + b"\0" + link)
+            elif entry.is_dir():
+                digest.update(b"d\0" + name + b"\0")
             elif entry.is_file():
-                digest.update(b"f\0")
-                digest.update(relative.as_posix().encode("utf-8"))
-                digest.update(b"\0")
-                digest.update(entry.read_bytes())
-                digest.update(b"\0")
+                payload = entry.read_bytes()
+                digest.update(b"f\0" + name + b"\0")
+                digest.update(str(len(payload)).encode("ascii") + b"\0" + payload)
     return f"sha256:{digest.hexdigest()}"
 
 
@@ -288,6 +293,10 @@ def guard_managed_paths(target: Path) -> None:
         path = target / rel
         if path.is_symlink():
             fail(f"{path}: managed path is a symlink — refusing to install through it")
+        # A regular file here would fail deep inside the run, after items
+        # were already promoted, with no manifest written.
+        if path.exists() and not path.is_dir():
+            fail(f"{path}: managed path is not a directory")
 
 
 def skill_items(root: Path) -> list[Item]:
@@ -472,6 +481,11 @@ def main(argv: list[str] | None = None, ask: Callable[[str], str] | None = None)
     target = args.target.resolve()
     if target.exists() and not target.is_dir():
         fail(f"{target}: not a directory")
+    # A target under the framework root would put the staging directory
+    # inside a directory being copied, which copies its own output until
+    # the disk fills; installing into the framework checkout is never right.
+    if target == root or root in target.parents:
+        fail(f"{target}: target is inside the framework repository at {root}")
     guard_managed_paths(target)
 
     always, variants = discover_standards(root)
