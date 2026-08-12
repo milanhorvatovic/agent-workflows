@@ -50,6 +50,11 @@ STANDARDS_DIR = ".agents/standards"
 MANIFEST_PATH = ".agents/awf-install-manifest.json"
 MANIFEST_VERSION = 1
 
+# The only digest form setup ever writes; anything else in a manifest is
+# corruption, and without this check it would present forever as a
+# "locally modified" install instead of as the manifest problem it is.
+DIGEST_FORM = re.compile(r"sha256:[0-9a-f]{64}")
+
 # Artifact-format families: a project picks at most one variant per family,
 # while every standard outside these families always renders. A stem in
 # standards/ encodes its family as the prefix before the first dash.
@@ -194,6 +199,9 @@ def resolve_source_tag(root: Path, override: str | None) -> str:
         if described:
             return described
     changelog = root / "CHANGELOG.md"
+    # The same stance as every other source read: never through a link.
+    if changelog.is_symlink():
+        fail(f"{changelog}: the source ships a symlink — refusing to read through it")
     if changelog.is_file():
         for line in changelog.read_text(encoding="utf-8").splitlines():
             match = re.match(r"^## \[(\d+\.\d+\.\d+)\]", line)
@@ -264,6 +272,7 @@ def load_manifest(path: Path) -> dict[str, dict[str, str]]:
             not isinstance(entry, dict)
             or not isinstance(entry.get("source_tag"), str)
             or not isinstance(entry.get("digest"), str)
+            or not DIGEST_FORM.fullmatch(entry["digest"])
         ):
             fail(f"{path}: entry {rel!r} is not an install record")
     return raw["entries"]
@@ -522,7 +531,9 @@ def main(argv: list[str] | None = None, ask: Callable[[str], str] | None = None)
         selection = load_setup_config(args.config, variants)
 
     source_tag = resolve_source_tag(root, args.source_tag)
-    entries = load_manifest(target / MANIFEST_PATH)
+    manifest_path = target / MANIFEST_PATH
+    entries = load_manifest(manifest_path)
+    loaded = {rel: dict(entry) for rel, entry in entries.items()}
 
     with tempfile.TemporaryDirectory() as tmp:
         items = skill_items(root) + render_selected(
@@ -534,7 +545,10 @@ def main(argv: list[str] | None = None, ask: Callable[[str], str] | None = None)
     for family, names in variants.items():
         source_stems.update(f"{family}-{name}" for name in names)
     stale = stale_entries(items, target, entries, source_stems)
-    save_manifest(target / MANIFEST_PATH, entries)
+    # Saved only on change: a no-op re-run must not touch the manifest's
+    # bytes, inode, or mtime — "changes nothing" means nothing.
+    if entries != loaded or not manifest_path.is_file():
+        save_manifest(manifest_path, entries)
 
     for line in report + stale:
         print(line)

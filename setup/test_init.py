@@ -172,6 +172,15 @@ class SetupInitTest(unittest.TestCase):
         self.assertEqual(before, self.tree_state())
         self.assertIn("0 installed, 0 refreshed, 6 up to date", out)
 
+    def test_noop_rerun_does_not_rewrite_the_manifest(self) -> None:
+        self.install()
+        before = (self.target / init.MANIFEST_PATH).stat()
+        self.install()
+        after = (self.target / init.MANIFEST_PATH).stat()
+        self.assertEqual(
+            (before.st_ino, before.st_mtime_ns), (after.st_ino, after.st_mtime_ns)
+        )
+
     def test_junk_in_source_is_ignored(self) -> None:
         self.write("skills/awf-alpha/__pycache__/junk.pyc", "junk")
         self.write("skills/awf-alpha/.DS_Store", "junk")
@@ -641,7 +650,12 @@ class SetupInitTest(unittest.TestCase):
         self.assertIn("not an install manifest", err)
 
     def test_malformed_manifest_entry_fails(self) -> None:
-        for entry in ("a string", {"source_tag": "0.2.0"}, {"digest": 7, "source_tag": "x"}):
+        for entry in (
+            "a string",
+            {"source_tag": "0.2.0"},
+            {"digest": 7, "source_tag": "x"},
+            {"digest": "sha256:bad", "source_tag": "x"},
+        ):
             with self.subTest(entry=entry):
                 self.write_target(
                     init.MANIFEST_PATH,
@@ -706,6 +720,14 @@ class SetupInitTest(unittest.TestCase):
         self.assertNotEqual(code, 0)
         self.assertIn("the source ships a symlink", err)
         self.assertFalse(self.target.exists())
+
+    def test_symlinked_changelog_is_refused(self) -> None:
+        aside = self.source / "real-changelog.md"
+        shutil.move(str(self.source / "CHANGELOG.md"), str(aside))
+        (self.source / "CHANGELOG.md").symlink_to(aside)
+        code, _, err = self.install()
+        self.assertNotEqual(code, 0)
+        self.assertIn("refusing to read through it", err)
 
     def test_symlinked_standards_container_is_refused(self) -> None:
         aside = self.source / "real-standards"
