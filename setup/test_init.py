@@ -213,6 +213,31 @@ class SetupInitTest(unittest.TestCase):
         self.assertIn("skill awf-alpha: adopted", out)
         self.assertIn(".agents/skills/awf-alpha", self.read_manifest()["entries"])
 
+    def test_empty_file_and_empty_directory_digests_differ(self) -> None:
+        empty_file = self.write("empty.md", "")
+        empty_dir = self.source / "emptydir"
+        empty_dir.mkdir()
+        self.assertNotEqual(init.content_digest(empty_file), init.content_digest(empty_dir))
+
+    def test_empty_directory_at_a_standard_path_is_not_adopted(self) -> None:
+        self.write("standards/empty-note.md", "")
+        (self.target / ".agents/standards/empty-note.md").mkdir(parents=True)
+        _, out, _ = self.install()
+        self.assertIn(
+            "standard empty-note.md: skipped — exists but was not installed by setup", out
+        )
+        self.assertTrue((self.target / ".agents/standards/empty-note.md").is_dir())
+
+    def test_symlinked_managed_directory_is_refused(self) -> None:
+        outside = self.config_dir / "outside"
+        outside.mkdir()
+        (self.target / ".agents").mkdir(parents=True)
+        (self.target / ".agents/skills").symlink_to(outside)
+        code, _, err = self.install()
+        self.assertNotEqual(code, 0)
+        self.assertIn("managed path is a symlink", err)
+        self.assertEqual(list(outside.iterdir()), [])
+
     def test_identical_foreign_standard_is_adopted(self) -> None:
         self.write_target(
             ".agents/standards/coding.md",

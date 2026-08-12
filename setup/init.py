@@ -204,9 +204,14 @@ def resolve_source_tag(root: Path, override: str | None) -> str:
 
 def content_digest(path: Path) -> str:
     digest = hashlib.sha256()
+    # The kind seeds the hash: an empty file and an empty directory would
+    # otherwise digest identically, letting the identical-content branches
+    # treat a directory at a file's path as that file.
     if path.is_file():
+        digest.update(b"file\0")
         digest.update(path.read_bytes())
     else:
+        digest.update(b"tree\0")
         for file in sorted(p for p in path.rglob("*") if p.is_file()):
             relative = file.relative_to(path)
             if IGNORED_NAMES & set(relative.parts):
@@ -257,6 +262,17 @@ def save_manifest(path: Path, entries: dict[str, dict[str, str]]) -> None:
     with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
         handle.write(json.dumps(payload, indent=2) + "\n")
     os.replace(staged, path)
+
+
+def guard_managed_paths(target: Path) -> None:
+    """Refuse to install through a symlinked managed directory: a link
+    pointing outside the project would carry writes — including refreshes of
+    manifest-owned content — past the --target boundary, which matters most in
+    the non-interactive/CI mode where the repository contents are the input."""
+    for rel in (".agents", SKILLS_DIR, STANDARDS_DIR):
+        path = target / rel
+        if path.is_symlink():
+            fail(f"{path}: managed path is a symlink — refusing to install through it")
 
 
 def skill_items(root: Path) -> list[Item]:
@@ -429,6 +445,7 @@ def main(argv: list[str] | None = None, ask: Callable[[str], str] | None = None)
     target = args.target.resolve()
     if target.exists() and not target.is_dir():
         fail(f"{target}: not a directory")
+    guard_managed_paths(target)
 
     always, variants = discover_standards(root)
     interactive = args.config is None
