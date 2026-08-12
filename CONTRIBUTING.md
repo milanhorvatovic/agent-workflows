@@ -19,6 +19,8 @@ python3 -m venv .venv && .venv/bin/pip install -r scripts/requirements.txt
 .venv/bin/python scripts/render_standards.py --check # placeholder integrity, shared-template freshness
 ```
 
+CI runs these under the Python version the workflow pins; when a result differs between local and CI, match that interpreter first.
+
 A touched skill also gets the advisory packaging check, one directory per invocation: `npx --yes skills-ref validate skills/<name>`. What each script covers is described in [`scripts/README.md`](scripts/README.md).
 
 ## Generated surfaces are edited at their source
@@ -38,7 +40,7 @@ A public artifact — a repo file, a PR description, a commit message — must n
 
 ### A widened declaration obliges six surfaces, and the six must agree
 
-Whether a widening is owed at all is spec [§9.1](protocol/spec.md#91-step-and-handoff)'s completeness rule: a step declares every artifact whose content its instructions depend on. Widening a step's contract — an input added, an output moved, an edge changed — then obliges six surfaces: the skill's step block, the stage contract's copy of it, the frontmatter `description`, the body's opening summary, the downstream consumers, and the changelog. Conformance holds the first two to agreement (the step-bound parity check); the other four are the author's, with three riders:
+Whether a widening is owed at all is spec [§9.1](protocol/spec.md#91-step-and-handoff)'s completeness rule: a step declares every artifact whose content its instructions depend on. Widening a step's contract — an input added, an output moved, an edge changed — then obliges six surfaces: the skill's step block, the stage contract's copy of it, the frontmatter `description`, the body's opening summary, the downstream consumers, and the changelog. The declaration's strength is part of the widening, argued from availability rather than caution: required means some step produces the artifact before this one wherever this one runs, and optional means a real case exists where it is absent — six surfaces in agreement about an input nothing upstream produces are six surfaces agreeing on a step §9.1 leaves permanently blocked. Conformance holds the first two surfaces to agreement (the step-bound parity check); the other four are the author's, with three riders:
 
 - Agreement, not coverage: two surfaces both touched and phrased differently still disagree, and wording drift is worst in the `description`, where it publishes through the generated index and is invisible in a diff read file by file.
 - A place the widening does not reach is checked and recorded as empty — the PR says which consumers were inspected and why none moves — never skipped. An unrecorded place is indistinguishable from a forgotten one.
