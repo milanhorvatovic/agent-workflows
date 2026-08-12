@@ -455,6 +455,22 @@ class SetupInitTest(unittest.TestCase):
             "edited in the window\n",
         )
 
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root reads anything")
+    def test_failed_recheck_restores_the_moved_aside_install(self) -> None:
+        self.install()
+        destination = self.target / ".agents/skills/awf-alpha"
+        expected = init.content_digest(destination)
+        unreadable = destination / "references/notes.md"
+        unreadable.chmod(0)
+        self.addCleanup(unreadable.chmod, 0o644)
+        item = init.Item(
+            "skill", "awf-alpha", self.source / "skills/awf-alpha", ".agents/skills/awf-alpha"
+        )
+        with self.assertRaises(PermissionError):
+            init.write_item(item, destination, expected=expected)
+        self.assertTrue((destination / "SKILL.md").is_file())
+        self.assertTrue(unreadable.exists())
+
     def test_install_never_sweeps_content_that_appeared_after_the_check(self) -> None:
         self.write_target(".agents/skills/awf-alpha/SKILL.md", "appeared late\n")
         item = init.Item(

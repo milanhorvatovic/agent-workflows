@@ -397,25 +397,28 @@ def write_item(item: Item, destination: Path, expected: str | None = None) -> No
                     f"{destination}: appeared since it was checked; left untouched"
                 )
             destination.rename(replaced)
+        # Every exit after the swap-aside restores the moved content — the
+        # staging cleanup would otherwise delete it on any exception, the
+        # recheck's own errors included.
+        try:
             # The overwrite decision was made against a digest taken earlier;
             # an edit landing in that window must not be swept aside on the
             # strength of a stale comparison. The object actually moved is
             # re-checked, and on mismatch it goes back and the item fails.
-            if expected is not None and content_digest(replaced) != expected:
-                replaced.rename(destination)
+            if replaced.exists() and content_digest(replaced) != expected:
                 raise ReplacedContentChanged(
                     f"{destination}: changed since it was checked; left untouched"
                 )
-        # The promotion is a plain rename, which on POSIX replaces a
-        # destination that appeared in the syscall-wide window since the
-        # checks above. That residue is deliberate: no-replace rename does
-        # not exist portably for directories, and content appearing there
-        # means a concurrent process is mutating the managed tree during an
-        # install — outside the single-writer model an installer assumes.
-        try:
+            # The promotion is a plain rename, which on POSIX replaces a
+            # destination that appeared in the syscall-wide window since the
+            # checks above. That residue is deliberate: no-replace rename
+            # does not exist portably for directories, and content appearing
+            # there means a concurrent process is mutating the managed tree
+            # during an install — outside the single-writer model an
+            # installer assumes.
             staged.rename(destination)
-        except OSError:
-            if replaced.exists():
+        except BaseException:
+            if replaced.exists() and not destination.exists():
                 replaced.rename(destination)
             raise
 
