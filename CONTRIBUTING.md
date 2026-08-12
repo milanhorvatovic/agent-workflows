@@ -4,7 +4,7 @@ The deliverables here are markdown contracts and the small scripts that keep the
 
 ## How a change lands
 
-Everything lands through a pull request against `main`. Subjects follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) — typed (`fix:`, `feat:`, `docs:`, …), imperative, at most 72 characters. PRs are squash-merged: the PR title becomes the subject on `main`, and the merge body is a short self-contained summary. Branch commit messages are public artifacts all the same — a PR's commits are visible the moment it opens, and squash machinery can carry their messages into the merge body — so write them to the same bar as the files they describe (the first rule below applies to them in full). Every code change, maintenance scripts included, lands with its unit tests in the same PR.
+Everything lands through a pull request against `main`. Subjects follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) — typed (`fix:`, `feat:`, `docs:`, …), imperative, under 72 characters — the same cap [`standards/commit-conventional.md`](standards/commit-conventional.md) states for consuming projects. PRs are squash-merged: the PR title becomes the subject on `main`, and the merge body is a short self-contained summary. Branch commit messages are public artifacts all the same — a PR's commits are visible the moment it opens, and squash machinery can carry their messages into the merge body — so write them to the same bar as the files they describe (the first rule below applies to them in full). Every code change, maintenance scripts included, lands with its unit tests in the same PR.
 
 ## Run the checks locally
 
@@ -21,7 +21,7 @@ python3 -m venv .venv && .venv/bin/pip install -r scripts/requirements.txt
 
 CI runs these under the Python version the workflow pins; when a result differs between local and CI, match that interpreter first.
 
-A touched skill also gets the advisory packaging check, one directory per invocation: `npx --yes skills-ref validate skills/<name>`. It is deliberately unpinned, unlike the SHA-pinned actions in the CI workflow: the check is a canary against the current release of the Agent Skills validator, and drift there is part of what it reports. What each script covers is described in [`scripts/README.md`](scripts/README.md).
+A touched skill also gets the advisory packaging check, one directory per invocation: `npx --yes skills-ref validate skills/<name>`. It is deliberately unpinned, unlike the SHA-pinned actions in the CI workflow: the check is a canary against the current release of the Agent Skills validator, and drift there is part of what it reports. The flip side is stated rather than implied — it downloads and runs the validator's current release, which this repo has not reviewed, so treat it as you treat any unvetted executable; skipping it costs only the advisory signal, since CI does not run it. What each script covers is described in [`scripts/README.md`](scripts/README.md).
 
 ## Generated surfaces are edited at their source
 
@@ -52,7 +52,7 @@ The natural failure mode of a corrective change is applying the standards it edi
 
 - Before review: run everything above against your own diff, and hold your own prose to the rules it states — a change that states a rule can violate it in the stating, and that is exactly what review finds.
 - After every fix: re-check the surfaces that describe the change — the changelog, the commit messages, the PR description — against the change itself. A claim corrected in the contract and left standing in a surface that describes it is the defect the fix itself invites. A grep of the claim's wording finds the copies that share it; a copy that paraphrases it evades the grep and is re-read, the same semantic bar as above.
-- After review comes back clean: two checks still belong to the author, because they need the final diff. Pair every body touched with its template — the method says what fills each section the template carries, the template has a place for every result the method produces, and a shared template is paired once per consumer, not once per file. Then read each touched file whole: a diff review sees the lines that moved, and neither it nor the pairing sees what a file says together.
+- After review comes back clean: two checks still belong to the author, because they need the final diff. Pair every touched body with the template it declares — where it declares none there is nothing to pair — checking that the method says what fills each section the template carries, that the template has a place for every result the method produces, and a shared template once per consumer, not once per file. Then read each touched file whole: a diff review sees the lines that moved, and neither it nor the pairing sees what a file says together.
 
 ## License
 
