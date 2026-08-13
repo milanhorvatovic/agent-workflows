@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Driver skeleton (`driver/`, stdlib-only Python package): the command surface and the config contract land first so every later module plugs into a stable frame. `python3 -m driver` exposes `run`, `resume`, and `status`, each taking `--config`; `status` lists the run directories at `{artifacts}/runs/`, while `run` and `resume` exit with an explicit message until the state machine module lands. The JSON config carries the project's artifact root (`artifacts_dir` — spec §8.1's `{artifacts}`, whose resolution the spec names as project configuration; optional, default the config file's directory, a leading `~` expanded to the home directory, and the `runs` segment derived per the spec rather than configured), the named backend command lines (the argv of any prompt-in/text-out CLI), and a route for each of the six protocol roles to a backend plus an optional model — the model field is validated and carried now, consumed once per-step model routing lands. Validation is strict and load-time: unknown keys at every level, undefined backend references, and missing role routes fail with explicit messages before anything runs, and `status` refuses a runs path that exists as a non-directory instead of reporting zero runs. Ships with `driver/config.example.json`, usage and config documentation in `driver/README.md`, and unit tests down to the `python3 -m driver` subprocess path; conformance CI runs the driver suite alongside the existing ones, and the local-checks list in CONTRIBUTING names it.
+
 ## [0.2.0] - 2026-08-13
 
 ### Added
