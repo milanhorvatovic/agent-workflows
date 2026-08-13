@@ -14,6 +14,7 @@ Conformance CI ([`.github/workflows/conformance.yml`](.github/workflows/conforma
 python3 -m venv .venv && .venv/bin/pip install -r scripts/requirements.txt
 
 .venv/bin/python -m unittest discover -s scripts     # script unit tests
+.venv/bin/python -m unittest discover -s setup       # setup installer unit tests
 .venv/bin/python scripts/validate_conformance.py     # schemas, workflow blocks, frontmatter, budgets, step parity
 .venv/bin/python scripts/generate_index.py --check   # AGENTS.md index freshness
 .venv/bin/python scripts/render_standards.py --check # placeholder integrity, shared-template freshness
