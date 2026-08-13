@@ -1,0 +1,15 @@
+{
+  "artifacts_dir": ".",
+  "backends": {
+    "claude": { "command": ["claude", "-p"] },
+    "codex": { "command": ["codex", "exec"] }
+  },
+  "roles": {
+    "analyst": { "backend": "claude", "model": "claude-sonnet-5" },
+    "planner": { "backend": "claude", "model": "claude-opus-5" },
+    "implementer": { "backend": "claude", "model": "claude-sonnet-5" },
+    "reviewer": { "backend": "codex" },
+    "validator": { "backend": "claude", "model": "claude-opus-5" },
+    "arbiter": { "backend": "claude", "model": "claude-opus-5" }
+  }
+}
