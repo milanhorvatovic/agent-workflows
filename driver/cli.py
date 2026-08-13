@@ -1,7 +1,8 @@
-"""Command-line surface: `python3 -m driver <run|resume|status> --config <path>`.
+"""Command-line surface: `python3 -m driver <run|resume|status> --config <path>`,
+with `resume` also naming the run to resume.
 
 Exit codes: 0 success, 1 the command cannot run yet (its module has not
-landed), 2 bad usage or a config defect.
+landed), 2 bad usage or a defective config or environment.
 """
 
 from __future__ import annotations
@@ -19,12 +20,17 @@ def build_parser() -> argparse.ArgumentParser:
         description="Reference driver for the agent-workflows protocol.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
-    for name, help_text in (
-        ("run", "start a new run"),
-        ("resume", "resume a run from its first unfinished step"),
-        ("status", "list the runs in the configured runs directory"),
-    ):
-        command = subparsers.add_parser(name, help=help_text)
+    run = subparsers.add_parser("run", help="start a new run")
+    resume = subparsers.add_parser("resume", help="resume a run from its first unfinished step")
+    # The protocol permits concurrent runs (spec §8.1), so which run to
+    # resume can never be inferred; the id is part of the contract even
+    # while the command itself awaits the state machine.
+    resume.add_argument(
+        "run_id",
+        help="the run to resume: its directory name under {artifacts}/runs/",
+    )
+    status = subparsers.add_parser("status", help="list the runs under the configured artifact root")
+    for command in (run, resume, status):
         command.add_argument(
             "--config",
             type=Path,
@@ -58,13 +64,19 @@ def _status(config: Config) -> int:
     """Print one run id (directory name) per line, sorted."""
     # A missing runs directory is zero runs, not a defect: the first run
     # creates it. An existing non-directory is a defect — reporting zero
-    # runs for it would hide the misconfiguration.
-    if not config.runs_dir.exists():
-        return 0
-    if not config.runs_dir.is_dir():
-        print(f"driver: {config.runs_dir} is not a directory", file=sys.stderr)
+    # runs for it would hide the misconfiguration. So is a directory the
+    # driver cannot read: exit 1 is reserved for unimplemented commands,
+    # so filesystem failures must land in 2, not escape as tracebacks.
+    try:
+        if not config.runs_dir.exists():
+            return 0
+        if not config.runs_dir.is_dir():
+            print(f"driver: {config.runs_dir} is not a directory", file=sys.stderr)
+            return 2
+        run_ids = sorted(entry.name for entry in config.runs_dir.iterdir() if entry.is_dir())
+    except OSError as error:
+        print(f"driver: cannot read {config.runs_dir}: {error}", file=sys.stderr)
         return 2
-    for entry in sorted(config.runs_dir.iterdir()):
-        if entry.is_dir():
-            print(entry.name)
+    for run_id in run_ids:
+        print(run_id)
     return 0

@@ -10,12 +10,12 @@ Nothing to install: clone the repository and run the package from its root with 
 python3 -m driver status --config path/to/driver.json
 ```
 
-Three commands, each taking `--config`:
+Three commands, each taking `--config`; `resume` additionally names the run to resume, since the protocol permits concurrent runs and the choice can never be inferred:
 
 | Command | Does |
 | --- | --- |
 | `run` | start a new run |
-| `resume` | resume a run from its first unfinished step |
+| `resume <run-id>` | resume that run — its directory name under `{artifacts}/runs/` — from its first unfinished step |
 | `status` | list the runs under the configured artifact root |
 
 The driver is built module by module, and the command surface is stable from the start: `status` works today; `run` and `resume` exit with an explicit message (code 1) until the state machine module lands. Exit codes: 0 success, 1 the command cannot run yet, 2 bad usage or a config defect.

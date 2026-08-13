@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 from driver import cli
@@ -61,9 +62,27 @@ class CliTest(unittest.TestCase):
         self.assertIn("run is not implemented yet", err)
 
     def test_resume_fails_loudly_until_the_state_machine_lands(self) -> None:
-        code, _, err = self.invoke("resume", "--config", str(self.config_path))
+        code, _, err = self.invoke(
+            "resume", "2026-08-12-bugfix-one", "--config", str(self.config_path)
+        )
         self.assertEqual(code, 1)
         self.assertIn("resume is not implemented yet", err)
+
+    def test_resume_without_a_run_id_is_a_usage_error(self) -> None:
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as caught:
+                cli.main(["resume", "--config", str(self.config_path)])
+        self.assertEqual(caught.exception.code, 2)
+
+    def test_status_reports_an_unreadable_runs_directory(self) -> None:
+        (self.base / "runs").mkdir()
+        with unittest.mock.patch.object(
+            Path, "iterdir", side_effect=PermissionError("permission denied")
+        ):
+            code, out, err = self.invoke("status", "--config", str(self.config_path))
+        self.assertEqual(code, 2)
+        self.assertEqual(out, "")
+        self.assertIn("cannot read", err)
 
     def test_config_defect_names_the_file_and_exits_2(self) -> None:
         self.config_path.write_text("{not json", encoding="utf-8")
