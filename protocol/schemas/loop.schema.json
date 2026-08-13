@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "loop.schema.json",
-  "title": "agent-workflows loop contract (protocol 0.1)",
+  "title": "agent-workflows loop contract (protocol 0.2)",
   "description": "Validates a `metadata.workflow` block that declares a loop contract: the exit-criteria conjunction, the iteration cap, stall detection, and scope binding (spec section 9.2). Sibling structures and unknown keys are tolerated per the 0.x degradation rules (spec section 9.4).",
   "type": "object",
   "required": [

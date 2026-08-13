@@ -3,7 +3,7 @@
 # Optional: `stall` (signal: no-artifact-delta, action: escalate) detects spinning
 # inside the cap; `scope` (declared_from + on_drift: flag | escalate) binds the loop
 # to its plan's declared file scope.
-protocol: "0.1"
+protocol: "0.2"
 loop:
   exit_criteria:
     - artifact: "{run}/plan-validation.md"

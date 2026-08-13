@@ -145,7 +145,7 @@ STEP_BLOCK = """\
 ```yaml
 metadata:
   workflow:
-    protocol: "0.1"
+    protocol: "0.2"
     step:
       role: analyst
       inputs:
@@ -162,7 +162,7 @@ TRIGGER_BLOCK = """\
 ```yaml
 metadata:
   workflow:
-    protocol: "0.1"
+    protocol: "0.2"
     trigger:
       kind: manual
 ```
@@ -201,7 +201,7 @@ def skill_frontmatter(name: str, extra: str = "license: MIT\n") -> str:
 SKILL_WORKFLOW = """\
 metadata:
   workflow:
-    protocol: "0.1"
+    protocol: "0.2"
     step:
       role: analyst
       inputs:
@@ -226,27 +226,27 @@ class ValidateConformanceTest(unittest.TestCase):
             self.write(f"protocol/schemas/{name}.schema.json", json.dumps(schema))
         self.write(
             "protocol/schemas/examples/step.valid.yaml",
-            'protocol: "0.1"\nstep:\n  role: analyst\n  output:\n    artifact: "{run}/a.md"\n',
+            'protocol: "0.2"\nstep:\n  role: analyst\n  output:\n    artifact: "{run}/a.md"\n',
         )
         self.write(
             "protocol/schemas/examples/step.invalid.yaml",
-            'protocol: "0.1"\nstep:\n  role: orchestrator\n',
+            'protocol: "0.2"\nstep:\n  role: orchestrator\n',
         )
         self.write(
             "protocol/schemas/examples/loop.valid.yaml",
-            'protocol: "0.1"\nloop:\n  exit_criteria: []\n  max_iterations: 3\n',
+            'protocol: "0.2"\nloop:\n  exit_criteria: []\n  max_iterations: 3\n',
         )
         self.write(
             "protocol/schemas/examples/loop.invalid.yaml",
-            'protocol: "0.1"\nloop:\n  exit_criteria: []\n',
+            'protocol: "0.2"\nloop:\n  exit_criteria: []\n',
         )
         self.write(
             "protocol/schemas/examples/trigger.valid.yaml",
-            'protocol: "0.1"\ntrigger:\n  kind: manual\n',
+            'protocol: "0.2"\ntrigger:\n  kind: manual\n',
         )
         self.write(
             "protocol/schemas/examples/trigger.invalid.yaml",
-            'protocol: "0.1"\ntrigger:\n  kind: quantum\n',
+            'protocol: "0.2"\ntrigger:\n  kind: quantum\n',
         )
         self.write(
             "protocol/schemas/examples/run-state.valid.yaml",
@@ -309,7 +309,7 @@ class ValidateConformanceTest(unittest.TestCase):
     def test_block_declaring_no_structure_reported(self) -> None:
         self.write(
             "workflows/demo.md",
-            frontmatter("demo") + '\n```yaml\nmetadata:\n  workflow:\n    protocol: "0.1"\n```\n',
+            frontmatter("demo") + '\n```yaml\nmetadata:\n  workflow:\n    protocol: "0.2"\n```\n',
         )
         self.assert_problem("declares none of: step, loop, trigger")
 
@@ -376,7 +376,7 @@ class ValidateConformanceTest(unittest.TestCase):
     def test_valid_fixture_failing_its_schema_reported(self) -> None:
         self.write(
             "protocol/schemas/examples/trigger.valid.yaml",
-            'protocol: "0.1"\ntrigger:\n  kind: quantum\n',
+            'protocol: "0.2"\ntrigger:\n  kind: quantum\n',
         )
         output = self.assert_problem("trigger.valid.yaml")
         self.assertIn("[trigger]", output)
@@ -384,7 +384,7 @@ class ValidateConformanceTest(unittest.TestCase):
     def test_invalid_fixture_passing_its_schema_reported(self) -> None:
         self.write(
             "protocol/schemas/examples/trigger.invalid.yaml",
-            'protocol: "0.1"\ntrigger:\n  kind: manual\n',
+            'protocol: "0.2"\ntrigger:\n  kind: manual\n',
         )
         self.assert_problem("the negative test proves nothing")
 
@@ -398,7 +398,7 @@ class ValidateConformanceTest(unittest.TestCase):
         # is validated like the required one rather than merely present.
         self.write(
             "protocol/schemas/examples/trigger.valid.manual.yaml",
-            'protocol: "0.1"\ntrigger:\n  kind: quantum\n',
+            'protocol: "0.2"\ntrigger:\n  kind: quantum\n',
         )
         output = self.assert_problem("trigger.valid.manual.yaml")
         self.assertIn("[trigger]", output)
@@ -408,7 +408,7 @@ class ValidateConformanceTest(unittest.TestCase):
         # that validates proves nothing, exactly as the required pair's does.
         self.write(
             "protocol/schemas/examples/trigger.invalid.pairing.yaml",
-            'protocol: "0.1"\ntrigger:\n  kind: manual\n',
+            'protocol: "0.2"\ntrigger:\n  kind: manual\n',
         )
         self.assert_problem("the negative test proves nothing")
 
@@ -474,7 +474,7 @@ class ValidateConformanceTest(unittest.TestCase):
             "```yaml\n"
             "metadata:\n"
             "  workflow:\n"
-            '    protocol: "0.1"\n'
+            '    protocol: "0.2"\n'
             "    loop:\n"
             "      exit_criteria:\n"
             '        - command: "echo ${HOME}"\n'
@@ -645,7 +645,7 @@ Prose.
 ```yaml
 metadata:
   workflow:
-    protocol: "0.1"
+    protocol: "0.2"
     step:
       role: analyst
       inputs:
@@ -665,7 +665,7 @@ description: A description.
 license: MIT
 metadata:
   workflow:
-    protocol: "0.1"
+    protocol: "0.2"
     step:
       role: analyst
       inputs:
@@ -754,7 +754,7 @@ Prose.
 ```yaml
 metadata:
   workflow:
-    protocol: "0.1"
+    protocol: "0.2"
     step:
       role: planner
       inputs:
@@ -1023,7 +1023,7 @@ Prose.
 ```yaml
 metadata:
   workflow:
-    protocol: "0.1"
+    protocol: "0.2"
     step:
       role: planner
       inputs:

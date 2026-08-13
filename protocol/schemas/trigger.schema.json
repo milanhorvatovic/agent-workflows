@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "trigger.schema.json",
-  "title": "agent-workflows trigger (protocol 0.1)",
+  "title": "agent-workflows trigger (protocol 0.2)",
   "description": "Validates a `metadata.workflow` block that declares a workflow entry point's trigger (spec section 9.3). kind defaults to manual; every and cron are each valid only for their own kind and never together. Sibling structures and unknown keys are tolerated per the 0.x degradation rules (spec section 9.4).",
   "type": "object",
   "required": ["protocol", "trigger"],

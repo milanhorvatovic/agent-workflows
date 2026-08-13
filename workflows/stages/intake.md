@@ -18,7 +18,7 @@ Both intake gates return here on a `revise`, so the step declares its own output
 ```yaml
 metadata:
   workflow:
-    protocol: "0.1"
+    protocol: "0.2"
     step:
       role: analyst
       inputs:
@@ -37,7 +37,7 @@ Three of the six signals — blast radius, decomposability, novelty — are clai
 ```yaml
 metadata:
   workflow:
-    protocol: "0.1"
+    protocol: "0.2"
     step:
       role: analyst
       inputs:

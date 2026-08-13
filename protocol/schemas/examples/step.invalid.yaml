@@ -3,7 +3,7 @@
 # - step.output is missing (spec §9.1)
 # - step.on carries an unknown verdict key (spec §3.3)
 # - step.on lacks the mandatory PASS and FAIL edges (spec §9.1)
-protocol: "0.1"
+protocol: "0.2"
 step:
   role: orchestrator
   inputs:

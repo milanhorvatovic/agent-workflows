@@ -11,7 +11,7 @@ run:
   phase: 2
   risk: R3
   risk_rationale: "multi-phase, migration touches released API surface"
-  protocol: "0.1"
+  protocol: "0.2"
 steps:
   - id: brief-confirm
     status: done

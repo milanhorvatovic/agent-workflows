@@ -21,7 +21,7 @@ A multi-phase run repeats planning → implementation per phase, the phase list 
 ```yaml
 metadata:
   workflow:
-    protocol: "0.1"
+    protocol: "0.2"
     trigger:
       kind: manual
 ```

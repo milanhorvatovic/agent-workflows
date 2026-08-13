@@ -4,7 +4,7 @@ description: Assembles the run's delivery artifact from its own evidence — wha
 license: MIT
 metadata:
   workflow:
-    protocol: "0.1"
+    protocol: "0.2"
     step:
       role: analyst
       inputs:

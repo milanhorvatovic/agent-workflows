@@ -4,7 +4,7 @@ description: Restates whatever started a run as the run's confirmed brief — th
 license: MIT
 metadata:
   workflow:
-    protocol: "0.1"
+    protocol: "0.2"
     step:
       role: analyst
       inputs:

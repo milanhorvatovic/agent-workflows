@@ -4,7 +4,7 @@ description: Adversarially validates a phase plan against the brief — requirem
 license: MIT
 metadata:
   workflow:
-    protocol: "0.1"
+    protocol: "0.2"
     step:
       role: validator
       inputs:
