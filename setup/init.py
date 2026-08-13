@@ -70,6 +70,17 @@ def fail(message: str) -> NoReturn:
     sys.exit(f"setup: {message}")
 
 
+def is_link(path: Path) -> bool:
+    """Symlinks and NTFS junctions alike — anything that redirects the path
+    somewhere else without being the content itself. is_junction arrived in
+    Python 3.12 and returns False off Windows; an interpreter without it has
+    no junction support to detect, so its absence reads as not-a-junction."""
+    if path.is_symlink():
+        return True
+    junction_check = getattr(path, "is_junction", None)
+    return junction_check() if junction_check is not None else False
+
+
 @dataclass(frozen=True)
 class Selection:
     """The consumer's answers: placeholder values plus one chosen variant per
@@ -200,8 +211,8 @@ def resolve_source_tag(root: Path, override: str | None) -> str:
             return described
     changelog = root / "CHANGELOG.md"
     # The same stance as every other source read: never through a link.
-    if changelog.is_symlink():
-        fail(f"{changelog}: the source ships a symlink — refusing to read through it")
+    if is_link(changelog):
+        fail(f"{changelog}: the source ships a link — refusing to read through it")
     if changelog.is_file():
         for line in changelog.read_text(encoding="utf-8").splitlines():
             match = re.match(r"^## \[(\d+\.\d+\.\d+)\]", line)
@@ -233,7 +244,7 @@ def content_digest(path: Path) -> str:
             if IGNORED_NAMES & set(relative.parts):
                 continue
             name = relative.as_posix().encode("utf-8")
-            if entry.is_symlink():
+            if is_link(entry):
                 link = os.readlink(entry).encode("utf-8", "surrogateescape")
                 digest.update(b"l\0" + name + b"\0")
                 digest.update(str(len(link)).encode("ascii") + b"\0" + link)
@@ -255,7 +266,7 @@ def load_manifest(path: Path) -> dict[str, dict[str, str]]:
     # Checked without following links: a directory or symlink here would read
     # as an absent manifest, and the run would proceed unowned only to fail
     # late — or replace the foreign link — when the manifest is saved.
-    if path.is_symlink() or (path.exists() and not path.is_file()):
+    if is_link(path) or (path.exists() and not path.is_file()):
         fail(f"{path}: not a regular file — refusing to treat it as the install manifest")
     if not path.exists():
         return {}
@@ -310,13 +321,13 @@ def guard_source_tree(root: Path) -> None:
     No skill ships one; if one ever does, this makes it a decision."""
     for container in ("skills", "standards"):
         base = root / container
-        if base.is_symlink():
-            fail(f"{base}: the source ships a symlink — setup installs none")
+        if is_link(base):
+            fail(f"{base}: the source ships a link — setup installs none")
         if not base.is_dir():
             continue
         for entry in base.rglob("*"):
-            if entry.is_symlink():
-                fail(f"{entry}: the source ships a symlink — setup installs none")
+            if is_link(entry):
+                fail(f"{entry}: the source ships a link — setup installs none")
 
 
 def guard_managed_paths(target: Path) -> None:
@@ -326,8 +337,8 @@ def guard_managed_paths(target: Path) -> None:
     the non-interactive/CI mode where the repository contents are the input."""
     for rel in (".agents", SKILLS_DIR, STANDARDS_DIR):
         path = target / rel
-        if path.is_symlink():
-            fail(f"{path}: managed path is a symlink — refusing to install through it")
+        if is_link(path):
+            fail(f"{path}: managed path is a link — refusing to install through it")
         # A regular file here would fail deep inside the run, after items
         # were already promoted, with no manifest written.
         if path.exists() and not path.is_dir():
@@ -436,10 +447,10 @@ def apply(
         destination = target / item.target_rel
         # A following exists() reads a dangling symlink as absence, and the
         # promotion rename would then replace the foreign link in place.
-        if destination.is_symlink():
+        if is_link(destination):
             outcomes["skipped"] += 1
             report.append(
-                f"{item.kind} {item.name}: skipped — a symlink sits at this "
+                f"{item.kind} {item.name}: skipped — a link sits at this "
                 "path and setup never writes through links; left untouched"
             )
             continue
@@ -520,7 +531,7 @@ def stale_entries(
         occupant = target / rel
         # A dangling symlink still occupies the path; only true absence drops
         # the record — everything else stays recorded and reported.
-        if not occupant.exists() and not occupant.is_symlink():
+        if not occupant.exists() and not is_link(occupant):
             del entries[rel]
             continue
         if rel.startswith(f"{STANDARDS_DIR}/") and Path(rel).stem in source_stems:

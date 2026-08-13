@@ -291,7 +291,7 @@ class SetupInitTest(unittest.TestCase):
         (standards / "coding.md").symlink_to(self.target / "nowhere.md")
         _, out, _ = self.install()
         self.assertIn(
-            "standard coding.md: skipped — a symlink sits at this path", out
+            "standard coding.md: skipped — a link sits at this path", out
         )
         self.assertTrue((standards / "coding.md").is_symlink())
 
@@ -304,6 +304,15 @@ class SetupInitTest(unittest.TestCase):
         self.assertIn("standard ticket-jira.md: stale", out)
         self.assertIn(".agents/standards/ticket-jira.md", self.read_manifest()["entries"])
 
+    def test_is_link_sees_symlinks_and_nothing_else_off_windows(self) -> None:
+        regular = self.source / "skills/awf-alpha/SKILL.md"
+        directory = self.source / "skills/awf-alpha"
+        linked = self.source / "linked.md"
+        linked.symlink_to(regular)
+        self.assertTrue(init.is_link(linked))
+        self.assertFalse(init.is_link(regular))
+        self.assertFalse(init.is_link(directory))
+
     def test_symlinked_managed_directory_is_refused(self) -> None:
         outside = self.config_dir / "outside"
         outside.mkdir()
@@ -311,7 +320,7 @@ class SetupInitTest(unittest.TestCase):
         (self.target / ".agents/skills").symlink_to(outside)
         code, _, err = self.install()
         self.assertNotEqual(code, 0)
-        self.assertIn("managed path is a symlink", err)
+        self.assertIn("managed path is a link", err)
         self.assertEqual(list(outside.iterdir()), [])
 
     def test_file_at_a_managed_path_is_refused_before_installing(self) -> None:
@@ -780,7 +789,7 @@ class SetupInitTest(unittest.TestCase):
         )
         code, _, err = self.install()
         self.assertNotEqual(code, 0)
-        self.assertIn("the source ships a symlink", err)
+        self.assertIn("the source ships a link", err)
         self.assertFalse(self.target.exists())
 
     def test_symlinked_skill_package_is_refused(self) -> None:
@@ -789,7 +798,7 @@ class SetupInitTest(unittest.TestCase):
         (self.source / "skills/awf-alpha").symlink_to(aside)
         code, _, err = self.install()
         self.assertNotEqual(code, 0)
-        self.assertIn("the source ships a symlink", err)
+        self.assertIn("the source ships a link", err)
 
     def test_symlinked_standard_source_is_refused(self) -> None:
         aside = self.source / "real-coding.md"
@@ -797,7 +806,7 @@ class SetupInitTest(unittest.TestCase):
         (self.source / "standards/coding.md").symlink_to(aside)
         code, _, err = self.install()
         self.assertNotEqual(code, 0)
-        self.assertIn("the source ships a symlink", err)
+        self.assertIn("the source ships a link", err)
         self.assertFalse(self.target.exists())
 
     def test_symlinked_changelog_is_refused(self) -> None:
@@ -814,7 +823,7 @@ class SetupInitTest(unittest.TestCase):
         (self.source / "standards").symlink_to(aside)
         code, _, err = self.install()
         self.assertNotEqual(code, 0)
-        self.assertIn("the source ships a symlink", err)
+        self.assertIn("the source ships a link", err)
 
     def test_missing_skills_fails(self) -> None:
         shutil.rmtree(self.source / "skills")
