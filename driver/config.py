@@ -68,9 +68,12 @@ class Config:
 
 def load_config(path: Path) -> Config:
     """Parse and validate the config at `path`; raise ConfigError on any defect."""
+    # UnicodeDecodeError is a ValueError, not an OSError: without it here,
+    # a config that is not valid UTF-8 escapes as a traceback instead of
+    # the config-defect exit the CLI documents.
     try:
         raw = path.read_text(encoding="utf-8")
-    except OSError as error:
+    except (OSError, UnicodeDecodeError) as error:
         raise ConfigError(f"cannot read config: {error}") from error
     try:
         data = json.loads(raw)

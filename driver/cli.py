@@ -62,18 +62,20 @@ def main(argv: list[str] | None = None) -> int:
 
 def _status(config: Config) -> int:
     """Print one run id (directory name) per line, sorted."""
-    # A missing runs directory is zero runs, not a defect: the first run
-    # creates it. An existing non-directory is a defect — reporting zero
-    # runs for it would hide the misconfiguration. So is a directory the
-    # driver cannot read: exit 1 is reserved for unimplemented commands,
-    # so filesystem failures must land in 2, not escape as tracebacks.
+    # No exists() probe: pathlib's probe methods suppress filesystem
+    # errors, so an unreadable path would read as absent and be reported
+    # as zero runs. Iterating directly distinguishes the cases — absence
+    # is zero runs (the first run creates the directory), while a
+    # non-directory or any other filesystem failure is a defect: exit 1
+    # is reserved for unimplemented commands, so these land in 2 rather
+    # than escaping as tracebacks or hiding as empty output.
     try:
-        if not config.runs_dir.exists():
-            return 0
-        if not config.runs_dir.is_dir():
-            print(f"driver: {config.runs_dir} is not a directory", file=sys.stderr)
-            return 2
         run_ids = sorted(entry.name for entry in config.runs_dir.iterdir() if entry.is_dir())
+    except FileNotFoundError:
+        return 0
+    except NotADirectoryError:
+        print(f"driver: {config.runs_dir} is not a directory", file=sys.stderr)
+        return 2
     except OSError as error:
         print(f"driver: cannot read {config.runs_dir}: {error}", file=sys.stderr)
         return 2

@@ -94,6 +94,13 @@ class ConfigTest(unittest.TestCase):
             load_config(self.base / "absent.json")
         self.assertIn("cannot read config", str(caught.exception))
 
+    def test_undecodable_config_is_rejected(self) -> None:
+        path = self.base / "driver.json"
+        path.write_bytes(b"\xff\xfe{")
+        with self.assertRaises(ConfigError) as caught:
+            load_config(path)
+        self.assertIn("cannot read config", str(caught.exception))
+
     def test_invalid_json_is_rejected(self) -> None:
         self.assert_rejected("{not json", "invalid JSON")
 
