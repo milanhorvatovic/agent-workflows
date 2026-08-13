@@ -418,7 +418,7 @@ class SetupInitTest(unittest.TestCase):
         original_rename = Path.rename
 
         def failing_promotion(path: Path, target: Path) -> Path:
-            if Path(target) == destination and path.name == "awf-alpha":
+            if Path(target) == destination and path.name == "incoming":
                 raise OSError("promotion failed")
             return original_rename(path, target)
 
@@ -491,6 +491,19 @@ class SetupInitTest(unittest.TestCase):
             (self.target / ".agents/skills/awf-alpha/SKILL.md").read_text(encoding="utf-8"),
             "appeared late\n",
         )
+
+    def test_skill_named_replaced_can_refresh(self) -> None:
+        self.write("skills/replaced/SKILL.md", "# v1\n")
+        self.install()
+        self.write("skills/replaced/SKILL.md", "# v2\n")
+        _, out, _ = self.install()
+        self.assertIn("skill replaced: refreshed", out)
+
+    def test_digest_of_a_link_is_the_link_not_its_target(self) -> None:
+        regular = self.write("file.md", "content\n")
+        link = self.source / "link.md"
+        link.symlink_to(regular)
+        self.assertNotEqual(init.content_digest(link), init.content_digest(regular))
 
     def test_deleted_install_is_reinstalled(self) -> None:
         self.install()

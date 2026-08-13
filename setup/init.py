@@ -30,6 +30,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -78,7 +79,16 @@ def is_link(path: Path) -> bool:
     if path.is_symlink():
         return True
     junction_check = getattr(path, "is_junction", None)
-    return junction_check() if junction_check is not None else False
+    if junction_check is not None:
+        return junction_check()
+    # Python 3.11 and earlier have no is_junction, but junctions still exist
+    # there: a reparse point that is not a symlink redirects all the same.
+    # Off Windows, st_file_attributes does not exist and this reads False.
+    try:
+        attributes = path.lstat().st_file_attributes  # type: ignore[attr-defined]
+    except (OSError, AttributeError):
+        return False
+    return bool(attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT)
 
 
 @dataclass(frozen=True)
@@ -225,8 +235,15 @@ def content_digest(path: Path) -> str:
     digest = hashlib.sha256()
     # The kind seeds the hash: an empty file and an empty directory would
     # otherwise digest identically, letting the identical-content branches
-    # treat a directory at a file's path as that file.
-    if path.is_file():
+    # treat a directory at a file's path as that file. A link is hashed as
+    # itself, never followed — the refresh recheck digests whatever was moved
+    # aside, and a link swapped in for byte-identical content must not read
+    # as that content.
+    if is_link(path):
+        target_value = os.readlink(path).encode("utf-8", "surrogateescape")
+        digest.update(b"link\0")
+        digest.update(str(len(target_value)).encode("ascii") + b"\0" + target_value)
+    elif path.is_file():
         digest.update(b"file\0")
         digest.update(path.read_bytes())
     else:
@@ -394,7 +411,9 @@ def write_item(item: Item, destination: Path, expected: str | None = None) -> No
     # otherwise lets the staging cleanup take it; a crash between the two
     # renames leaves the destination absent, which the next run reinstalls.
     with tempfile.TemporaryDirectory(dir=destination.parent) as staging:
-        staged = Path(staging) / item.name
+        # Fixed staging names, independent of item names: a package named
+        # "replaced" must not collide with the swap-aside path.
+        staged = Path(staging) / "incoming"
         if item.source.is_dir():
             shutil.copytree(
                 item.source, staged, ignore=shutil.ignore_patterns(*IGNORED_NAMES)
