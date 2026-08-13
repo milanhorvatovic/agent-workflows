@@ -4,7 +4,7 @@ description: Decomposes raw requirements — a PRD, a technical spec, user stori
 license: MIT
 metadata:
   workflow:
-    protocol: "0.1"
+    protocol: "0.2"
     step:
       role: analyst
       inputs:

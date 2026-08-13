@@ -4,7 +4,7 @@ description: Reviews the implemented change with fresh eyes against the plan —
 license: MIT
 metadata:
   workflow:
-    protocol: "0.1"
+    protocol: "0.2"
     step:
       role: reviewer
       inputs:

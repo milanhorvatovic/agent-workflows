@@ -7,7 +7,7 @@ run:
   workflow: bugfix
   risk: high
   risk_rationale: "invalid fixture"
-  protocol: "0.1"
+  protocol: "0.2"
 steps:
   - id: implement
     status: running

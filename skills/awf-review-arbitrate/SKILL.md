@@ -4,7 +4,7 @@ description: Synthesizes the review's parallel outputs — reviewer findings, se
 license: MIT
 metadata:
   workflow:
-    protocol: "0.1"
+    protocol: "0.2"
     step:
       role: arbiter
       inputs:

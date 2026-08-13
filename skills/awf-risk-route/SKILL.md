@@ -4,7 +4,7 @@ description: Applies the spec §5.2 classification rubric to the confirmed brief
 license: MIT
 metadata:
   workflow:
-    protocol: "0.1"
+    protocol: "0.2"
     step:
       role: analyst
       inputs:

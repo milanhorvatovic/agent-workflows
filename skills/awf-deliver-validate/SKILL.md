@@ -4,7 +4,7 @@ description: Adversarially validates the run's delivery artifact against the bri
 license: MIT
 metadata:
   workflow:
-    protocol: "0.1"
+    protocol: "0.2"
     step:
       role: validator
       inputs:

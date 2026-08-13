@@ -16,7 +16,7 @@ Synthesize the delivery artifact from the run's evidence — brief, implementati
 ```yaml
 metadata:
   workflow:
-    protocol: "0.1"
+    protocol: "0.2"
     step:
       role: analyst
       inputs:
@@ -49,7 +49,7 @@ Runs with fresh context in every mode (spec §4). The run's final validation: ar
 ```yaml
 metadata:
   workflow:
-    protocol: "0.1"
+    protocol: "0.2"
     step:
       role: validator
       inputs:

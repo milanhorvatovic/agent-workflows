@@ -5,7 +5,7 @@ run:
   id: 2026-08-10-half-written
   workflow: feature
   risk_rationale: "single module, no security surface"
-  protocol: "0.1"
+  protocol: "0.2"
 steps: []
 gates: []
 artifacts: []

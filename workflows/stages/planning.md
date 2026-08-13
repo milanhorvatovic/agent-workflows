@@ -20,7 +20,7 @@ Create the phase plan: steps, dependencies, acceptance criteria, file scope, ris
 ```yaml
 metadata:
   workflow:
-    protocol: "0.1"
+    protocol: "0.2"
     step:
       role: planner
       inputs:
@@ -49,7 +49,7 @@ Runs with fresh context in every mode (spec §4). Adversarial validation of the 
 ```yaml
 metadata:
   workflow:
-    protocol: "0.1"
+    protocol: "0.2"
     step:
       role: validator
       inputs:
@@ -72,7 +72,7 @@ Addresses the validation findings — and any structured feedback escalated from
 ```yaml
 metadata:
   workflow:
-    protocol: "0.1"
+    protocol: "0.2"
     step:
       role: planner
       inputs:
@@ -101,7 +101,7 @@ The revise loop (`plan-validate` → `plan-revise`) exits only on a passing vali
 ```yaml
 metadata:
   workflow:
-    protocol: "0.1"
+    protocol: "0.2"
     loop:
       exit_criteria:
         - artifact: "{run}/phase-{N}-plan-validation.md"

@@ -16,7 +16,7 @@ Execute the plan: make the code changes, keep machine checks green, and log what
 ```yaml
 metadata:
   workflow:
-    protocol: "0.1"
+    protocol: "0.2"
     step:
       role: implementer
       inputs:
@@ -35,7 +35,7 @@ Runs with fresh context in every mode (spec §4). Validates the implementation a
 ```yaml
 metadata:
   workflow:
-    protocol: "0.1"
+    protocol: "0.2"
     step:
       role: validator
       inputs:
@@ -56,7 +56,7 @@ Exit requires both the validation verdict and green machine checks. `{machine-ch
 ```yaml
 metadata:
   workflow:
-    protocol: "0.1"
+    protocol: "0.2"
     loop:
       exit_criteria:
         - artifact: "{run}/phase-{N}-impl-validation.md"
