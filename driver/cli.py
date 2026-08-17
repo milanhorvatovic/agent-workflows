@@ -8,6 +8,7 @@ landed), 2 bad usage or a defective config or environment.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -62,15 +63,19 @@ def main(argv: list[str] | None = None) -> int:
 
 def _status(config: Config) -> int:
     """Print one run id (directory name) per line, sorted."""
-    # No exists() probe: pathlib's probe methods suppress filesystem
-    # errors, so an unreadable path would read as absent and be reported
-    # as zero runs. Iterating directly distinguishes the cases — absence
-    # is zero runs (the first run creates the directory), while a
-    # non-directory or any other filesystem failure is a defect: exit 1
+    # No probes: pathlib's probe methods (exists, is_dir) suppress
+    # filesystem errors, so an unreadable path would read as absent and an
+    # unclassifiable child would be silently dropped — zero runs as the
+    # wrong answer either way. os.scandir iterates directly and its
+    # DirEntry.is_dir propagates real errors while reading a dangling
+    # symlink as False. The exceptions distinguish the cases: absence is
+    # zero runs (the first run creates the directory), while a
+    # non-directory or any other filesystem failure is a defect — exit 1
     # is reserved for unimplemented commands, so these land in 2 rather
     # than escaping as tracebacks or hiding as empty output.
     try:
-        run_ids = sorted(entry.name for entry in config.runs_dir.iterdir() if entry.is_dir())
+        with os.scandir(config.runs_dir) as entries:
+            run_ids = sorted(entry.name for entry in entries if entry.is_dir())
     except FileNotFoundError:
         return 0
     except NotADirectoryError:

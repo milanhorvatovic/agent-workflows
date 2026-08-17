@@ -76,9 +76,22 @@ class CliTest(unittest.TestCase):
 
     def test_status_reports_an_unreadable_runs_directory(self) -> None:
         (self.base / "runs").mkdir()
-        with unittest.mock.patch.object(
-            Path, "iterdir", side_effect=PermissionError("permission denied")
+        with unittest.mock.patch(
+            "driver.cli.os.scandir", side_effect=PermissionError("permission denied")
         ):
+            code, out, err = self.invoke("status", "--config", str(self.config_path))
+        self.assertEqual(code, 2)
+        self.assertEqual(out, "")
+        self.assertIn("cannot read", err)
+
+    def test_status_reports_a_child_it_cannot_classify(self) -> None:
+        (self.base / "runs").mkdir()
+        entry = unittest.mock.Mock()
+        entry.name = "2026-08-13-feature-one"
+        entry.is_dir.side_effect = PermissionError("permission denied")
+        scandir_result = unittest.mock.MagicMock()
+        scandir_result.__enter__.return_value = iter([entry])
+        with unittest.mock.patch("driver.cli.os.scandir", return_value=scandir_result):
             code, out, err = self.invoke("status", "--config", str(self.config_path))
         self.assertEqual(code, 2)
         self.assertEqual(out, "")
