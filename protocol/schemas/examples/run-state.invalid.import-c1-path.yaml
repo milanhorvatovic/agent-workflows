@@ -1,0 +1,19 @@
+# INVALID on purpose — schema validation MUST reject this fixture:
+# - imports[0].artifact carries a C1 control character (U+0085, NEL):
+#   outside C0 yet still a control — some line-oriented tooling treats it
+#   as a line break, splitting one copy destination into several records
+#   (spec §8.6)
+run:
+  id: 2026-08-16-feature-slug
+  workflow: feature
+  protocol: "0.2"
+steps:
+  - id: brief-confirm
+    status: skipped
+gates: []
+artifacts:
+  - "{run}/brief\x85.md"
+imports:
+  - artifact: "{run}/brief\x85.md"
+    from: 2026-08-12-plan-slug
+    at: "2026-08-16T09:00:00Z"

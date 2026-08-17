@@ -1,9 +1,12 @@
 # Starter: a feature run executing a plan run's deliverable (spec §8.6).
 # At creation this run imported the plan run's six artifacts — copies at the
-# same {run}-relative paths, `Run` headers rewritten to this run's id, listed
-# in the manifest, lineage in `imports`. The steps that would have produced
-# them are populated `skipped`: nothing left to produce, though a `revise`
-# still reaches them (spec §10). Gates are never satisfied by an import —
+# same {run}-relative paths, run-scoped headers (`Run`, and `Workflow` where
+# the artifact carries one) rewritten to this run's, listed in the manifest,
+# lineage in `imports`. The steps that would have produced them are populated
+# `skipped`: nothing left to produce, though a `revise` still reaches them
+# (spec §10) — and skippable at all only because every upstream producer is
+# skipped with them, the full six-artifact set keeping the derivation
+# imported end to end (spec §8.6). Gates are never satisfied by an import —
 # `intake-approval` read the imported brief's Routing section and accepted a
 # class for THIS run, `plan-approval` decided on the imported plan, and both
 # outcomes are recorded here, in the run that took them (spec §7, §8.6).

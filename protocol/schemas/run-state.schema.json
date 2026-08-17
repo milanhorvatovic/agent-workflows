@@ -24,7 +24,7 @@
       "properties": {
         "id": {
           "type": "string",
-          "pattern": "^(?![A-Za-z]:)(?!\\.{1,2}$)(?!\\s+$)[^/\\\\\u0000-\u001f\u007f]+(?![\\s\\S])",
+          "pattern": "^(?![A-Za-z]:)(?!\\.{1,2}$)(?!\\s+$)[^/\\\\\u0000-\u001f\u007f-\u009f]+(?![\\s\\S])",
           "description": "Run identifier; also names the run directory {artifacts}/runs/<run-id>/ (spec section 8.1), so it is a plain directory name: no separators, no dot entries, no control characters, no Windows drive prefix (which would anchor a join elsewhere; a colon after the first character stays legal, so ISO timestamps survive), not blank — the refusals the reference driver applies to a run id it is asked to resume. The same shape `imports[].from` carries, which is what makes comparing the two exact (spec section 8.6)."
         },
         "workflow": {
@@ -167,12 +167,12 @@
       "properties": {
         "artifact": {
           "type": "string",
-          "pattern": "^\\{run\\}(?:/(?!\\.{1,2}(?:/|$))(?![A-Za-z]:)[^/\\\\\u0000-\u001f\u007f]+)+(?![\\s\\S])",
+          "pattern": "^\\{run\\}(?:/(?!\\.{1,2}(?:/|$))(?![A-Za-z]:)[^/\\\\\u0000-\u001f\u007f-\u009f]+)+(?![\\s\\S])",
           "description": "The `{run}`-relative path of the imported copy — the same relative path it had in the source run, normalized: anchored at `{run}/`, no `.` or `..` segments, no empty segments, no backslashes, no control characters, and no segment shaped like a Windows drive prefix, which would anchor a join elsewhere instead of descending (spec section 8.6). The pattern is the schema's half of path confinement; refusing link traversal is the executor's, being invisible to a document."
         },
         "from": {
           "type": "string",
-          "pattern": "^(?![A-Za-z]:)(?!\\.{1,2}$)(?!\\s+$)[^/\\\\\u0000-\u001f\u007f]+(?![\\s\\S])",
+          "pattern": "^(?![A-Za-z]:)(?!\\.{1,2}$)(?!\\s+$)[^/\\\\\u0000-\u001f\u007f-\u009f]+(?![\\s\\S])",
           "description": "The source run's id — the same plain-directory-name shape as `run.id`, no separators, dot entries, control characters, or drive prefixes, so an alias such as `./demo` or a drive-relative `C:demo` cannot slip past the self-import comparison or resolve outside the runs directory (spec section 8.6). Never this run's own, and one source run per document — semantics the conformance checks hold, the schema seeing one field at a time."
         },
         "at": {

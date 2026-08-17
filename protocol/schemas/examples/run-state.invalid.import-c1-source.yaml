@@ -1,0 +1,18 @@
+# INVALID on purpose — schema validation MUST reject this fixture:
+# - imports[0].from carries a C1 control character (U+0085, NEL): a
+#   directory name spanning what line-oriented tooling reads as two
+#   records is no plain directory name (spec §8.6)
+run:
+  id: 2026-08-16-feature-slug
+  workflow: feature
+  protocol: "0.2"
+steps:
+  - id: brief-confirm
+    status: skipped
+gates: []
+artifacts:
+  - "{run}/brief.md"
+imports:
+  - artifact: "{run}/brief.md"
+    from: "2026-08-12\x85plan"
+    at: "2026-08-16T09:00:00Z"
