@@ -205,7 +205,7 @@ Import reaches steps and never gates. A step whose declared output is among the 
 
 ## 9. Orchestration metadata
 
-All orchestration semantics an author declares live under a single `workflow` key inside the `metadata` extension point of Agent Skills frontmatter. One file carries both the prose a plain agent reads and the structure a driver executes.
+All orchestration semantics an author declares live under a single `workflow` key inside a `metadata` mapping. The mapping has two carriers, one shape: the `metadata` extension point of Agent Skills frontmatter, where a skill declares, and a fenced `yaml` block in a workflow or stage file's body, where a file that is not a skill declares — a workflow its trigger, a stage its sequence and its steps' contracts. One file carries both the prose a plain agent reads and the structure a driver executes, whichever carrier holds it.
 
 Every `metadata.workflow` block MUST carry a `protocol` field declaring the protocol version it was authored against (see [Versioning](#11-versioning)).
 
@@ -305,7 +305,7 @@ metadata:
 ```
 
 - `sequence` is **record order, not execution order**: the populated `steps` list ([10](#10-run-state)) follows it verbatim, and resume ([8.5](#85-resume)) is defined over that list, so the ordering obligations [10](#10-run-state) states — a gate-`revise` destination preceding every record the revise invalidates — are authoring obligations on this declaration. That is why `plan-revise` precedes the validator that runs before it. Execution order needs no declaration of its own: statuses and edges carry it — a conditional member is `skipped` until a route reaches it, so a resume passes over its record and lands on the validator's, whatever the record order says.
-- Each entry names exactly one member, a `step` or a `gate`, and the sequence MUST name every step and gate the stage declares, each exactly once: an executor populates only what is declared, so a member missing here is a record no run can carry, and one named twice is the duplicate [10](#10-run-state) forbids.
+- Each entry names exactly one member, a `step` or a `gate`, and the sequence MUST name every step and gate the stage declares, each exactly once: an executor populates only what is declared, so a member missing here is a record no run can carry, and one named twice is the duplicate [10](#10-run-state) forbids. Member ids MUST also be unique across all stages, whichever kind each wears where: a workflow concatenates its stages' sequences into one record list ([10](#10-run-state)), any two stages may be composed, and an id two stages share duplicates a record the moment they are.
 - `conditional: true` marks a member populated `skipped` at entry — reached only when a condition fires or a route returns to it ([10](#10-run-state)): a loop's revising member before a verdict fails, a gate that fires on ambiguity. What a risk class excludes is the overlays' to say, never this declaration's: the sequence is class-independent, and a class's exclusions are applied to it at population.
 
 ### 9.5 Degradation
