@@ -1,8 +1,15 @@
 """Command-line surface: `python3 -m driver <run|resume|status> --config <path>`,
-with `resume` also naming the run to resume.
+with `run` naming the workflow and the new run's id, and `resume` naming the
+run to resume.
 
-Exit codes: 0 success, 1 the command cannot run yet (its module has not
-landed), 2 bad usage or a defective config or environment.
+Exit codes: 0 success, 1 the command cannot run yet (a module it needs has
+not landed), 2 bad usage or a defective config or environment. `run` creates
+the run — directory and bootstrap state — and then exits 1 at the point
+execution would start, because executing a step needs the context assembler
+and an invocation backend; `resume` resolves the position the same way. The
+created run is durable either way, which is the point: the state machine's
+writes are real, and the later modules pick up exactly where these commands
+stop.
 """
 
 from __future__ import annotations
@@ -14,7 +21,13 @@ import stat
 import sys
 from pathlib import Path
 
+from . import state as run_state
 from .config import Config, ConfigError, load_config
+from .workflow import WorkflowError, load_workflow
+
+# The protocol version new runs execute under — the version of the protocol
+# content this driver ships beside (spec §11).
+PROTOCOL = "0.2"
 
 
 def _has_control_characters(value: str) -> bool:
@@ -103,10 +116,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     run = subparsers.add_parser("run", help="start a new run")
+    run.add_argument(
+        "--workflow",
+        required=True,
+        help="the workflow to execute: a file under {framework}/workflows/",
+    )
+    # The id is caller-chosen, never generated: it names the run directory
+    # (spec §8.1) and the caller is who has to find it again.
+    run.add_argument(
+        "run_id",
+        type=_run_id,
+        help="the new run's id: becomes its directory name under {artifacts}/runs/",
+    )
     resume = subparsers.add_parser("resume", help="resume a run from its first unfinished step")
     # The protocol permits concurrent runs (spec §8.1), so which run to
-    # resume can never be inferred; the id is part of the contract even
-    # while the command itself awaits the state machine.
+    # resume can never be inferred; the id is part of the contract.
     resume.add_argument(
         "run_id",
         type=_run_id,
@@ -132,12 +156,50 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if arguments.command == "status":
         return _status(config)
-    # run and resume need the state machine, which has not landed; the
-    # commands exist now so the surface consumers script against is stable
-    # while the driver's modules arrive one PR at a time.
+    if arguments.command == "run":
+        return _run(config, arguments.workflow, arguments.run_id)
+    return _resume(config, arguments.run_id)
+
+
+def _run(config: Config, workflow_name: str, run_id: str) -> int:
+    """Create the run — directory and bootstrap state (spec §8.1, §10) —
+    then stop where execution would start."""
+    try:
+        workflow = load_workflow(config.framework_dir, workflow_name)
+    except WorkflowError as error:
+        print(f"driver: {error}", file=sys.stderr)
+        return 2
+    try:
+        run_dir, created = run_state.create_run(
+            config.runs_dir, run_id, workflow, PROTOCOL
+        )
+    except (run_state.StateError, OSError) as error:
+        print(f"driver: {error}", file=sys.stderr)
+        return 2
+    print(f"created {run_dir}")
+    return _report_position(created)
+
+
+def _resume(config: Config, run_id: str) -> int:
+    """Resolve the resume position (spec §8.5) and stop where execution
+    would continue."""
+    try:
+        loaded = run_state.load(config.runs_dir / run_id)
+    except run_state.StateError as error:
+        print(f"driver: {error}", file=sys.stderr)
+        return 2
+    return _report_position(loaded)
+
+
+def _report_position(loaded: run_state.RunState) -> int:
+    position = loaded.position()
+    if position is None:
+        print(f"run {loaded.run_id}: nothing left to run")
+        return 0
+    print(f"run {loaded.run_id}: next is {position.id} ({position.status})")
     print(
-        f"driver: {arguments.command} is not implemented yet — "
-        "the state machine module has not landed",
+        "driver: cannot execute it yet — the context assembler and "
+        "invocation backend modules have not landed",
         file=sys.stderr,
     )
     return 1

@@ -1,5 +1,6 @@
 {
   "artifacts_dir": ".",
+  "framework_dir": ".",
   "backends": {
     "claude": { "command": ["claude", "-p"] },
     "codex": { "command": ["codex", "exec"] }
