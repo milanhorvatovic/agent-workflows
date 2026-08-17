@@ -24,8 +24,8 @@
       "properties": {
         "id": {
           "type": "string",
-          "minLength": 1,
-          "description": "Run identifier; also names the run directory {artifacts}/runs/<run-id>/ (spec section 8.1)."
+          "pattern": "^(?!\\.{1,2}$)(?!\\s+$)[^/\\\\]+$",
+          "description": "Run identifier; also names the run directory {artifacts}/runs/<run-id>/ (spec section 8.1), so it is a plain directory name: no separators, no dot entries, not blank. The same shape `imports[].from` carries, which is what makes comparing the two exact (spec section 8.6)."
         },
         "workflow": {
           "type": "string",
@@ -172,8 +172,8 @@
         },
         "from": {
           "type": "string",
-          "minLength": 1,
-          "description": "The source run's id (spec section 8.6). Never this run's own — a semantic the conformance checks hold, the schema seeing one field at a time."
+          "pattern": "^(?!\\.{1,2}$)(?!\\s+$)[^/\\\\]+$",
+          "description": "The source run's id — a plain directory name like `run.id`, no separators and no dot entries, so an alias such as `./demo` cannot slip past the self-import comparison (spec section 8.6). Never this run's own, and one source run per document — semantics the conformance checks hold, the schema seeing one field at a time."
         },
         "at": {
           "type": "string",

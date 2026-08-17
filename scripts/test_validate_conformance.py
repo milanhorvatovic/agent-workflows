@@ -905,6 +905,91 @@ metadata:
         )
         self.assert_problem("names this run (`demo`) as its source")
 
+    # Two steps in one stage: `maker` produces {run}/a.md from nothing and
+    # `thing` derives {run}/b.md from it — the smallest derivation chain the
+    # import-closure check can bind to.
+    CHAINED_STAGE = """---
+name: chained
+description: A stage whose second step derives from the first.
+---
+
+# Stage: chained
+
+### maker (analyst)
+
+Prose.
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    step:
+      role: analyst
+      inputs: []
+      output:
+        artifact: "{run}/a.md"
+```
+
+### thing (analyst)
+
+Prose.
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    step:
+      role: analyst
+      inputs:
+        - artifact: "{run}/a.md"
+          required: true
+      output:
+        artifact: "{run}/b.md"
+```
+"""
+
+    def test_an_import_set_closed_over_derivation_passes(self) -> None:
+        self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
+        self.write_run_state(
+            "  - id: maker\n    status: skipped\n  - id: thing\n    status: skipped\n",
+            '\n  - "{run}/a.md"\n  - "{run}/b.md"',
+            extra="imports:\n  - artifact: \"{run}/a.md\"\n    from: earlier-run\n"
+            "    at: '2026-08-16T09:00:00Z'\n"
+            "  - artifact: \"{run}/b.md\"\n    from: earlier-run\n"
+            "    at: '2026-08-16T09:00:00Z'\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_an_import_without_its_producers_required_input_is_reported(self) -> None:
+        """§8.6 keeps the set closed over derivation: importing what a step
+        derived without what it derived it from adopts a certificate of
+        content this run will produce fresh — the re-run `maker` writes a new
+        a.md that the imported b.md never descended from."""
+        self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
+        self.write_run_state(
+            "  - id: maker\n    status: pending\n  - id: thing\n    status: skipped\n",
+            '\n  - "{run}/b.md"',
+            extra="imports:\n  - artifact: \"{run}/b.md\"\n    from: earlier-run\n"
+            "    at: '2026-08-16T09:00:00Z'\n",
+        )
+        self.assert_problem("import {run}/b.md arrives without {run}/a.md")
+
+    def test_imports_from_several_source_runs_are_reported(self) -> None:
+        """§8.6 has a run import from one source run: artifacts drawn from
+        several never descended from one another, and the rewritten headers
+        hide it from every later reader."""
+        self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
+        self.write_run_state(
+            "  - id: maker\n    status: skipped\n  - id: thing\n    status: skipped\n",
+            '\n  - "{run}/a.md"\n  - "{run}/b.md"',
+            extra="imports:\n  - artifact: \"{run}/a.md\"\n    from: run-one\n"
+            "    at: '2026-08-16T09:00:00Z'\n"
+            "  - artifact: \"{run}/b.md\"\n    from: run-two\n"
+            "    at: '2026-08-16T09:00:00Z'\n",
+        )
+        self.assert_problem("imports name 2 source runs (run-one, run-two)")
+
     def test_a_duplicate_import_path_is_reported(self) -> None:
         """§10 keeps one entry per imported artifact, and the schema cannot —
         `uniqueItems` compares whole records, so two entries naming different

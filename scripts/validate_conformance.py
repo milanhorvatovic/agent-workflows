@@ -33,8 +33,10 @@ Seven checks:
 - Run-state documents: every one this repo ships is checked for semantics
   its schema cannot hold — a manifest current with the steps recorded
   `done`, a gate recorded `done` carrying a standing decision, at most one
-  record per step, and an import lineage whose every path is manifested,
-  named once, and sourced from another run (spec §8.6). In every run-state document this repo ships, a step
+  record per step, and an import lineage whose every path is manifested and
+  named once, whose records name one source run that is not this one, and
+  whose set is closed over some producing step's required inputs (spec
+  §8.6). In every run-state document this repo ships, a step
   recorded `done` has its declared output in the manifest, `{N}` resolved
   from `run.phase` (spec §8.2). The map from step id to output is read off
   the stage contracts, since a run's steps are the composed workflow's, and
@@ -728,27 +730,46 @@ def duplicate_record_problems(at: str, data: Any) -> list[str]:
     ]
 
 
-def import_record_problems(at: str, data: Any) -> list[str]:
-    """Spec §8.6 and §10: an import is adoption, and all three are cross-field
-    semantics the schema cannot hold.
+def import_record_problems(
+    at: str, data: Any, contracts: dict[str, tuple[str, Any]]
+) -> list[str]:
+    """Spec §8.6 and §10: an import is adoption, and every rule here is a
+    cross-field semantic the schema cannot hold.
 
     Every path `imports` names must be in `artifacts` — §8.2 defines the
     manifest as what the run produced or imported, so an import the manifest
     omits is invisible to every reader that resolves against it. `from` must
     name another run: §8.6 copies from an earlier run's directory, so a run
-    importing from itself records lineage that leads nowhere. And §10 keeps
+    importing from itself records lineage that leads nowhere — and one run
+    only, since a set drawn from several runs holds artifacts that never
+    descended from one another and the rewritten headers hide it. §10 keeps
     one entry per imported artifact — two records naming different sources
     for one destination copy is lineage with no single answer, and the
     schema cannot reject it for the same reason it cannot reject a duplicate
-    step id: `uniqueItems` compares whole records.
+    step id: `uniqueItems` compares whole records. And §8.6 keeps the set
+    closed over derivation: an imported artifact needs some producing step
+    whose required step-output inputs are all imported too, or the set holds
+    a certificate of something the run does not hold. Some, not every: an
+    output two steps share — creation and revision — descends via either,
+    and holding the set to the revision's inputs would refuse the importer
+    who leaves the validation report out precisely to have it re-rendered.
     """
     if not isinstance(data, dict):
         return []
     run = data.get("run")
     run_id = run.get("id") if isinstance(run, dict) else None
+    phase = str(run.get("phase", 1)) if isinstance(run, dict) else "1"
     manifest = {x for x in items_of(data.get("artifacts")) if isinstance(x, str)}
+    # Resolved output artifact -> the steps that declare it, for the closure
+    # check: what an import could descend from, and what its producer needs.
+    producers: dict[str, list[Any]] = {}
+    for _, step in contracts.values():
+        output = output_artifact(step)
+        if isinstance(output, str):
+            producers.setdefault(output.replace("{N}", phase), []).append(step)
     problems: list[str] = []
     counts: dict[str, int] = {}
+    sources: set[str] = set()
     for record in items_of(data.get("imports")):
         if not isinstance(record, dict):
             continue  # not a usable record; check_fixtures faults it against the schema
@@ -761,17 +782,52 @@ def import_record_problems(at: str, data: Any) -> list[str]:
                     f"adds every copy to `artifacts`, which is what readers resolve against"
                 )
         source = record.get("from")
-        if isinstance(source, str) and source == run_id:
-            problems.append(
-                f"{at}: import {artifact} names this run (`{source}`) as its "
-                f"source — spec §8.6 copies from an earlier run's directory"
-            )
+        if isinstance(source, str):
+            sources.add(source)
+            if source == run_id:
+                problems.append(
+                    f"{at}: import {artifact} names this run (`{source}`) as its "
+                    f"source — spec §8.6 copies from an earlier run's directory"
+                )
+    if len(sources) > 1:
+        problems.append(
+            f"{at}: imports name {len(sources)} source runs "
+            f"({', '.join(sorted(sources))}) — spec §8.6 has a run import from one, "
+            f"since artifacts from several never descended from one another"
+        )
     problems += [
         f"{at}: import {artifact} has {n} records in `imports` — spec §10 keeps "
         f"one entry per imported artifact, and its lineage has no single source to read"
         for artifact, n in sorted(counts.items())
         if n > 1
     ]
+    imported = set(counts)
+    for artifact in sorted(imported):
+        candidates = producers.get(artifact)
+        if not candidates:
+            continue  # no composed step declares it; nothing to close over
+        unmet_per_producer = [
+            sorted(
+                {
+                    resolved
+                    for entry in items_of(step.get("inputs"))
+                    if isinstance(entry, dict)
+                    and entry.get("required") is True
+                    and isinstance(entry.get("artifact"), str)
+                    and "{P}" not in entry["artifact"]
+                    for resolved in (entry["artifact"].replace("{N}", phase),)
+                    if resolved in producers and resolved not in imported
+                }
+            )
+            for step in candidates
+        ]
+        if all(unmet_per_producer):
+            missing = min(unmet_per_producer, key=len)
+            problems.append(
+                f"{at}: import {artifact} arrives without {', '.join(missing)} — "
+                f"spec §8.6 keeps an import set closed over some producing step's "
+                f"required inputs, or the copy certifies work the run does not hold"
+            )
     return problems
 
 
@@ -782,6 +838,7 @@ def check_manifests(root: Path) -> tuple[int, list[str]]:
     find here."""
     outputs = step_outputs(root)
     gates = gate_scopes(root)
+    contracts = stage_steps(root, [])
     problems: list[str] = []
     checked = 0
     for kind, path in fixture_paths(root, RUN_STATE):
@@ -796,7 +853,7 @@ def check_manifests(root: Path) -> tuple[int, list[str]]:
         problems += manifest_problems(rel, data, outputs)
         problems += gate_record_problems(rel, data, gates)
         problems += duplicate_record_problems(rel, data)
-        problems += import_record_problems(rel, data)
+        problems += import_record_problems(rel, data, contracts)
     spec = root / SPEC
     if spec.is_file():
         for block in yaml_blocks(spec.read_text(encoding="utf-8"), SPEC.as_posix(), []):
@@ -805,7 +862,7 @@ def check_manifests(root: Path) -> tuple[int, list[str]]:
                 problems += manifest_problems(block.at, block.data, outputs)
                 problems += gate_record_problems(block.at, block.data, gates)
                 problems += duplicate_record_problems(block.at, block.data)
-                problems += import_record_problems(block.at, block.data)
+                problems += import_record_problems(block.at, block.data, contracts)
     return checked, problems
 
 
