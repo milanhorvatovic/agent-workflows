@@ -23,4 +23,4 @@ metadata:
       kind: manual
 ```
 
-Deliverable: the validated, approved `{run}/phase-1-plan.md` and the phase list it authors — ready for a later `feature` or `bugfix` run to execute, which plans each later phase as it reaches it.
+Deliverable: the validated, approved `{run}/phase-1-plan.md` and the phase list it authors — ready for a later `feature` or `bugfix` run to execute. The handover is import (spec §8.6): the executing run is created importing this run's artifacts — copies adopted under its own id, the steps that produced them populated `skipped`, its own gates still deciding on the copies — and it plans each later phase as it reaches it.
