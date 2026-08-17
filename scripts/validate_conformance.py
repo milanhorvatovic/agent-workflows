@@ -627,14 +627,18 @@ def manifest_problems(at: str, data: Any, outputs: dict[str, str]) -> list[str]:
 GATE_HEADING = re.compile(r"^- \*\*(?P<id>[a-z][a-z0-9-]*)\*\*", re.MULTILINE)
 
 
+GATES_HEADING = re.compile(r"^## Gates[ \t]*$", re.MULTILINE)
+
+
 def gates_section(text: str) -> str:
-    """The `## Gates` section's own text, bounded at the next level-2
-    heading: stages place `## Notes` after it, and a lowercase bold bullet
-    there must not read as a gate."""
-    parts = text.split("## Gates", 1)
-    if len(parts) != 2:
+    """The `## Gates` section's own text — from the exact level-2 heading
+    (an inline mention or a `### Gates` would otherwise pose as the section
+    start) to the next level-2 heading, since stages place `## Notes` after
+    it and a lowercase bold bullet there must not read as a gate."""
+    match = GATES_HEADING.search(text)
+    if match is None:
         return ""
-    tail = parts[1]
+    tail = text[match.end() :]
     boundary = tail.find("\n## ")
     return tail if boundary == -1 else tail[:boundary]
 

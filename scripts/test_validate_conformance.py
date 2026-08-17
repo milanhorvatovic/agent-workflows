@@ -841,6 +841,22 @@ metadata:
         )
         self.assert_problem("sequence names step `phantom`, which the stage does not declare")
 
+    def test_an_inline_gates_mention_does_not_start_the_section(self) -> None:
+        """Only the exact level-2 heading opens the Gates section: a prose
+        mention of `## Gates` — or a `### Gates`, which contains the same
+        substring — must not make the real heading read as the boundary and
+        every actual gate as undeclared."""
+        self.write(
+            "workflows/stages/gated.md",
+            self.GATED_STAGE.replace(
+                "# Stage: gated\n",
+                "# Stage: gated\n\nProse that mentions `## Gates` inline.\n\n"
+                "### Gates prelude\n\nMore prose.\n",
+            ),
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
     def test_a_bold_bullet_in_notes_is_not_a_gate(self) -> None:
         """The gate scan is bounded to the Gates section: stages place
         `## Notes` after it, and a lowercase bold bullet there must not make
