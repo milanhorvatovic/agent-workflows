@@ -782,7 +782,12 @@ def import_record_problems(
             parts = [re.escape(part) for part in output.split("{N}")]
             expression = parts[0]
             for index, part in enumerate(parts[1:]):
-                expression += ("([1-9][0-9]*)" if index == 0 else "\\1") + part
+                # Named, because a numeric backreference merges with a digit
+                # that starts the next literal: a template ending `{N}0`
+                # would build a reference to group ten and fail to compile.
+                expression += (
+                    "(?P<phase>[1-9][0-9]*)" if index == 0 else "(?P=phase)"
+                ) + part
             templates.append((re.compile(expression), step))
 
     def producing(path: str) -> list[tuple[Any, str]]:

@@ -1083,6 +1083,26 @@ metadata:
 ```
 """
 
+    def test_a_digit_leading_literal_after_the_phase_compiles(self) -> None:
+        """A numeric backreference would merge with a digit that starts the
+        next literal — a template ending `{N}0` built a reference to group
+        ten and crashed compilation; the named reference cannot merge."""
+        self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
+        self.write(
+            "workflows/stages/twicephased.md",
+            self.TWICE_PHASED_STAGE.replace(
+                'artifact: "{run}/phase-{N}-of-{N}.md"',
+                'artifact: "{run}/phase-{N}-of-{N}0.md"',
+            ),
+        )
+        self.write_run_state(
+            "  - id: twicephased\n    status: skipped\n",
+            '\n  - "{run}/phase-1-of-20.md"',
+            extra="imports:\n  - artifact: \"{run}/phase-1-of-20.md\"\n"
+            "    from: earlier-run\n    at: '2026-08-16T09:00:00Z'\n",
+        )
+        self.assert_problem("import {run}/phase-1-of-20.md matches no step output")
+
     def test_every_phase_placeholder_in_one_template_is_one_phase(self) -> None:
         """Two `{N}`s in a declaration denote one executing phase, so a path
         pairing different numbers matches no step output — a fresh capture

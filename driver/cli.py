@@ -89,7 +89,7 @@ def _run_id(value: str) -> str:
         or _has_control_characters(value)
         or "/" in value
         or "\\" in value
-        or ":" in value
+        or any(character in ':?*"<>|' for character in value)
         or Path(value).is_absolute()
     ):
         raise argparse.ArgumentTypeError(f"not a run id: {value!r}")
