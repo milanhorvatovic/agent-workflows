@@ -33,8 +33,8 @@ Seven checks:
 - Run-state documents: every one this repo ships is checked for semantics
   its schema cannot hold — a manifest current with the steps recorded
   `done`, a gate recorded `done` carrying a standing decision, at most one
-  record per step, and an import lineage whose every path is manifested and
-  whose source is another run (spec §8.6). In every run-state document this repo ships, a step
+  record per step, and an import lineage whose every path is manifested,
+  named once, and sourced from another run (spec §8.6). In every run-state document this repo ships, a step
   recorded `done` has its declared output in the manifest, `{N}` resolved
   from `run.phase` (spec §8.2). The map from step id to output is read off
   the stage contracts, since a run's steps are the composed workflow's, and
@@ -729,14 +729,18 @@ def duplicate_record_problems(at: str, data: Any) -> list[str]:
 
 
 def import_record_problems(at: str, data: Any) -> list[str]:
-    """Spec §8.6: an import is adoption, and both halves are cross-field
+    """Spec §8.6 and §10: an import is adoption, and all three are cross-field
     semantics the schema cannot hold.
 
     Every path `imports` names must be in `artifacts` — §8.2 defines the
     manifest as what the run produced or imported, so an import the manifest
-    omits is invisible to every reader that resolves against it. And `from`
-    must name another run: §8.6 copies from an earlier run's directory, so a
-    run importing from itself records lineage that leads nowhere.
+    omits is invisible to every reader that resolves against it. `from` must
+    name another run: §8.6 copies from an earlier run's directory, so a run
+    importing from itself records lineage that leads nowhere. And §10 keeps
+    one entry per imported artifact — two records naming different sources
+    for one destination copy is lineage with no single answer, and the
+    schema cannot reject it for the same reason it cannot reject a duplicate
+    step id: `uniqueItems` compares whole records.
     """
     if not isinstance(data, dict):
         return []
@@ -744,21 +748,30 @@ def import_record_problems(at: str, data: Any) -> list[str]:
     run_id = run.get("id") if isinstance(run, dict) else None
     manifest = {x for x in items_of(data.get("artifacts")) if isinstance(x, str)}
     problems: list[str] = []
+    counts: dict[str, int] = {}
     for record in items_of(data.get("imports")):
         if not isinstance(record, dict):
             continue  # not a usable record; check_fixtures faults it against the schema
         artifact = record.get("artifact")
-        if isinstance(artifact, str) and artifact not in manifest:
-            problems.append(
-                f"{at}: import {artifact} is not in the manifest — spec §8.6 "
-                f"adds every copy to `artifacts`, which is what readers resolve against"
-            )
+        if isinstance(artifact, str):
+            counts[artifact] = counts.get(artifact, 0) + 1
+            if artifact not in manifest:
+                problems.append(
+                    f"{at}: import {artifact} is not in the manifest — spec §8.6 "
+                    f"adds every copy to `artifacts`, which is what readers resolve against"
+                )
         source = record.get("from")
         if isinstance(source, str) and source == run_id:
             problems.append(
                 f"{at}: import {artifact} names this run (`{source}`) as its "
                 f"source — spec §8.6 copies from an earlier run's directory"
             )
+    problems += [
+        f"{at}: import {artifact} has {n} records in `imports` — spec §10 keeps "
+        f"one entry per imported artifact, and its lineage has no single source to read"
+        for artifact, n in sorted(counts.items())
+        if n > 1
+    ]
     return problems
 
 

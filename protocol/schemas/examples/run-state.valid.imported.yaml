@@ -60,7 +60,7 @@ steps:
     status: pending
 gates:
   - gate: intake-approval
-    transport: blocking
+    transport: inbox # the R2 default (overlays); blocking is R3's
     outcome: accept
     at: "2026-08-16T09:05:00Z"
   - gate: plan-approval

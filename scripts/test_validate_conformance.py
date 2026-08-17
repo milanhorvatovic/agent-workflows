@@ -140,6 +140,7 @@ RUN_STATE_SCHEMA = {
         },
         "imports": {
             "type": "array",
+            "minItems": 1,
             "items": {
                 "type": "object",
                 "additionalProperties": False,
@@ -903,6 +904,21 @@ metadata:
             "    at: '2026-08-16T09:00:00Z'\n",
         )
         self.assert_problem("names this run (`demo`) as its source")
+
+    def test_a_duplicate_import_path_is_reported(self) -> None:
+        """§10 keeps one entry per imported artifact, and the schema cannot —
+        `uniqueItems` compares whole records, so two entries naming different
+        sources for one destination copy both pass. Same reason the duplicate
+        step id check lives here."""
+        self.write_run_state(
+            "  - id: thing\n    status: skipped\n",
+            '\n  - "{run}/a.md"',
+            extra="imports:\n  - artifact: \"{run}/a.md\"\n    from: earlier-run\n"
+            "    at: '2026-08-16T09:00:00Z'\n"
+            "  - artifact: \"{run}/a.md\"\n    from: other-run\n"
+            "    at: '2026-08-16T09:01:00Z'\n",
+        )
+        self.assert_problem("import {run}/a.md has 2 records in `imports`")
 
     def test_repeated_gate_entries_are_not_duplicates(self) -> None:
         """`gates` carries one entry per decision, so a gate decided twice

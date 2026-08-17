@@ -167,8 +167,8 @@
       "properties": {
         "artifact": {
           "type": "string",
-          "minLength": 1,
-          "description": "The `{run}`-relative path of the imported copy — the same relative path it had in the source run (spec section 8.6)."
+          "pattern": "^\\{run\\}(?:/(?!\\.{1,2}(?:/|$))[^/\\\\]+)+$",
+          "description": "The `{run}`-relative path of the imported copy — the same relative path it had in the source run, normalized: anchored at `{run}/`, no `.` or `..` segments, no empty segments, no backslashes (spec section 8.6). The pattern is the schema's half of path confinement; refusing link traversal is the executor's, being invisible to a document."
         },
         "from": {
           "type": "string",
