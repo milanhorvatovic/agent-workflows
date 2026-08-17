@@ -876,6 +876,18 @@ metadata:
         }
         self.assertEqual(list(validator.iter_errors(doc)), [])
 
+    def test_a_list_shaped_run_state_fixture_reports_schema_errors_only(self) -> None:
+        """A malformed top-level document is the schema check's finding: the
+        semantic passes must step around it rather than crash on the shape
+        they exist to reject."""
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            "- not\n- a\n- mapping\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 1, output)
+        self.assertNotIn("Traceback", output)
+
     def test_a_manifested_import_from_another_run_passes(self) -> None:
         self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
         self.write_run_state(

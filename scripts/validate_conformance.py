@@ -892,8 +892,11 @@ def check_manifests(root: Path) -> tuple[int, list[str]]:
         """The contracts scoped to the document's own workflow: §8.6 bounds
         imports to step outputs of the composed workflow, so a `plan` state
         must not find a producer in a delivery stage it never composes. An
-        unresolvable workflow filters nothing — best effort over silence."""
-        workflow = data["run"].get("workflow") if isinstance(data.get("run"), dict) else None
+        unresolvable workflow filters nothing — best effort over silence,
+        and a malformed document (not a mapping at all) is the schema
+        check's finding, never a crash here."""
+        run = data.get("run") if isinstance(data, dict) else None
+        workflow = run.get("workflow") if isinstance(run, dict) else None
         stages = composed_stage_files(root, workflow)
         if stages is None:
             return contracts
