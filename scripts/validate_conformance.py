@@ -631,7 +631,12 @@ GATE_HEADING = re.compile(r"^- \*\*(?P<id>[a-z][a-z0-9-]*)\*\*", re.MULTILINE)
 # four-backtick wrapper demonstrating a triple-backtick block would
 # otherwise close at the inner fence and leave the example's tail
 # unmasked.
-FENCE = re.compile(r"^(?P<fence>```+).*?^(?P=fence)`*[ \t]*$", re.DOTALL | re.MULTILINE)
+# Both fence lines may sit up to three spaces in (CommonMark); a mask
+# that demands column 0 would leave an indented example visible to the
+# structure scans.
+FENCE = re.compile(
+    r"^ {0,3}(?P<fence>```+).*?^ {0,3}(?P=fence)`*[ \t]*$", re.DOTALL | re.MULTILINE
+)
 GENERIC_H3 = re.compile(r"^### ", re.MULTILINE)
 GATES_HEADING = re.compile(r"^## Gates[ \t]*$", re.MULTILINE)
 

@@ -895,6 +895,18 @@ metadata:
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
 
+    def test_an_indented_fence_still_masks_its_example(self) -> None:
+        """CommonMark allows both fence lines up to three spaces in — a mask
+        demanding column 0 would leave the indented example's Gates heading
+        and bullet visible to the structure scans."""
+        self.write(
+            "workflows/stages/gated.md",
+            self.GATED_STAGE + "\n## Notes\n\nAn indented example:\n\n"
+            "  ````markdown\n## Gates\n\n- **fake-gate** — inside the example.\n  ````\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
     def test_a_fenced_stage_block_example_is_not_a_second_sequence(self) -> None:
         """The mask hides examples from the text scans, and the same fence
         spans must exclude them from block extraction — a stage example in a
