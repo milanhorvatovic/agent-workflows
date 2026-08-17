@@ -120,6 +120,14 @@ class ConfigTest(unittest.TestCase):
             self.variant(artifacts_dir="artifacts\x00"), "artifacts_dir must not contain NUL"
         )
 
+    def test_partially_anchored_windows_artifacts_dir_is_rejected(self) -> None:
+        for value in ("D:artifacts", "\\artifacts"):
+            with self.subTest(value=value):
+                self.assert_rejected(
+                    self.variant(artifacts_dir=value),
+                    "artifacts_dir must be fully absolute or fully relative",
+                )
+
     def test_missing_backends_is_rejected(self) -> None:
         values = self.variant()
         del values["backends"]

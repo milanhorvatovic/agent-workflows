@@ -9,6 +9,7 @@ import contextlib
 import io
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -85,6 +86,8 @@ class CliTest(unittest.TestCase):
             "a\\b",
             "C:run",
             "a\x00b",
+            "a\nb",
+            "a\rb",
             "  ",
         ):
             with self.subTest(run_id=run_id):
@@ -150,7 +153,46 @@ class CliTest(unittest.TestCase):
         code, out, err = self.invoke("status", "--config", str(self.config_path))
         self.assertEqual(code, 2)
         self.assertEqual(out, "")
-        self.assertIn("dangling symlink", err)
+        self.assertIn("dangling link", err)
+
+    @unittest.skipIf(os.name == "nt", "POSIX symlink semantics")
+    def test_status_reports_a_dangling_artifact_root_link(self) -> None:
+        config = dict(VALID, artifacts_dir="linked")
+        self.config_path.write_text(json.dumps(config), encoding="utf-8")
+        (self.base / "linked").symlink_to(self.base / "absent", target_is_directory=True)
+        code, out, err = self.invoke("status", "--config", str(self.config_path))
+        self.assertEqual(code, 2)
+        self.assertEqual(out, "")
+        self.assertIn("dangling link", err)
+
+    def test_status_never_lists_a_junction_as_a_run(self) -> None:
+        # A junction cannot be created on the POSIX CI runner, so the entry
+        # is staged: a directory by classification, not a symlink, carrying
+        # the reparse attribute that marks junctions on Windows.
+        (self.base / "runs").mkdir()
+        entry = unittest.mock.Mock()
+        entry.name = "2026-08-17-junction"
+        entry.is_dir.return_value = True
+        entry.is_symlink.return_value = False
+        entry.stat.return_value = unittest.mock.Mock(
+            st_file_attributes=stat.FILE_ATTRIBUTE_REPARSE_POINT
+        )
+        scandir_result = unittest.mock.MagicMock()
+        scandir_result.__enter__.return_value = scandir_result
+        scandir_result.__iter__.return_value = iter([entry])
+        with unittest.mock.patch("driver.cli.os.scandir", return_value=scandir_result):
+            code, out, err = self.invoke("status", "--config", str(self.config_path))
+        self.assertEqual(code, 0)
+        self.assertEqual(out, "")
+        self.assertEqual(err, "")
+
+    @unittest.skipIf(os.name == "nt", "POSIX directory-name semantics")
+    def test_status_reports_a_run_name_a_line_cannot_carry(self) -> None:
+        (self.base / "runs" / "bad\nname").mkdir(parents=True)
+        code, out, err = self.invoke("status", "--config", str(self.config_path))
+        self.assertEqual(code, 2)
+        self.assertEqual(out, "")
+        self.assertIn("control characters", err)
 
     def test_config_defect_names_the_file_and_exits_2(self) -> None:
         self.config_path.write_text("{not json", encoding="utf-8")

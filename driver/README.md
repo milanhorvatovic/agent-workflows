@@ -18,7 +18,7 @@ Three commands, each taking `--config`; `resume` additionally names the run to r
 | `resume <run-id>` | resume that run — its directory name under `{artifacts}/runs/`, a plain name only: separators, dot entries, and absolute paths are rejected — from its first unfinished step |
 | `status` | list the runs under the configured artifact root |
 
-The driver is built module by module, and the command surface is stable from the start: `status` works today; `run` and `resume` exit with an explicit message (code 1) until the state machine module lands. Exit codes: 0 success, 1 the command cannot run yet, 2 bad usage or a defective config or environment (an unreadable, non-directory, or dangling-symlink runs path included). A symlink under the runs directory is never listed as a run — following one would present an external directory as a run and let a later `resume` escape the artifact root.
+The driver is built module by module, and the command surface is stable from the start: `status` works today; `run` and `resume` exit with an explicit message (code 1) until the state machine module lands. Exit codes: 0 success, 1 the command cannot run yet, 2 bad usage or a defective config or environment (an unreadable or non-directory runs path included, and a dangling link — symlink or NTFS junction — anywhere on the way to it). A link under the runs directory is never listed as a run — following one would present an external directory as a run and let a later `resume` escape the artifact root — and a run directory whose name cannot be carried on one output line is reported rather than printed.
 
 ## Configuration
 

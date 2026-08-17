@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 # The six protocol roles (protocol/spec.md §3). The driver consumes the
 # protocol's vocabulary, never defines its own.
@@ -106,6 +106,14 @@ def _parse_artifacts_dir(data: dict, config_path: Path) -> Path:
         expanded = Path(value).expanduser()
     except RuntimeError as error:
         raise ConfigError(f"artifacts_dir: {error}") from error
+    # A partially anchored Windows form — drive-relative "D:artifacts" or
+    # root-relative "\artifacts" — is not absolute, yet joining it on a
+    # Windows host discards the config-file anchor. Rejected on every
+    # platform: a config is project configuration and must mean one thing
+    # everywhere.
+    windows_form = PureWindowsPath(expanded)
+    if not expanded.is_absolute() and (windows_form.drive or windows_form.root):
+        raise ConfigError("artifacts_dir must be fully absolute or fully relative")
     # A relative artifacts_dir anchors at the config file's directory, not
     # the process working directory: the config sits in the consuming
     # project, and artifacts must land there no matter where the driver is
