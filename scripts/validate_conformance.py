@@ -995,17 +995,31 @@ def check_stage_sequences(root: Path) -> tuple[int, list[str]]:
         # with none at all it has no id a sequence could name, and under a
         # malformed one — `### second` without the role — it would silently
         # attribute to the previous valid step and its member could vanish
-        # from the sequence while conformance passed.
-        heading_offsets = [m.start() for m in STAGE_STEP_HEADING.finditer(masked)]
+        # from the sequence while conformance passed. And the association is
+        # one-to-one both ways: a heading with no contract is a record the
+        # driver has no role or handoff for, and one with two has no single
+        # contract to execute.
+        headings = [(m.start(), m.group("id")) for m in STAGE_STEP_HEADING.finditer(masked)]
+        heading_offsets = [start for start, _ in headings]
         h3_offsets = [m.start() for m in GENERIC_H3.finditer(masked)]
+        # A block inside a longer fenced wrapper is an example, not a
+        # declaration: the mask hides it from the text scans, and the same
+        # spans exclude it here, where blocks come from the raw text.
+        fence_spans = [(m.start(), m.end()) for m in FENCE.finditer(text)]
+        contracts_under: dict[int, int] = {start: 0 for start in heading_offsets}
         step_blocks = 0
+        sequence_blocks = []
         for block in yaml_blocks(text, rel, []):
+            line = int(block.at.rsplit(":", 1)[1])
+            offset = sum(len(x) + 1 for x in text.splitlines(keepends=False)[: line - 1])
+            if any(start < offset < end for start, end in fence_spans):
+                continue  # nested inside a longer fence: illustration only
             workflow = workflow_value(block.data)
+            if isinstance(workflow, dict) and "stage" in workflow:
+                sequence_blocks.append(block)
             if not isinstance(workflow, dict) or "step" not in workflow:
                 continue
             step_blocks += 1
-            line = int(block.at.rsplit(":", 1)[1])
-            offset = sum(len(x) + 1 for x in text.splitlines(keepends=False)[: line - 1])
             nearest_h3 = max((s for s in h3_offsets if s < offset), default=None)
             nearest_valid = max((s for s in heading_offsets if s < offset), default=None)
             if nearest_h3 is None:
@@ -1018,6 +1032,20 @@ def check_stage_sequences(root: Path) -> tuple[int, list[str]]:
                     f"{block.at}: step block under a heading that does not match "
                     f"`### <id> (<role>)` — it would attribute to the previous "
                     f"step, and no sequence can name it (spec §9.4)"
+                )
+            else:
+                contracts_under[nearest_valid] += 1
+        for start, step_id in headings:
+            if contracts_under[start] == 0:
+                problems.append(
+                    f"{rel}: step `{step_id}` declares no contract block — a "
+                    f"sequence names it, and the driver would have no role or "
+                    f"handoff to execute (spec §9.1, §9.4)"
+                )
+            elif contracts_under[start] > 1:
+                problems.append(
+                    f"{rel}: step `{step_id}` declares {contracts_under[start]} "
+                    f"contract blocks — a step has one contract (spec §9.1)"
                 )
         for kind, names in (("step", step_list), ("gate", gate_list)):
             for name in sorted({x for x in names if names.count(x) > 1}):
@@ -1037,12 +1065,7 @@ def check_stage_sequences(root: Path) -> tuple[int, list[str]]:
                 owners[name] = rel
         declared_steps = set(step_list)
         declared_gates = set(gate_list)
-        blocks = [
-            block
-            for block in yaml_blocks(text, rel, [])
-            if isinstance(workflow_value(block.data), dict)
-            and "stage" in workflow_value(block.data)
-        ]
+        blocks = sequence_blocks
         if not declared_steps and not declared_gates and not blocks and not step_blocks:
             continue  # nothing declared any way; not a stage contract yet
         checked += 1

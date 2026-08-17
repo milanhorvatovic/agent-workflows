@@ -895,6 +895,41 @@ metadata:
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
 
+    def test_a_fenced_stage_block_example_is_not_a_second_sequence(self) -> None:
+        """The mask hides examples from the text scans, and the same fence
+        spans must exclude them from block extraction — a stage example in a
+        four-backtick wrapper is illustration, not a second declaration."""
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE + "\nAn example of a whole stage block:\n\n"
+            "````markdown\n```yaml\nmetadata:\n  workflow:\n"
+            "    protocol: \"0.2\"\n    stage:\n      sequence:\n"
+            "        - step: example-step\n```\n````\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_heading_without_a_contract_is_reported(self) -> None:
+        """A sequence can name the heading's id, but the driver would have no
+        role or handoff to execute — the association is one-to-one."""
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE.replace(
+                "      sequence:\n        - step: thing\n",
+                "      sequence:\n        - step: thing\n        - step: ghost\n",
+            ) + "\n### ghost (analyst)\n\nProse without a block.\n",
+        )
+        self.assert_problem("step `ghost` declares no contract block")
+
+    def test_two_contracts_under_one_heading_are_reported(self) -> None:
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE + "\n```yaml\nmetadata:\n  workflow:\n"
+            "    protocol: \"0.2\"\n    step:\n      role: analyst\n"
+            "      output:\n        artifact: \"{run}/again.md\"\n```\n",
+        )
+        self.assert_problem("step `thing` declares 2 contract blocks")
+
     def test_a_longer_fence_masks_its_inner_fences_whole(self) -> None:
         """A four-backtick wrapper demonstrating a triple-backtick block
         closes only at a run at least as long as its opener — the inner
