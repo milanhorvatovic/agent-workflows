@@ -841,6 +841,32 @@ metadata:
         )
         self.assert_problem("sequence names step `phantom`, which the stage does not declare")
 
+    def test_a_member_declared_twice_at_the_source_is_reported(self) -> None:
+        """Sets would erase a doubled heading before the parity comparison —
+        the source declares the member twice, and population can carry only
+        one record for it."""
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE.replace(
+                "### thing (analyst)",
+                "### thing (analyst)\n\nProse.\n\n### thing (analyst)",
+            ),
+        )
+        self.assert_problem("step `thing` is declared 2 times")
+
+    def test_a_member_shared_across_stages_is_reported(self) -> None:
+        """Workflows concatenate stage sequences into one record list, so an
+        id two stages share duplicates the §10 record the moment they
+        compose — each stage passing alone proves nothing about the pair."""
+        self.write("workflows/stages/demo.md", self.STAGE)
+        self.write(
+            "workflows/stages/second.md",
+            self.STAGE.replace("name: demo", "name: second").replace(
+                "# Stage: demo", "# Stage: second"
+            ),
+        )
+        self.assert_problem("member `thing` is also declared by workflows/stages/demo.md")
+
     def test_a_name_shared_across_kinds_is_reported(self) -> None:
         """A step and a gate sharing a name would populate two `steps`
         records with one id — §10 forbids that no less for the two being

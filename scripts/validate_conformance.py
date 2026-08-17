@@ -33,7 +33,9 @@ Eight checks:
 - Stage sequences: every stage that declares members carries exactly one
   `stage` sequence block naming each declared step and gate exactly once
   (spec §9.4) — the record order run-state population follows, so a member
-  missing from it is a record no run could carry.
+  missing from it is a record no run could carry — and member ids stay
+  unique across stages, since composing two stages that share one would
+  duplicate the record §10 forbids.
 - Run-state documents: every one this repo ships is checked for semantics
   its schema cannot hold — a manifest current with the steps recorded
   `done`, a gate recorded `done` carrying a standing decision, at most one
@@ -923,21 +925,50 @@ def check_stage_sequences(root: Path) -> tuple[int, list[str]]:
     one block at a time, so completeness — sequence against the stage's own
     headings and Gates bullets — is this check's to hold: run-state
     population follows the sequence verbatim, and a member missing from it is
-    a record no run could carry."""
+    a record no run could carry. Ids are held unique across stages too:
+    workflows concatenate stage sequences into one record list, so an id two
+    stages share — or one stage declares twice at the source — duplicates
+    the §10 record the moment a workflow composes them."""
     problems: list[str] = []
     checked = 0
+    # Member ids accumulate across stages: workflows concatenate stage
+    # sequences into one record list, and §10 keeps one record per member
+    # there — an id two stages share duplicates the moment they compose,
+    # whichever kinds it wears in each.
+    owners: dict[str, str] = {}
     for path in sorted(root.glob("workflows/stages/*.md")):
         if path.name == "README.md":
             continue
         rel = path.relative_to(root).as_posix()
         text = path.read_text(encoding="utf-8")
-        declared_steps = {m.group("id") for m in STAGE_STEP_HEADING.finditer(text)}
+        # Lists, not sets: a member declared twice at the source — two
+        # identical headings, two identical gate bullets — must surface as
+        # the duplicate it is, not be erased before the comparison.
+        step_list = [m.group("id") for m in STAGE_STEP_HEADING.finditer(text)]
         section = text.split("## Gates", 1)
-        declared_gates = (
-            {m.group("id") for m in GATE_HEADING.finditer(section[1])}
+        gate_list = (
+            [m.group("id") for m in GATE_HEADING.finditer(section[1])]
             if len(section) == 2
-            else set()
+            else []
         )
+        for kind, names in (("step", step_list), ("gate", gate_list)):
+            for name in sorted({x for x in names if names.count(x) > 1}):
+                problems.append(
+                    f"{rel}: {kind} `{name}` is declared {names.count(name)} times — "
+                    f"population can carry only one record (spec §10)"
+                )
+        for name in step_list + gate_list:
+            owner = owners.get(name)
+            if owner is not None and owner != rel:
+                problems.append(
+                    f"{rel}: member `{name}` is also declared by {owner} — a "
+                    f"workflow composing both stages would carry two records "
+                    f"with one id (spec §10)"
+                )
+            else:
+                owners[name] = rel
+        declared_steps = set(step_list)
+        declared_gates = set(gate_list)
         blocks = [
             block
             for block in yaml_blocks(text, rel, [])
