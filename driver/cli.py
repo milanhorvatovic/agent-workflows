@@ -15,6 +15,22 @@ from pathlib import Path
 from .config import Config, ConfigError, load_config
 
 
+def _run_id(value: str) -> str:
+    # Path safety only, not id-format validation — the run id joins under
+    # {artifacts}/runs/, so separators, dot entries, absolute paths, and
+    # Windows drive prefixes would escape it. What a well-formed id looks
+    # like is the run-state schema's business, enforced where run state is
+    # read, not here.
+    if (
+        not value.strip()
+        or value in {".", ".."}
+        or any(separator in value for separator in ("/", "\\", ":"))
+        or Path(value).is_absolute()
+    ):
+        raise argparse.ArgumentTypeError(f"not a run id: {value!r}")
+    return value
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="driver",
@@ -28,6 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
     # while the command itself awaits the state machine.
     resume.add_argument(
         "run_id",
+        type=_run_id,
         help="the run to resume: its directory name under {artifacts}/runs/",
     )
     status = subparsers.add_parser("status", help="list the runs under the configured artifact root")

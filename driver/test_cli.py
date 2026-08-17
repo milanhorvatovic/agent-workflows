@@ -74,6 +74,14 @@ class CliTest(unittest.TestCase):
                 cli.main(["resume", "--config", str(self.config_path)])
         self.assertEqual(caught.exception.code, 2)
 
+    def test_resume_rejects_run_ids_that_are_not_plain_directory_names(self) -> None:
+        for run_id in ("../other-run", "/tmp/run", ".", "..", "a/b", "a\\b", "C:run", "  "):
+            with self.subTest(run_id=run_id):
+                with contextlib.redirect_stderr(io.StringIO()):
+                    with self.assertRaises(SystemExit) as caught:
+                        cli.main(["resume", run_id, "--config", str(self.config_path)])
+                self.assertEqual(caught.exception.code, 2)
+
     def test_status_reports_an_unreadable_runs_directory(self) -> None:
         (self.base / "runs").mkdir()
         with unittest.mock.patch(

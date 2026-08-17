@@ -9,6 +9,18 @@ permissions:
   contents: read
 
 jobs:
+  # The driver README documents a 3.10+ floor; the main job's 3.14 pass
+  # cannot catch syntax or stdlib use unavailable there, so the stdlib-only
+  # driver suite runs once more at the floor itself.
+  driver-floor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.10"
+      - name: Driver unit tests at the documented floor
+        run: python3 -m unittest discover -s driver -t .
   conformance:
     runs-on: ubuntu-latest
     steps:

@@ -15,7 +15,7 @@ Three commands, each taking `--config`; `resume` additionally names the run to r
 | Command | Does |
 | --- | --- |
 | `run` | start a new run |
-| `resume <run-id>` | resume that run — its directory name under `{artifacts}/runs/` — from its first unfinished step |
+| `resume <run-id>` | resume that run — its directory name under `{artifacts}/runs/`, a plain name only: separators, dot entries, and absolute paths are rejected — from its first unfinished step |
 | `status` | list the runs under the configured artifact root |
 
 The driver is built module by module, and the command surface is stable from the start: `status` works today; `run` and `resume` exit with an explicit message (code 1) until the state machine module lands. Exit codes: 0 success, 1 the command cannot run yet, 2 bad usage or a defective config or environment (an unreadable or non-directory runs path included).
