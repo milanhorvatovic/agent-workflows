@@ -740,7 +740,9 @@ def import_record_problems(
     manifest as what the run produced or imported, so an import the manifest
     omits is invisible to every reader that resolves against it. `from` must
     name another run: §8.6 copies from an earlier run's directory, so a run
-    importing from itself records lineage that leads nowhere — and one run
+    importing from itself records lineage that leads nowhere — the string
+    comparison is this suite's document-level half, canonical directory
+    identity being the executor's (§8.6) — and one run
     only, since a set drawn from several runs holds artifacts that never
     descended from one another and the rewritten headers hide it. §10 keeps
     one entry per imported artifact — two records naming different sources
