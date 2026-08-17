@@ -873,6 +873,7 @@ metadata:
         self.assertEqual(list(validator.iter_errors(doc)), [])
 
     def test_a_manifested_import_from_another_run_passes(self) -> None:
+        self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
         self.write_run_state(
             "  - id: thing\n    status: skipped\n",
             '\n  - "{run}/a.md"',
@@ -886,6 +887,7 @@ metadata:
         """§8.6 adds every copy to `artifacts`; an import the manifest omits is
         invisible to every reader that resolves against it. Cross-field, so it
         lives here rather than in the schema."""
+        self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
         self.write_run_state(
             "  - id: thing\n    status: skipped\n",
             " []",
@@ -897,6 +899,7 @@ metadata:
     def test_an_import_sourced_from_this_run_is_reported(self) -> None:
         """§8.6 copies from an earlier run's directory, so a run importing from
         itself records lineage that leads nowhere."""
+        self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
         self.write_run_state(
             "  - id: thing\n    status: skipped\n",
             '\n  - "{run}/a.md"',
@@ -990,11 +993,42 @@ metadata:
         )
         self.assert_problem("imports name 2 source runs (run-one, run-two)")
 
+    def test_an_import_matching_no_step_output_is_reported(self) -> None:
+        """§8.2's manifest lists what steps declare, so an import no composed
+        step's output template matches is an artifact no conforming source
+        run holds — silently accepting it would also wave the closure check
+        off exactly where nothing is known about the copy."""
+        self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
+        self.write_run_state(
+            "  - id: thing\n    status: skipped\n",
+            '\n  - "{run}/nobody.md"',
+            extra="imports:\n  - artifact: \"{run}/nobody.md\"\n    from: earlier-run\n"
+            "    at: '2026-08-16T09:00:00Z'\n",
+        )
+        self.assert_problem("import {run}/nobody.md matches no step output")
+
+    def test_a_phase_one_import_still_binds_closure_in_a_phase_two_state(self) -> None:
+        """Lineage persists, so a phase-2 document may carry phase-1 imports.
+        Outputs are matched as templates — resolving `{N}` at `run.phase`
+        instead would leave the phase-1 report producerless and skip the
+        required-input check exactly where it should bind."""
+        self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
+        self.write("workflows/stages/phased.md", self.PHASED_STAGE)
+        self.write_run_state(
+            "  - id: maker\n    status: pending\n  - id: phased\n    status: pending\n",
+            '\n  - "{run}/phase-1-plan.md"',
+            run="  phase: 2\n",
+            extra="imports:\n  - artifact: \"{run}/phase-1-plan.md\"\n"
+            "    from: earlier-run\n    at: '2026-08-16T09:00:00Z'\n",
+        )
+        self.assert_problem("import {run}/phase-1-plan.md arrives without {run}/a.md")
+
     def test_a_duplicate_import_path_is_reported(self) -> None:
         """§10 keeps one entry per imported artifact, and the schema cannot —
         `uniqueItems` compares whole records, so two entries naming different
         sources for one destination copy both pass. Same reason the duplicate
         step id check lives here."""
+        self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
         self.write_run_state(
             "  - id: thing\n    status: skipped\n",
             '\n  - "{run}/a.md"',

@@ -1,0 +1,14 @@
+# INVALID on purpose — schema validation MUST reject this fixture:
+# - run.id is a Windows drive-relative form: `C:demo` is not a plain
+#   directory name — it names the directory {artifacts}/runs/<run-id>/, and
+#   joined there on a Windows host it anchors at the drive instead of
+#   descending (spec §8.1, §8.6)
+run:
+  id: "C:demo"
+  workflow: feature
+  protocol: "0.2"
+steps:
+  - id: brief-confirm
+    status: pending
+gates: []
+artifacts: []

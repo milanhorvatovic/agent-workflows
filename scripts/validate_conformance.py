@@ -753,6 +753,9 @@ def import_record_problems(
     output two steps share — creation and revision — descends via either,
     and holding the set to the revision's inputs would refuse the importer
     who leaves the validation report out precisely to have it re-rendered.
+    An import matching no declared output at any phase is refused outright:
+    §8.2's manifest lists what steps declare, so no conforming source run
+    holds such an artifact to copy.
     """
     if not isinstance(data, dict):
         return []
@@ -760,13 +763,29 @@ def import_record_problems(
     run_id = run.get("id") if isinstance(run, dict) else None
     phase = str(run.get("phase", 1)) if isinstance(run, dict) else "1"
     manifest = {x for x in items_of(data.get("artifacts")) if isinstance(x, str)}
-    # Resolved output artifact -> the steps that declare it, for the closure
-    # check: what an import could descend from, and what its producer needs.
-    producers: dict[str, list[Any]] = {}
+    # Output declarations matched as templates, `{N}` standing for any phase:
+    # lineage persists, so a phase-2 document may carry phase-1 imports, and
+    # resolving `{N}` at `run.phase` would leave those without a producer and
+    # wave the closure check off exactly where it should bind. A match hands
+    # back the artifact's own phase, which is what the producer's inputs then
+    # resolve at; an output with no `{N}` resolves them at the document's.
+    templates: list[tuple[re.Pattern[str], Any]] = []
     for _, step in contracts.values():
         output = output_artifact(step)
         if isinstance(output, str):
-            producers.setdefault(output.replace("{N}", phase), []).append(step)
+            expression = "([1-9][0-9]*)".join(
+                re.escape(part) for part in output.split("{N}")
+            )
+            templates.append((re.compile(expression), step))
+
+    def producing(path: str) -> list[tuple[Any, str]]:
+        return [
+            (step, match.group(1) if expression.groups else phase)
+            for expression, step in templates
+            for match in (expression.fullmatch(path),)
+            if match
+        ]
+
     problems: list[str] = []
     counts: dict[str, int] = {}
     sources: set[str] = set()
@@ -803,9 +822,13 @@ def import_record_problems(
     ]
     imported = set(counts)
     for artifact in sorted(imported):
-        candidates = producers.get(artifact)
+        candidates = producing(artifact)
         if not candidates:
-            continue  # no composed step declares it; nothing to close over
+            problems.append(
+                f"{at}: import {artifact} matches no step output — spec §8.2's "
+                f"manifest lists what steps declare, so no source run produced this"
+            )
+            continue
         unmet_per_producer = [
             sorted(
                 {
@@ -815,11 +838,11 @@ def import_record_problems(
                     and entry.get("required") is True
                     and isinstance(entry.get("artifact"), str)
                     and "{P}" not in entry["artifact"]
-                    for resolved in (entry["artifact"].replace("{N}", phase),)
-                    if resolved in producers and resolved not in imported
+                    for resolved in (entry["artifact"].replace("{N}", artifact_phase),)
+                    if producing(resolved) and resolved not in imported
                 }
             )
-            for step in candidates
+            for step, artifact_phase in candidates
         ]
         if all(unmet_per_producer):
             missing = min(unmet_per_producer, key=len)
