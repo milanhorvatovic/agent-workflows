@@ -2,8 +2,8 @@
 # (spec §9.4). Record order, not execution order: `plan-revise` precedes the
 # validator that runs before it because a `plan-approval` revise returns to
 # the revision and invalidates the validation in one write, and §10 obliges
-# the destination's record to precede what the write invalidates. The two
-# conditional members are populated `skipped` until a route reaches them.
+# the destination's record to precede what the write invalidates. The one
+# conditional member is populated `skipped` until a route reaches it.
 protocol: "0.2"
 stage:
   sequence:

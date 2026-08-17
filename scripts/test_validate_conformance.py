@@ -841,6 +841,20 @@ metadata:
         )
         self.assert_problem("sequence names step `phantom`, which the stage does not declare")
 
+    def test_a_name_shared_across_kinds_is_reported(self) -> None:
+        """A step and a gate sharing a name would populate two `steps`
+        records with one id — §10 forbids that no less for the two being
+        differently flavored, and the per-kind duplicate checks cannot see
+        across the kinds."""
+        self.write(
+            "workflows/stages/gated.md",
+            self.GATED_STAGE.replace("# Stage: gated", "# Stage: gated\n\n### demo-approval (analyst)\n\nProse.\n").replace(
+                "      sequence:\n        - gate: demo-approval\n",
+                "      sequence:\n        - step: demo-approval\n        - gate: demo-approval\n",
+            ),
+        )
+        self.assert_problem("`demo-approval` is both a step and a gate")
+
     def test_a_duplicate_sequence_member_is_reported(self) -> None:
         """§10 keeps one record per member, and the sequence is the record
         order population follows — a member named twice is two records."""

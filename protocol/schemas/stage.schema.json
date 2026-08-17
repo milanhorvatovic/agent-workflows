@@ -42,12 +42,12 @@
       "properties": {
         "step": {
           "type": "string",
-          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
           "description": "A step id the stage declares under a `###` heading (spec section 9.4)."
         },
         "gate": {
           "type": "string",
-          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
           "description": "A gate id the stage declares in its Gates section (spec sections 7 and 9.4)."
         },
         "conditional": {

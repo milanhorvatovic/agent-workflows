@@ -974,6 +974,14 @@ def check_stage_sequences(root: Path) -> tuple[int, list[str]]:
                     f"{at}: {kind} `{name}` appears {named.count(name)} times in "
                     f"the sequence — spec §10 keeps one record per member"
                 )
+        # Across kinds too: a step and a gate sharing a name would populate
+        # two `steps` records with one id, which §10 forbids no less for
+        # being differently flavored.
+        for name in sorted(set(steps) & set(gates)):
+            problems.append(
+                f"{at}: `{name}` is both a step and a gate in the sequence — "
+                f"spec §10 keeps one record per member"
+            )
     return checked, problems
 
 

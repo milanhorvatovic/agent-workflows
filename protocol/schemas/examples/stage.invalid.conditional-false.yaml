@@ -1,0 +1,8 @@
+# INVALID on purpose — schema validation MUST reject this fixture:
+# - sequence[0].conditional is false: absence is the default form — a member
+#   the run's path reaches — so the noise form is not admitted (spec §9.4)
+protocol: "0.2"
+stage:
+  sequence:
+    - step: plan-create
+      conditional: false
