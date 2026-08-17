@@ -1,0 +1,18 @@
+# INVALID on purpose — schema validation MUST reject this fixture:
+# - imports[0].from carries a colon: the source id is joined into a path,
+#   and `earlier:state` resolves as an NTFS stream rather than the source
+#   run directory the lineage records (spec §8.6)
+run:
+  id: 2026-08-16-feature-slug
+  workflow: feature
+  protocol: "0.2"
+steps:
+  - id: brief-confirm
+    status: skipped
+gates: []
+artifacts:
+  - "{run}/brief.md"
+imports:
+  - artifact: "{run}/brief.md"
+    from: "earlier:state"
+    at: "2026-08-16T09:00:00Z"

@@ -30,10 +30,13 @@ Seven checks:
 - Step parity: a step-bound skill restates the step block its stage declares,
   identically — two copies of one contract drift silently, and spec §9.1
   makes the input declaration the executor's whole view of a step.
-- Run-state documents: every one this repo ships is checked for three
-  semantics its schema cannot hold — a manifest current with the steps
-  recorded `done`, a gate recorded `done` carrying a standing decision, and
-  at most one record per step. In every run-state document this repo ships, a step
+- Run-state documents: every one this repo ships is checked for semantics
+  its schema cannot hold — a manifest current with the steps recorded
+  `done`, a gate recorded `done` carrying a standing decision, at most one
+  record per step, and an import lineage whose every path is manifested and
+  named once, whose records name one source run that is not this one, and
+  whose set is closed over some producing step's required inputs (spec
+  §8.6). In every run-state document this repo ships, a step
   recorded `done` has its declared output in the manifest, `{N}` resolved
   from `run.phase` (spec §8.2). The map from step id to output is read off
   the stage contracts, since a run's steps are the composed workflow's, and
@@ -727,6 +730,167 @@ def duplicate_record_problems(at: str, data: Any) -> list[str]:
     ]
 
 
+def import_record_problems(
+    at: str, data: Any, contracts: dict[str, tuple[str, Any]]
+) -> list[str]:
+    """Spec §8.6 and §10: an import is adoption, and every rule here is a
+    cross-field semantic the schema cannot hold.
+
+    Every path `imports` names must be in `artifacts` — §8.2 defines the
+    manifest as what the run produced or imported, so an import the manifest
+    omits is invisible to every reader that resolves against it. `from` must
+    name another run: §8.6 copies from an earlier run's directory, so a run
+    importing from itself records lineage that leads nowhere — the string
+    comparison is this suite's document-level half, canonical directory
+    identity being the executor's (§8.6) — and one run
+    only, since a set drawn from several runs holds artifacts that never
+    descended from one another and the rewritten headers hide it. §10 keeps
+    one entry per imported artifact — two records naming different sources
+    for one destination copy is lineage with no single answer, and the
+    schema cannot reject it for the same reason it cannot reject a duplicate
+    step id: `uniqueItems` compares whole records. And §8.6 keeps the set
+    closed over derivation: an imported artifact needs some producing step
+    whose required step-output inputs are all imported too, or the set holds
+    a certificate of something the run does not hold. Some, not every: an
+    output two steps share — creation and revision — descends via either,
+    and holding the set to the revision's inputs would refuse the importer
+    who leaves the validation report out precisely to have it re-rendered.
+    An import matching no declared output at any phase is refused outright:
+    §8.2's manifest lists what steps declare, so no conforming source run
+    holds such an artifact to copy.
+    """
+    if not isinstance(data, dict):
+        return []
+    run = data.get("run")
+    run_id = run.get("id") if isinstance(run, dict) else None
+    phase = str(run.get("phase", 1)) if isinstance(run, dict) else "1"
+    manifest = {x for x in items_of(data.get("artifacts")) if isinstance(x, str)}
+    # Output declarations matched as templates, `{N}` standing for any phase:
+    # lineage persists, so a phase-2 document may carry phase-1 imports, and
+    # resolving `{N}` at `run.phase` would leave those without a producer and
+    # wave the closure check off exactly where it should bind. A match hands
+    # back the artifact's own phase, which is what the producer's inputs then
+    # resolve at; an output with no `{N}` resolves them at the document's.
+    templates: list[tuple[re.Pattern[str], Any]] = []
+    for _, step in contracts.values():
+        output = output_artifact(step)
+        if isinstance(output, str):
+            # Every `{N}` in one declaration is the same executing phase, so
+            # the first occurrence captures and the rest backreference it — a
+            # fresh group per occurrence would match impossible paths like
+            # `phase-1/report-2.md` and misattribute them to phase 1.
+            parts = [re.escape(part) for part in output.split("{N}")]
+            expression = parts[0]
+            for index, part in enumerate(parts[1:]):
+                # Named, because a numeric backreference merges with a digit
+                # that starts the next literal: a template ending `{N}0`
+                # would build a reference to group ten and fail to compile.
+                expression += (
+                    "(?P<phase>[1-9][0-9]*)" if index == 0 else "(?P=phase)"
+                ) + part
+            templates.append((re.compile(expression), step))
+
+    def producing(path: str) -> list[tuple[Any, str]]:
+        return [
+            (step, match.group(1) if expression.groups else phase)
+            for expression, step in templates
+            for match in (expression.fullmatch(path),)
+            if match
+        ]
+
+    problems: list[str] = []
+    counts: dict[str, int] = {}
+    sources: set[str] = set()
+    for record in items_of(data.get("imports")):
+        if not isinstance(record, dict):
+            continue  # not a usable record; check_fixtures faults it against the schema
+        artifact = record.get("artifact")
+        if isinstance(artifact, str):
+            counts[artifact] = counts.get(artifact, 0) + 1
+            if artifact not in manifest:
+                problems.append(
+                    f"{at}: import {artifact} is not in the manifest — spec §8.6 "
+                    f"adds every copy to `artifacts`, which is what readers resolve against"
+                )
+        source = record.get("from")
+        if isinstance(source, str):
+            sources.add(source)
+            if source == run_id:
+                problems.append(
+                    f"{at}: import {artifact} names this run (`{source}`) as its "
+                    f"source — spec §8.6 copies from an earlier run's directory"
+                )
+    if len(sources) > 1:
+        problems.append(
+            f"{at}: imports name {len(sources)} source runs "
+            f"({', '.join(sorted(sources))}) — spec §8.6 has a run import from one, "
+            f"since artifacts from several never descended from one another"
+        )
+    problems += [
+        f"{at}: import {artifact} has {n} records in `imports` — spec §10 keeps "
+        f"one entry per imported artifact, and its lineage has no single source to read"
+        for artifact, n in sorted(counts.items())
+        if n > 1
+    ]
+    imported = set(counts)
+    for artifact in sorted(imported):
+        candidates = producing(artifact)
+        if not candidates:
+            problems.append(
+                f"{at}: import {artifact} matches no step output — spec §8.2's "
+                f"manifest lists what steps declare, so no source run produced this"
+            )
+            continue
+        unmet_per_producer = [
+            sorted(
+                {
+                    resolved
+                    for entry in items_of(step.get("inputs"))
+                    if isinstance(entry, dict)
+                    # The step schema defaults `required` to true, so only an
+                    # explicit false is optional — reading absence as optional
+                    # would wave the closure past a prerequisite the contract
+                    # requires.
+                    and entry.get("required") is not False
+                    and isinstance(entry.get("artifact"), str)
+                    and "{P}" not in entry["artifact"]
+                    for resolved in (entry["artifact"].replace("{N}", artifact_phase),)
+                    if producing(resolved) and resolved not in imported
+                }
+            )
+            for step, artifact_phase in candidates
+        ]
+        if all(unmet_per_producer):
+            missing = min(unmet_per_producer, key=len)
+            problems.append(
+                f"{at}: import {artifact} arrives without {', '.join(missing)} — "
+                f"spec §8.6 keeps an import set closed over some producing step's "
+                f"required inputs, or the copy certifies work the run does not hold"
+            )
+    return problems
+
+
+STAGE_LINK = re.compile(r"\(stages/([a-z][a-z0-9-]*)\.md\)")
+
+
+def composed_stage_files(root: Path, workflow: Any) -> set[str] | None:
+    """The stage files the named workflow composes, read from its
+    by-reference links (spec §6.1) — or None where the workflow cannot be
+    resolved, which callers read as "filter nothing" so a document that is
+    broken elsewhere still gets best-effort checks.
+    """
+    if not isinstance(workflow, str) or not re.fullmatch(r"[a-z][a-z0-9-]*", workflow):
+        return None
+    path = root / "workflows" / f"{workflow}.md"
+    if not path.is_file():
+        return None
+    stages = {
+        f"workflows/stages/{match.group(1)}.md"
+        for match in STAGE_LINK.finditer(path.read_text(encoding="utf-8"))
+    }
+    return stages or None
+
+
 def check_manifests(root: Path) -> tuple[int, list[str]]:
     """Every run-state document this repo ships models a state an executor may
     resume from, so a stale manifest in one is a nonconforming example rather
@@ -734,8 +898,35 @@ def check_manifests(root: Path) -> tuple[int, list[str]]:
     find here."""
     outputs = step_outputs(root)
     gates = gate_scopes(root)
+    contracts = stage_steps(root, [])
     problems: list[str] = []
     checked = 0
+
+    def composed(at: str, data: Any) -> tuple[dict[str, tuple[str, Any]], list[str]]:
+        """The contracts scoped to the document's own workflow: §8.6 bounds
+        imports to step outputs of the composed workflow, so a `plan` state
+        must not find a producer in a delivery stage it never composes. A
+        malformed document (no mapping, no string workflow) is the schema
+        check's finding and filters nothing — but a well-formed name that
+        resolves to no workflow file is a defect of its own, reported here:
+        falling back to every contract would accept a typo's imports against
+        producers the run never composes."""
+        run = data.get("run") if isinstance(data, dict) else None
+        workflow = run.get("workflow") if isinstance(run, dict) else None
+        if not isinstance(workflow, str) or not workflow:
+            return contracts, []
+        stages = composed_stage_files(root, workflow)
+        if stages is None:
+            return {}, [
+                f"{at}: run.workflow `{workflow}` names no workflow that "
+                f"composes stages — its imports cannot be checked against any "
+                f"composed contract"
+            ]
+        return {
+            step_id: entry
+            for step_id, entry in contracts.items()
+            if entry[0].rsplit(":", 1)[0] in stages
+        }, []
     for kind, path in fixture_paths(root, RUN_STATE):
         if kind != "valid" or not path.is_file():
             continue
@@ -748,6 +939,11 @@ def check_manifests(root: Path) -> tuple[int, list[str]]:
         problems += manifest_problems(rel, data, outputs)
         problems += gate_record_problems(rel, data, gates)
         problems += duplicate_record_problems(rel, data)
+        if isinstance(data, dict) and data.get("imports"):
+            scoped, scope_problems = composed(rel, data)
+            problems += scope_problems
+            if not scope_problems:
+                problems += import_record_problems(rel, data, scoped)
     spec = root / SPEC
     if spec.is_file():
         for block in yaml_blocks(spec.read_text(encoding="utf-8"), SPEC.as_posix(), []):
@@ -756,6 +952,11 @@ def check_manifests(root: Path) -> tuple[int, list[str]]:
                 problems += manifest_problems(block.at, block.data, outputs)
                 problems += gate_record_problems(block.at, block.data, gates)
                 problems += duplicate_record_problems(block.at, block.data)
+                if isinstance(block.data, dict) and block.data.get("imports"):
+                    scoped, scope_problems = composed(block.at, block.data)
+                    problems += scope_problems
+                    if not scope_problems:
+                        problems += import_record_problems(block.at, block.data, scoped)
     return checked, problems
 
 

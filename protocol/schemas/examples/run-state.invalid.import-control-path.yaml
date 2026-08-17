@@ -1,0 +1,18 @@
+# INVALID on purpose — schema validation MUST reject this fixture:
+# - imports[0].artifact carries a control character (a tab): such a path
+#   cannot name a usable copy destination, and a newline would additionally
+#   split one record across lines in line-oriented tooling (spec §8.6)
+run:
+  id: 2026-08-16-feature-slug
+  workflow: feature
+  protocol: "0.2"
+steps:
+  - id: brief-confirm
+    status: skipped
+gates: []
+artifacts:
+  - "{run}/brief\t.md"
+imports:
+  - artifact: "{run}/brief\t.md"
+    from: 2026-08-12-plan-slug
+    at: "2026-08-16T09:00:00Z"

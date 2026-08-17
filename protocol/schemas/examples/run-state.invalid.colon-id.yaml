@@ -1,0 +1,13 @@
+# INVALID on purpose — schema validation MUST reject this fixture:
+# - run.id carries a colon: on NTFS `name:stream` is an alternate data
+#   stream, not a child directory under runs — and an id only POSIX can
+#   create is a state file only POSIX can share (spec §8.1, §8.6)
+run:
+  id: "2026-08-17T09:58:06-fix"
+  workflow: feature
+  protocol: "0.2"
+steps:
+  - id: brief-confirm
+    status: pending
+gates: []
+artifacts: []

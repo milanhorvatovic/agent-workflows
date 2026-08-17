@@ -9,17 +9,24 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import stat
 import sys
-from pathlib import Path, PureWindowsPath
+from pathlib import Path
 
 from .config import Config, ConfigError, load_config
 
 
 def _has_control_characters(value: str) -> bool:
-    # Newlines would split one name into several output records; the rest
-    # of C0 (NUL included) and DEL break paths or terminals the same way.
-    return any(character < " " or character == "\x7f" for character in value)
+    # Newlines would split one name into several output records; the rest of
+    # C0 (NUL included), DEL, and C1 break paths or terminals the same way,
+    # and U+2028/U+2029 are line breaks to Unicode-aware tooling.
+    return any(
+        character < " "
+        or "\x7f" <= character <= "\x9f"
+        or character in "\u2028\u2029"
+        for character in value
+    )
 
 
 def _is_link(path: Path) -> bool:
@@ -50,21 +57,39 @@ def _entry_is_link(entry: os.DirEntry) -> bool:
     return bool(attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT)
 
 
+# Win32 resolves these basenames through the device namespace even with
+# an extension or stream suffix, superscript COM/LPT aliases included, so
+# none of them can name a run directory (the run-state schema refuses the
+# same set).
+_RESERVED_DEVICE = re.compile(
+    r"^(?:CON|PRN|AUX|NUL|COM[1-9\u00b9\u00b2\u00b3]|LPT[1-9\u00b9\u00b2\u00b3])(?:[.:]|$)",
+    re.IGNORECASE,
+)
+
+
 def _run_id(value: str) -> str:
     # Path safety only, not id-format validation — the run id joins under
     # {artifacts}/runs/, so control characters, separators, dot entries,
-    # absolute paths, and Windows drive prefixes would break or escape it.
-    # Drive prefixes are detected with PureWindowsPath rather than by
-    # rejecting every colon, which would refuse POSIX-legal ids such as
-    # ISO timestamps. What a well-formed id looks like is the run-state
-    # schema's business, enforced where run state is read, not here.
+    # absolute paths, and colons would break or escape it. Every colon is
+    # refused — an NTFS `name:stream` is a stream rather than a child
+    # directory, and the ban covers drive prefixes with it — which also
+    # retires the ISO-timestamp allowance the first cut of this guard made:
+    # an id only POSIX can create is a state file only POSIX can share, and
+    # the run-state schema now refuses the same set. What else a well-formed
+    # id looks like is that schema's business, enforced where state is read.
+    # A trailing dot or space is stripped by Windows normalization, so
+    # `demo.` and `demo` would resolve to one directory while naming two —
+    # an alias the state schema's directory-identity rules refuse, and the
+    # argument guard must refuse before any path is formed.
     if (
         not value.strip()
         or value in {".", ".."}
+        or value[-1] in ". "
+        or _RESERVED_DEVICE.match(value)
         or _has_control_characters(value)
         or "/" in value
         or "\\" in value
-        or PureWindowsPath(value).drive
+        or any(character in ':?*"<>|' for character in value)
         or Path(value).is_absolute()
     ):
         raise argparse.ArgumentTypeError(f"not a run id: {value!r}")

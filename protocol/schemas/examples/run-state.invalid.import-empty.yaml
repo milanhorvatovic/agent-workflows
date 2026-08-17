@@ -1,0 +1,15 @@
+# INVALID on purpose — schema validation MUST reject this fixture:
+# - imports is an empty list: §10 has the key present exactly where the run
+#   imported and absent otherwise, so `minItems: 1` rules out an empty list
+#   standing in for absence (spec §8.6, §10)
+run:
+  id: 2026-08-16-feature-slug
+  workflow: feature
+  protocol: "0.2"
+steps:
+  - id: brief-confirm
+    status: done
+gates: []
+artifacts:
+  - "{run}/brief.md"
+imports: []

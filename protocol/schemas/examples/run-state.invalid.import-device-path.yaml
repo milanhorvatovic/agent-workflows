@@ -1,0 +1,20 @@
+# INVALID on purpose — schema validation MUST reject this fixture:
+# - imports[0].artifact has a DOS device basename segment: on Windows,
+#   `NUL.md` resolves to the NUL device even beneath an ordinary
+#   directory, so the copy would touch a device while recording a normal
+#   artifact path — reserved basenames are refused case-insensitively,
+#   extensions included (spec §8.6)
+run:
+  id: 2026-08-16-feature-slug
+  workflow: feature
+  protocol: "0.2"
+steps:
+  - id: brief-confirm
+    status: skipped
+gates: []
+artifacts:
+  - "{run}/NUL.md"
+imports:
+  - artifact: "{run}/NUL.md"
+    from: 2026-08-12-plan-slug
+    at: "2026-08-16T09:00:00Z"

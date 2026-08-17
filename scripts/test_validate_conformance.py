@@ -106,7 +106,11 @@ RUN_STATE_SCHEMA = {
             "type": "object",
             "additionalProperties": False,
             "required": ["id"],
-            "properties": {"id": {"type": "string"}, "phase": {"type": "integer"}},
+            "properties": {
+                "id": {"type": "string"},
+                "workflow": {"type": "string"},
+                "phase": {"type": "integer"},
+            },
         },
         # Enough of the real shape for the manifest check to have something to
         # read; the schema itself is exercised by its own fixtures.
@@ -134,6 +138,20 @@ RUN_STATE_SCHEMA = {
                     "gate": {"type": "string"},
                     "outcome": {"enum": ["accept", "revise", "reject"]},
                     "phase": {"type": "integer", "minimum": 1},
+                    "at": {"type": "string", "format": "date-time"},
+                },
+            },
+        },
+        "imports": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["artifact", "from", "at"],
+                "properties": {
+                    "artifact": {"type": "string"},
+                    "from": {"type": "string"},
                     "at": {"type": "string", "format": "date-time"},
                 },
             },
@@ -765,10 +783,13 @@ metadata:
 ```
 """
 
-    def write_run_state(self, steps: str, artifacts: str, run: str = "") -> None:
+    def write_run_state(
+        self, steps: str, artifacts: str, run: str = "", extra: str = ""
+    ) -> None:
         self.write(
             "protocol/schemas/examples/run-state.valid.yaml",
-            f"run:\n  id: demo\n{run}steps:\n{steps}gates: []\nartifacts:{artifacts}\n",
+            f"run:\n  id: demo\n{run}steps:\n{steps}gates: []\n"
+            f"artifacts:{artifacts}\n{extra}",
         )
 
     def test_done_step_output_missing_from_the_manifest_is_reported(self) -> None:
@@ -854,6 +875,316 @@ metadata:
             ],
         }
         self.assertEqual(list(validator.iter_errors(doc)), [])
+
+    def test_a_list_shaped_run_state_fixture_reports_schema_errors_only(self) -> None:
+        """A malformed top-level document is the schema check's finding: the
+        semantic passes must step around it rather than crash on the shape
+        they exist to reject."""
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            "- not\n- a\n- mapping\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 1, output)
+        self.assertNotIn("Traceback", output)
+
+    def test_a_manifested_import_from_another_run_passes(self) -> None:
+        self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
+        self.write_run_state(
+            "  - id: thing\n    status: skipped\n",
+            '\n  - "{run}/a.md"',
+            extra="imports:\n  - artifact: \"{run}/a.md\"\n    from: earlier-run\n"
+            "    at: '2026-08-16T09:00:00Z'\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_an_import_missing_from_the_manifest_is_reported(self) -> None:
+        """§8.6 adds every copy to `artifacts`; an import the manifest omits is
+        invisible to every reader that resolves against it. Cross-field, so it
+        lives here rather than in the schema."""
+        self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
+        self.write_run_state(
+            "  - id: thing\n    status: skipped\n",
+            " []",
+            extra="imports:\n  - artifact: \"{run}/a.md\"\n    from: earlier-run\n"
+            "    at: '2026-08-16T09:00:00Z'\n",
+        )
+        self.assert_problem("import {run}/a.md is not in the manifest")
+
+    def test_an_import_sourced_from_this_run_is_reported(self) -> None:
+        """§8.6 copies from an earlier run's directory, so a run importing from
+        itself records lineage that leads nowhere."""
+        self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
+        self.write_run_state(
+            "  - id: thing\n    status: skipped\n",
+            '\n  - "{run}/a.md"',
+            extra="imports:\n  - artifact: \"{run}/a.md\"\n    from: demo\n"
+            "    at: '2026-08-16T09:00:00Z'\n",
+        )
+        self.assert_problem("names this run (`demo`) as its source")
+
+    # Two steps in one stage: `maker` produces {run}/a.md from nothing and
+    # `thing` derives {run}/b.md from it — the smallest derivation chain the
+    # import-closure check can bind to.
+    CHAINED_STAGE = """---
+name: chained
+description: A stage whose second step derives from the first.
+---
+
+# Stage: chained
+
+### maker (analyst)
+
+Prose.
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    step:
+      role: analyst
+      inputs: []
+      output:
+        artifact: "{run}/a.md"
+```
+
+### thing (analyst)
+
+Prose.
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    step:
+      role: analyst
+      inputs:
+        - artifact: "{run}/a.md"
+          required: true
+      output:
+        artifact: "{run}/b.md"
+```
+"""
+
+    def test_an_import_set_closed_over_derivation_passes(self) -> None:
+        self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
+        self.write_run_state(
+            "  - id: maker\n    status: skipped\n  - id: thing\n    status: skipped\n",
+            '\n  - "{run}/a.md"\n  - "{run}/b.md"',
+            extra="imports:\n  - artifact: \"{run}/a.md\"\n    from: earlier-run\n"
+            "    at: '2026-08-16T09:00:00Z'\n"
+            "  - artifact: \"{run}/b.md\"\n    from: earlier-run\n"
+            "    at: '2026-08-16T09:00:00Z'\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_an_import_without_its_producers_required_input_is_reported(self) -> None:
+        """§8.6 keeps the set closed over derivation: importing what a step
+        derived without what it derived it from adopts a certificate of
+        content this run will produce fresh — the re-run `maker` writes a new
+        a.md that the imported b.md never descended from."""
+        self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
+        self.write_run_state(
+            "  - id: maker\n    status: pending\n  - id: thing\n    status: skipped\n",
+            '\n  - "{run}/b.md"',
+            extra="imports:\n  - artifact: \"{run}/b.md\"\n    from: earlier-run\n"
+            "    at: '2026-08-16T09:00:00Z'\n",
+        )
+        self.assert_problem("import {run}/b.md arrives without {run}/a.md")
+
+    def test_closure_reads_an_omitted_required_as_required(self) -> None:
+        """The step schema defaults `required` to true, so an input that
+        omits the field is a prerequisite — reading absence as optional
+        would wave the closure past it."""
+        self.write(
+            "workflows/stages/chained.md",
+            self.CHAINED_STAGE.replace(
+                '        - artifact: "{run}/a.md"\n          required: true\n',
+                '        - artifact: "{run}/a.md"\n',
+            ),
+        )
+        self.write_run_state(
+            "  - id: maker\n    status: pending\n  - id: thing\n    status: skipped\n",
+            '\n  - "{run}/b.md"',
+            extra="imports:\n  - artifact: \"{run}/b.md\"\n    from: earlier-run\n"
+            "    at: '2026-08-16T09:00:00Z'\n",
+        )
+        self.assert_problem("import {run}/b.md arrives without {run}/a.md")
+
+    def test_imports_from_several_source_runs_are_reported(self) -> None:
+        """§8.6 has a run import from one source run: artifacts drawn from
+        several never descended from one another, and the rewritten headers
+        hide it from every later reader."""
+        self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
+        self.write_run_state(
+            "  - id: maker\n    status: skipped\n  - id: thing\n    status: skipped\n",
+            '\n  - "{run}/a.md"\n  - "{run}/b.md"',
+            extra="imports:\n  - artifact: \"{run}/a.md\"\n    from: run-one\n"
+            "    at: '2026-08-16T09:00:00Z'\n"
+            "  - artifact: \"{run}/b.md\"\n    from: run-two\n"
+            "    at: '2026-08-16T09:00:00Z'\n",
+        )
+        self.assert_problem("imports name 2 source runs (run-one, run-two)")
+
+    def test_an_unresolvable_workflow_is_reported_not_defaulted(self) -> None:
+        """A well-formed `run.workflow` that names no workflow file must not
+        fall back to every stage contract: a typo such as `featur` would
+        otherwise have its imports accepted against producers the run never
+        composes."""
+        self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
+        self.write_run_state(
+            "  - id: maker\n    status: skipped\n",
+            '\n  - "{run}/a.md"',
+            run="  workflow: featur\n",
+            extra="imports:\n  - artifact: \"{run}/a.md\"\n    from: earlier-run\n"
+            "    at: '2026-08-16T09:00:00Z'\n",
+        )
+        output = self.assert_problem("run.workflow `featur` names no workflow")
+        self.assertNotIn("matches no step output", output)
+
+    def test_an_import_matching_no_step_output_is_reported(self) -> None:
+        """§8.2's manifest lists what steps declare, so an import no composed
+        step's output template matches is an artifact no conforming source
+        run holds — silently accepting it would also wave the closure check
+        off exactly where nothing is known about the copy."""
+        self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
+        self.write_run_state(
+            "  - id: thing\n    status: skipped\n",
+            '\n  - "{run}/nobody.md"',
+            extra="imports:\n  - artifact: \"{run}/nobody.md\"\n    from: earlier-run\n"
+            "    at: '2026-08-16T09:00:00Z'\n",
+        )
+        self.assert_problem("import {run}/nobody.md matches no step output")
+
+    TWICE_PHASED_STAGE = """---
+name: twicephased
+description: A stage whose step output names the phase twice.
+---
+
+# Stage: twicephased
+
+### twicephased (planner)
+
+Prose.
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    step:
+      role: planner
+      inputs:
+        - artifact: "{run}/a.md"
+          required: true
+      output:
+        artifact: "{run}/phase-{N}-of-{N}.md"
+```
+"""
+
+    def test_a_digit_leading_literal_after_the_phase_compiles(self) -> None:
+        """A numeric backreference would merge with a digit that starts the
+        next literal — a template ending `{N}0` built a reference to group
+        ten and crashed compilation; the named reference cannot merge."""
+        self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
+        self.write(
+            "workflows/stages/twicephased.md",
+            self.TWICE_PHASED_STAGE.replace(
+                'artifact: "{run}/phase-{N}-of-{N}.md"',
+                'artifact: "{run}/phase-{N}-of-{N}0.md"',
+            ),
+        )
+        self.write_run_state(
+            "  - id: twicephased\n    status: skipped\n",
+            '\n  - "{run}/phase-1-of-20.md"',
+            extra="imports:\n  - artifact: \"{run}/phase-1-of-20.md\"\n"
+            "    from: earlier-run\n    at: '2026-08-16T09:00:00Z'\n",
+        )
+        self.assert_problem("import {run}/phase-1-of-20.md matches no step output")
+
+    def test_every_phase_placeholder_in_one_template_is_one_phase(self) -> None:
+        """Two `{N}`s in a declaration denote one executing phase, so a path
+        pairing different numbers matches no step output — a fresh capture
+        per occurrence would accept it and misattribute the phase."""
+        self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
+        self.write("workflows/stages/twicephased.md", self.TWICE_PHASED_STAGE)
+        self.write_run_state(
+            "  - id: twicephased\n    status: skipped\n",
+            '\n  - "{run}/phase-1-of-2.md"',
+            extra="imports:\n  - artifact: \"{run}/phase-1-of-2.md\"\n"
+            "    from: earlier-run\n    at: '2026-08-16T09:00:00Z'\n",
+        )
+        self.assert_problem("import {run}/phase-1-of-2.md matches no step output")
+
+    def test_a_consistent_doubled_phase_template_still_matches(self) -> None:
+        self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
+        self.write("workflows/stages/twicephased.md", self.TWICE_PHASED_STAGE)
+        self.write_run_state(
+            "  - id: twicephased\n    status: skipped\n",
+            '\n  - "{run}/a.md"\n  - "{run}/phase-2-of-2.md"',
+            extra="imports:\n  - artifact: \"{run}/a.md\"\n"
+            "    from: earlier-run\n    at: '2026-08-16T09:00:00Z'\n"
+            "  - artifact: \"{run}/phase-2-of-2.md\"\n"
+            "    from: earlier-run\n    at: '2026-08-16T09:00:00Z'\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_phase_one_import_still_binds_closure_in_a_phase_two_state(self) -> None:
+        """Lineage persists, so a phase-2 document may carry phase-1 imports.
+        Outputs are matched as templates — resolving `{N}` at `run.phase`
+        instead would leave the phase-1 report producerless and skip the
+        required-input check exactly where it should bind."""
+        self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
+        self.write("workflows/stages/phased.md", self.PHASED_STAGE)
+        self.write_run_state(
+            "  - id: maker\n    status: pending\n  - id: phased\n    status: pending\n",
+            '\n  - "{run}/phase-1-plan.md"',
+            run="  phase: 2\n",
+            extra="imports:\n  - artifact: \"{run}/phase-1-plan.md\"\n"
+            "    from: earlier-run\n    at: '2026-08-16T09:00:00Z'\n",
+        )
+        self.assert_problem("import {run}/phase-1-plan.md arrives without {run}/a.md")
+
+    def test_an_import_outside_the_composed_workflow_is_reported(self) -> None:
+        """§8.6 bounds imports to step outputs of the composed workflow: a
+        state whose workflow composes only one stage must not find a producer
+        in a stage it never composes, however real that stage's contract is
+        elsewhere in the repository."""
+        self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
+        self.write("workflows/stages/phased.md", self.PHASED_STAGE)
+        self.write(
+            "workflows/composed.md",
+            frontmatter("composed")
+            + "\n1. [stages/chained.md](stages/chained.md)\n"
+            + "\n"
+            + TRIGGER_BLOCK,
+        )
+        self.write_run_state(
+            "  - id: maker\n    status: skipped\n",
+            '\n  - "{run}/phase-1-plan.md"',
+            run="  workflow: composed\n",
+            extra="imports:\n  - artifact: \"{run}/phase-1-plan.md\"\n"
+            "    from: earlier-run\n    at: '2026-08-16T09:00:00Z'\n",
+        )
+        self.assert_problem("import {run}/phase-1-plan.md matches no step output")
+
+    def test_a_duplicate_import_path_is_reported(self) -> None:
+        """§10 keeps one entry per imported artifact, and the schema cannot —
+        `uniqueItems` compares whole records, so two entries naming different
+        sources for one destination copy both pass. Same reason the duplicate
+        step id check lives here."""
+        self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
+        self.write_run_state(
+            "  - id: thing\n    status: skipped\n",
+            '\n  - "{run}/a.md"',
+            extra="imports:\n  - artifact: \"{run}/a.md\"\n    from: earlier-run\n"
+            "    at: '2026-08-16T09:00:00Z'\n"
+            "  - artifact: \"{run}/a.md\"\n    from: other-run\n"
+            "    at: '2026-08-16T09:01:00Z'\n",
+        )
+        self.assert_problem("import {run}/a.md has 2 records in `imports`")
 
     def test_repeated_gate_entries_are_not_duplicates(self) -> None:
         """`gates` carries one entry per decision, so a gate decided twice

@@ -1,0 +1,14 @@
+# INVALID on purpose — schema validation MUST reject this fixture:
+# - run.id carries `|`, one of the Windows-forbidden filename characters
+#   (? * " < > |): such a directory cannot be created or resumed on
+#   Windows, the same portability failure the colon ban closes
+#   (spec §8.1, §8.6)
+run:
+  id: "demo|run"
+  workflow: feature
+  protocol: "0.2"
+steps:
+  - id: brief-confirm
+    status: pending
+gates: []
+artifacts: []

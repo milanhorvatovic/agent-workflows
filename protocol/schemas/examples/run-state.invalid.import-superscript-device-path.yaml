@@ -1,0 +1,19 @@
+# INVALID on purpose — schema validation MUST reject this fixture:
+# - imports[0].artifact has a superscript device segment: Win32 treats
+#   COM\u00b9\u2013COM\u00b3 and LPT\u00b9\u2013LPT\u00b3 as reserved device names like their
+#   digit forms, extensions included, so the copy would target a device
+#   while recording a normal artifact path (spec \u00a78.6)
+run:
+  id: 2026-08-16-feature-slug
+  workflow: feature
+  protocol: "0.2"
+steps:
+  - id: brief-confirm
+    status: skipped
+gates: []
+artifacts:
+  - "{run}/COM\u00b9.md"
+imports:
+  - artifact: "{run}/COM\u00b9.md"
+    from: 2026-08-12-plan-slug
+    at: "2026-08-16T09:00:00Z"

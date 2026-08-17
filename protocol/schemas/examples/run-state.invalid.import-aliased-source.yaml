@@ -1,0 +1,18 @@
+# INVALID on purpose — schema validation MUST reject this fixture:
+# - imports[0].from is not a plain directory name: `./2026-08-12-plan-slug`
+#   aliases a run id through a path, which would slip past the self-import
+#   comparison while resolving to the same directory (spec §8.6)
+run:
+  id: 2026-08-16-feature-slug
+  workflow: feature
+  protocol: "0.2"
+steps:
+  - id: brief-confirm
+    status: skipped
+gates: []
+artifacts:
+  - "{run}/brief.md"
+imports:
+  - artifact: "{run}/brief.md"
+    from: ./2026-08-12-plan-slug
+    at: "2026-08-16T09:00:00Z"

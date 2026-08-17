@@ -1,0 +1,20 @@
+# INVALID on purpose — schema validation MUST reject this fixture:
+# - imports[0].artifact carries a colon: on NTFS, `brief.md::$DATA`
+#   aliases the file's default data stream, so a copy could overwrite
+#   brief.md while recording a different artifact path — import-path
+#   segments therefore carry no colon at all, the same ban run ids and
+#   source ids carry (spec §8.6)
+run:
+  id: 2026-08-16-feature-slug
+  workflow: feature
+  protocol: "0.2"
+steps:
+  - id: brief-confirm
+    status: skipped
+gates: []
+artifacts:
+  - "{run}/brief.md::$DATA"
+imports:
+  - artifact: "{run}/brief.md::$DATA"
+    from: 2026-08-12-plan-slug
+    at: "2026-08-16T09:00:00Z"

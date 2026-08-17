@@ -1,0 +1,18 @@
+# INVALID on purpose — schema validation MUST reject this fixture:
+# - imports[0].from is a Windows drive-relative form: `C:run` is not a plain
+#   directory name — joined under the runs directory on a Windows host it
+#   anchors at the drive instead of descending (spec §8.6)
+run:
+  id: 2026-08-16-feature-slug
+  workflow: feature
+  protocol: "0.2"
+steps:
+  - id: brief-confirm
+    status: skipped
+gates: []
+artifacts:
+  - "{run}/brief.md"
+imports:
+  - artifact: "{run}/brief.md"
+    from: "C:run"
+    at: "2026-08-16T09:00:00Z"
