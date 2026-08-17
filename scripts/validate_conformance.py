@@ -955,11 +955,36 @@ def check_stage_sequences(root: Path) -> tuple[int, list[str]]:
             continue
         rel = path.relative_to(root).as_posix()
         text = path.read_text(encoding="utf-8")
+        # A second Gates section would sit past the boundary gates_section
+        # returns, its every gate invisible to parity and gate scoping — an
+        # incomplete sequence would pass on the strength of what nobody read.
+        if len(GATES_HEADING.findall(text)) > 1:
+            problems.append(
+                f"{rel}: more than one `## Gates` section — gates past the "
+                f"first are invisible to the sequence checks"
+            )
         # Lists, not sets: a member declared twice at the source — two
         # identical headings, two identical gate bullets — must surface as
         # the duplicate it is, not be erased before the comparison.
         step_list = [m.group("id") for m in STAGE_STEP_HEADING.finditer(text)]
         gate_list = [m.group("id") for m in GATE_HEADING.finditer(gates_section(text))]
+        # A step-contract block above the first heading has no id a sequence
+        # could name: silently skipping it would let a stage with contracts
+        # but malformed headings bypass §9.4 as "declaring nothing".
+        heading_offsets = [m.start() for m in STAGE_STEP_HEADING.finditer(text)]
+        step_blocks = 0
+        for block in yaml_blocks(text, rel, []):
+            workflow = workflow_value(block.data)
+            if not isinstance(workflow, dict) or "step" not in workflow:
+                continue
+            step_blocks += 1
+            line = int(block.at.rsplit(":", 1)[1])
+            offset = sum(len(x) + 1 for x in text.splitlines(keepends=False)[: line - 1])
+            if not any(start < offset for start in heading_offsets):
+                problems.append(
+                    f"{block.at}: step block without a `### <id> (<role>)` heading "
+                    f"above it — no sequence can name what has no id (spec §9.4)"
+                )
         for kind, names in (("step", step_list), ("gate", gate_list)):
             for name in sorted({x for x in names if names.count(x) > 1}):
                 problems.append(
@@ -984,8 +1009,8 @@ def check_stage_sequences(root: Path) -> tuple[int, list[str]]:
             if isinstance(workflow_value(block.data), dict)
             and "stage" in workflow_value(block.data)
         ]
-        if not declared_steps and not declared_gates and not blocks:
-            continue  # nothing declared either way; not a stage contract yet
+        if not declared_steps and not declared_gates and not blocks and not step_blocks:
+            continue  # nothing declared any way; not a stage contract yet
         checked += 1
         if len(blocks) != 1:
             problems.append(

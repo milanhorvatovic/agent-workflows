@@ -205,7 +205,7 @@ Import reaches steps and never gates. A step whose declared output is among the 
 
 ## 9. Orchestration metadata
 
-All orchestration semantics an author declares live under a single `workflow` key inside a `metadata` mapping. The mapping has two carriers, one shape: the `metadata` extension point of Agent Skills frontmatter, where a skill declares, and a fenced `yaml` block in a workflow or stage file's body, where a file that is not a skill declares — a workflow its trigger, a stage its sequence and its steps' contracts. One file carries both the prose a plain agent reads and the structure a driver executes, whichever carrier holds it.
+All orchestration semantics an author declares live under a single `workflow` key inside a `metadata` mapping. The mapping has two carriers, one shape: the `metadata` extension point of Agent Skills frontmatter, where a skill declares, and a fenced `yaml` block in a workflow or stage file's body, where a file that is not a skill declares — a workflow its trigger, a stage its sequence, its steps' contracts, and its loop contracts. One file carries both the prose a plain agent reads and the structure a driver executes, whichever carrier holds it.
 
 Every `metadata.workflow` block MUST carry a `protocol` field declaring the protocol version it was authored against (see [Versioning](#11-versioning)).
 

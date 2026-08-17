@@ -240,6 +240,18 @@ def frontmatter(name: str, description: str = "A description.") -> str:
     return f"---\nname: {name}\ndescription: {description}\n---\n\n# {name}\n"
 
 
+def stage_file(block: str) -> str:
+    """A well-formed scratch stage: one heading, the block under it, and the
+    §9.4 sequence naming the one member — the shape every stage now owes."""
+    return (
+        frontmatter("build")
+        + "\n### builder (analyst)\n\nProse.\n\n"
+        + block
+        + "\n```yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n"
+        + "    stage:\n      sequence:\n        - step: builder\n```\n"
+    )
+
+
 def skill_frontmatter(name: str, extra: str = "license: MIT\n") -> str:
     return f"---\nname: {name}\ndescription: A description.\n{extra}---\n\n# {name}\n"
 
@@ -316,7 +328,7 @@ class ValidateConformanceTest(unittest.TestCase):
         self.write("protocol/spec.md", SPEC)
         self.write("roles/analyst.md", frontmatter("analyst"))
         self.write("workflows/demo.md", frontmatter("demo") + "\n" + TRIGGER_BLOCK)
-        self.write("workflows/stages/build.md", frontmatter("build") + "\n" + STEP_BLOCK)
+        self.write("workflows/stages/build.md", stage_file(STEP_BLOCK))
 
     def write(self, relative: str, content: str) -> None:
         path = self.root / relative
@@ -353,9 +365,9 @@ class ValidateConformanceTest(unittest.TestCase):
         self.assertIn("conformance: OK", output)
         self.assertIn("10 fixtures", output)
         self.assertIn("2 spec examples", output)
-        self.assertIn("2 workflow blocks", output)
+        self.assertIn("3 workflow blocks", output)
         self.assertIn("3 frontmatter files", output)
-        self.assertIn("0 stage sequences", output)
+        self.assertIn("1 stage sequences", output)
 
     def test_schema_violation_in_workflow_block_reported_with_location(self) -> None:
         broken = STEP_BLOCK.replace("role: analyst", "role: analyst\n      rogue: true")
@@ -501,9 +513,7 @@ class ValidateConformanceTest(unittest.TestCase):
         the phases behind it bound."""
         self.write(
             "workflows/stages/build.md",
-            frontmatter("build")
-            + "\n"
-            + STEP_BLOCK.replace("{run}/brief.md", "{run}/phase-{P}-impl-log.md"),
+            stage_file(STEP_BLOCK.replace("{run}/brief.md", "{run}/phase-{P}-impl-log.md")),
         )
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
@@ -556,7 +566,7 @@ class ValidateConformanceTest(unittest.TestCase):
             'artifact: "{run}/grounding.md"',
             'artifact: "{run}/grounding.md"\n        template: references/g.template.md',
         )
-        self.write("workflows/stages/build.md", frontmatter("build") + "\n" + block)
+        self.write("workflows/stages/build.md", stage_file(block))
         self.write("workflows/stages/references/g.template.md", "# template\n")
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
@@ -615,7 +625,7 @@ class ValidateConformanceTest(unittest.TestCase):
         self.write("skills/demo-skill/references/g.template.md", "# template\n")
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
-        self.assertIn("3 workflow blocks", output)
+        self.assertIn("4 workflow blocks", output)
 
     def test_frontmatter_workflow_schema_violation_reported_at_line_one(self) -> None:
         broken = SKILL_WORKFLOW.replace("role: analyst", "role: analyst\n      rogue: true")
@@ -809,7 +819,23 @@ metadata:
         self.write("workflows/stages/demo.md", self.STAGE)
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
-        self.assertIn("1 stage sequences", output)
+        self.assertIn("2 stage sequences", output)
+
+    def test_an_orphaned_step_block_is_reported(self) -> None:
+        """A step contract above the first heading has no id a sequence could
+        name — skipping it silently would let a stage with contracts but
+        malformed headings bypass §9.4 as "declaring nothing"."""
+        self.write("workflows/stages/demo.md", frontmatter("demo") + "\n" + STEP_BLOCK)
+        self.assert_problem("step block without a `### <id> (<role>)` heading")
+
+    def test_a_second_gates_section_is_reported(self) -> None:
+        """Gates past the first section sit beyond the boundary the scan
+        returns — invisible to parity, so the file is refused instead."""
+        self.write(
+            "workflows/stages/gated.md",
+            self.GATED_STAGE + "\n## Gates\n\n- **extra-gate** — unseen.\n",
+        )
+        self.assert_problem("more than one `## Gates` section")
 
     def test_a_stage_declaring_members_without_a_sequence_is_reported(self) -> None:
         """§9.4 has every member-declaring stage carry the sequence: run-state
