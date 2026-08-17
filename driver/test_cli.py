@@ -92,6 +92,12 @@ class CliTest(unittest.TestCase):
             "a\u2028b",
             "demo.",
             "demo ",
+            "NUL",
+            "nul.md",
+            "COM1",
+            "com\u00b9",
+            "LPT\u00b3.log",
+            "aux:stream",
             "  ",
         ):
             with self.subTest(run_id=run_id):

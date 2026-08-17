@@ -1,0 +1,13 @@
+# INVALID on purpose — schema validation MUST reject this fixture:
+# - run.id is a superscript device alias: LPT\u00b9 resolves through the
+#   device namespace on Windows exactly as LPT1 does, so it can name no
+#   run directory (spec \u00a78.1, \u00a78.6)
+run:
+  id: "LPT\u00b9"
+  workflow: feature
+  protocol: "0.2"
+steps:
+  - id: brief-confirm
+    status: pending
+gates: []
+artifacts: []

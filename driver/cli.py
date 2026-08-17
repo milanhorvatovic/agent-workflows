@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import stat
 import sys
 from pathlib import Path, PureWindowsPath
@@ -56,6 +57,16 @@ def _entry_is_link(entry: os.DirEntry) -> bool:
     return bool(attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT)
 
 
+# Win32 resolves these basenames through the device namespace even with
+# an extension or stream suffix, superscript COM/LPT aliases included, so
+# none of them can name a run directory (the run-state schema refuses the
+# same set).
+_RESERVED_DEVICE = re.compile(
+    r"^(?:CON|PRN|AUX|NUL|COM[1-9\u00b9\u00b2\u00b3]|LPT[1-9\u00b9\u00b2\u00b3])(?:[.:]|$)",
+    re.IGNORECASE,
+)
+
+
 def _run_id(value: str) -> str:
     # Path safety only, not id-format validation — the run id joins under
     # {artifacts}/runs/, so control characters, separators, dot entries,
@@ -72,6 +83,7 @@ def _run_id(value: str) -> str:
         not value.strip()
         or value in {".", ".."}
         or value[-1] in ". "
+        or _RESERVED_DEVICE.match(value)
         or _has_control_characters(value)
         or "/" in value
         or "\\" in value
