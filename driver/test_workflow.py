@@ -1,0 +1,219 @@
+"""Unit tests for workflow.py."""
+
+from __future__ import annotations
+
+import tempfile
+import unittest
+from pathlib import Path
+
+from driver.workflow import Workflow, WorkflowError, load_workflow
+
+REPO = Path(__file__).resolve().parent.parent
+
+STAGE = """---
+name: demo
+description: A stage.
+---
+
+# Stage: demo
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    stage:
+      sequence:
+        - step: make
+        - gate: check
+          conditional: true
+```
+
+## Steps
+
+### make (analyst)
+
+Prose.
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    step:
+      role: analyst
+      inputs:
+        - artifact: "{run}/in.md"
+          required: false
+      output:
+        artifact: "{run}/out.md"
+        template: references/out.template.md
+      on:
+        PASS: check
+        FAIL: make
+```
+
+## Gates
+
+- **check** — a gate.
+"""
+
+WORKFLOW = """---
+name: demo
+description: A workflow.
+---
+
+# Workflow: demo
+
+1. [stages/demo.md](stages/demo.md)
+
+Prose that mentions [the stage](stages/demo.md) again.
+"""
+
+
+class SyntheticTreeTest(unittest.TestCase):
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.framework = Path(tmp.name)
+        self.write("workflows/demo.md", WORKFLOW)
+        self.write("workflows/stages/demo.md", STAGE)
+
+    def write(self, relative: str, content: str) -> None:
+        path = self.framework / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+
+    def test_loads_the_composed_declarations(self) -> None:
+        workflow = load_workflow(self.framework, "demo")
+        self.assertEqual(workflow.name, "demo")
+        (stage,) = workflow.stages
+        self.assertEqual(stage.member_ids(), ("make", "check"))
+        self.assertEqual([m.kind for m in stage.members], ["step", "gate"])
+        self.assertEqual([m.conditional for m in stage.members], [False, True])
+        step = workflow.step("make")
+        self.assertEqual(step.role, "analyst")
+        self.assertEqual(step.output_artifact, "{run}/out.md")
+        self.assertEqual(step.output_template, "references/out.template.md")
+        self.assertEqual(step.edges, {"PASS": "check", "FAIL": "make"})
+        (declared_input,) = step.inputs
+        self.assertEqual(declared_input.artifact, "{run}/in.md")
+        self.assertFalse(declared_input.required)
+
+    def test_repeated_stage_references_compose_once(self) -> None:
+        workflow = load_workflow(self.framework, "demo")
+        self.assertEqual(len(workflow.stages), 1)
+
+    def test_missing_workflow_is_an_error(self) -> None:
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "absent")
+        self.assertIn("cannot read workflow", str(caught.exception))
+
+    def test_a_traversal_shaped_name_is_refused(self) -> None:
+        with self.assertRaises(WorkflowError):
+            load_workflow(self.framework, "../demo")
+
+    def test_a_workflow_composing_no_stages_is_an_error(self) -> None:
+        self.write("workflows/empty.md", "---\nname: empty\n---\n\n# No refs\n")
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "empty")
+        self.assertIn("composes no stages", str(caught.exception))
+
+    def test_a_sequence_step_without_a_block_is_an_error(self) -> None:
+        self.write(
+            "workflows/stages/demo.md",
+            STAGE.replace("- step: make", "- step: make\n        - step: phantom"),
+        )
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "demo")
+        self.assertIn("'phantom' has no step block", str(caught.exception))
+
+    def test_a_step_block_outside_the_sequence_is_an_error(self) -> None:
+        extra = STAGE.replace(
+            "## Gates",
+            "### extra (analyst)\n\n```yaml\nmetadata:\n  workflow:\n"
+            '    protocol: "0.2"\n    step:\n      role: analyst\n      output:\n'
+            '        artifact: "{run}/x.md"\n```\n\n## Gates',
+        )
+        self.write("workflows/stages/demo.md", extra)
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "demo")
+        self.assertIn("'extra' is not in the sequence", str(caught.exception))
+
+    def test_a_stage_without_a_sequence_is_an_error(self) -> None:
+        headless = STAGE.replace("    stage:\n      sequence:\n        - step: make\n        - gate: check\n          conditional: true\n", "    trigger:\n      kind: manual\n")
+        self.write("workflows/stages/demo.md", headless)
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "demo")
+        self.assertIn("stage sequence blocks", str(caught.exception))
+
+    def test_a_duplicate_member_is_an_error(self) -> None:
+        self.write(
+            "workflows/stages/demo.md",
+            STAGE.replace("- step: make", "- step: make\n        - step: make"),
+        )
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "demo")
+        self.assertIn("names 'make' twice", str(caught.exception))
+
+    def test_an_edge_set_without_fail_is_an_error(self) -> None:
+        self.write(
+            "workflows/stages/demo.md",
+            STAGE.replace("        FAIL: make\n", ""),
+        )
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "demo")
+        self.assertIn("must route PASS and FAIL", str(caught.exception))
+
+    def test_an_input_defaults_to_required_when_unstated(self) -> None:
+        self.write(
+            "workflows/stages/demo.md",
+            STAGE.replace('          required: false\n', ""),
+        )
+        workflow = load_workflow(self.framework, "demo")
+        self.assertTrue(workflow.step("make").inputs[0].required)
+
+
+class RepositoryTreeTest(unittest.TestCase):
+    """The three shipped workflows are the canonical declarations this module
+    must read; the counts pin them to the spec's own composition (§6.1) and
+    the §10 example's 22 records."""
+
+    def test_feature_composes_six_stages_and_twenty_two_members(self) -> None:
+        workflow = load_workflow(REPO, "feature")
+        self.assertEqual(
+            [stage.name for stage in workflow.stages],
+            ["intake", "ideation", "planning", "implementation", "review", "delivery"],
+        )
+        self.assertEqual(len(workflow.members()), 22)
+
+    def test_bugfix_skips_ideation(self) -> None:
+        workflow = load_workflow(REPO, "bugfix")
+        self.assertEqual(
+            [stage.name for stage in workflow.stages],
+            ["intake", "planning", "implementation", "review", "delivery"],
+        )
+
+    def test_plan_ends_at_planning(self) -> None:
+        workflow = load_workflow(REPO, "plan")
+        self.assertEqual(
+            [stage.name for stage in workflow.stages],
+            ["intake", "ideation", "planning"],
+        )
+
+    def test_the_planning_record_order_is_declared_inverted(self) -> None:
+        workflow = load_workflow(REPO, "plan")
+        planning = workflow.stages[-1]
+        self.assertEqual(
+            planning.member_ids(),
+            ("plan-create", "plan-revise", "plan-validate", "plan-approval"),
+        )
+
+    def test_every_sequence_step_has_a_declaration(self) -> None:
+        workflow = load_workflow(REPO, "feature")
+        for stage, member in workflow.members():
+            if member.kind == "step":
+                with self.subTest(step=member.id):
+                    self.assertIsNotNone(workflow.step(member.id))
+
+
+if __name__ == "__main__":
+    unittest.main()
