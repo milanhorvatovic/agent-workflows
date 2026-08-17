@@ -2,8 +2,8 @@
 # - imports[0].artifact carries a colon: on NTFS, `brief.md::$DATA`
 #   aliases the file's default data stream, so a copy could overwrite
 #   brief.md while recording a different artifact path — import-path
-#   segments therefore carry no colon at all, unlike run ids, whose
-#   colon-after-first-character rule serves ISO timestamps (spec §8.6)
+#   segments therefore carry no colon at all, the same ban run ids and
+#   source ids carry (spec §8.6)
 run:
   id: 2026-08-16-feature-slug
   workflow: feature

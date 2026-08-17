@@ -1,0 +1,19 @@
+# INVALID on purpose — schema validation MUST reject this fixture:
+# - imports[0].from carries a backslash: on Windows that turns one
+#   source-run id into a nested path component, defeating the source
+#   confinement §8.6 requires — and the exclusion is pinned here because
+#   an escaping slip once silently dropped it from the pattern
+run:
+  id: 2026-08-16-feature-slug
+  workflow: feature
+  protocol: "0.2"
+steps:
+  - id: brief-confirm
+    status: skipped
+gates: []
+artifacts:
+  - "{run}/brief.md"
+imports:
+  - artifact: "{run}/brief.md"
+    from: "earlier\\run"
+    at: "2026-08-16T09:00:00Z"
