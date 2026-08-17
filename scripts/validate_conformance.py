@@ -627,6 +627,18 @@ def manifest_problems(at: str, data: Any, outputs: dict[str, str]) -> list[str]:
 GATE_HEADING = re.compile(r"^- \*\*(?P<id>[a-z][a-z0-9-]*)\*\*", re.MULTILINE)
 
 
+def gates_section(text: str) -> str:
+    """The `## Gates` section's own text, bounded at the next level-2
+    heading: stages place `## Notes` after it, and a lowercase bold bullet
+    there must not read as a gate."""
+    parts = text.split("## Gates", 1)
+    if len(parts) != 2:
+        return ""
+    tail = parts[1]
+    boundary = tail.find("\n## ")
+    return tail if boundary == -1 else tail[:boundary]
+
+
 def gate_scopes(root: Path) -> dict[str, bool]:
     """Every gate a stage declares, mapped to whether a phase repeats it.
 
@@ -649,10 +661,8 @@ def gate_scopes(root: Path) -> dict[str, bool]:
                 if step_of(block) is not None
             )
         )
-        section = text.split("## Gates", 1)
-        if len(section) == 2:
-            for match in GATE_HEADING.finditer(section[1]):
-                found[match.group("id")] = phased
+        for match in GATE_HEADING.finditer(gates_section(text)):
+            found[match.group("id")] = phased
     return found
 
 
@@ -945,12 +955,7 @@ def check_stage_sequences(root: Path) -> tuple[int, list[str]]:
         # identical headings, two identical gate bullets — must surface as
         # the duplicate it is, not be erased before the comparison.
         step_list = [m.group("id") for m in STAGE_STEP_HEADING.finditer(text)]
-        section = text.split("## Gates", 1)
-        gate_list = (
-            [m.group("id") for m in GATE_HEADING.finditer(section[1])]
-            if len(section) == 2
-            else []
-        )
+        gate_list = [m.group("id") for m in GATE_HEADING.finditer(gates_section(text))]
         for kind, names in (("step", step_list), ("gate", gate_list)):
             for name in sorted({x for x in names if names.count(x) > 1}):
                 problems.append(
@@ -995,6 +1000,12 @@ def check_stage_sequences(root: Path) -> tuple[int, list[str]]:
                     f"{at}: sequence names {kind} `{name}`, which the stage does "
                     f"not declare — spec §9.4 sequences only declared members"
                 )
+            # A malformed entry could have been any member, so with one in
+            # the block the missing-member direction would cascade a parity
+            # error onto every name the broken entry might have carried —
+            # the schema already faults the entry, and that is the report.
+            if malformed:
+                continue
             for name in sorted(declared - set(named)):
                 problems.append(
                     f"{at}: {kind} `{name}` is missing from the sequence — spec "

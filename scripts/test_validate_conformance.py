@@ -841,6 +841,34 @@ metadata:
         )
         self.assert_problem("sequence names step `phantom`, which the stage does not declare")
 
+    def test_a_bold_bullet_in_notes_is_not_a_gate(self) -> None:
+        """The gate scan is bounded to the Gates section: stages place
+        `## Notes` after it, and a lowercase bold bullet there must not make
+        a complete sequence fail parity."""
+        self.write(
+            "workflows/stages/gated.md",
+            self.GATED_STAGE
+            + "\n## Notes\n\n- **run-state** — a bold term, not a gate.\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_malformed_entry_does_not_cascade_parity_errors(self) -> None:
+        """A both-kinds entry could have been any member, so the schema error
+        it already earns must not be joined by a missing-member report for
+        every name the broken entry might have carried."""
+        self.write(
+            "workflows/stages/gated.md",
+            self.GATED_STAGE.replace(
+                "        - gate: demo-approval\n",
+                "        - gate: demo-approval\n          step: also-a-step\n",
+            ),
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 1, output)
+        self.assertIn("[stage]", output)
+        self.assertNotIn("missing from the sequence", output)
+
     def test_a_member_declared_twice_at_the_source_is_reported(self) -> None:
         """Sets would erase a doubled heading before the parity comparison —
         the source declares the member twice, and population can carry only
