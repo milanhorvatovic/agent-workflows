@@ -895,6 +895,19 @@ metadata:
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
 
+    def test_a_longer_fence_masks_its_inner_fences_whole(self) -> None:
+        """A four-backtick wrapper demonstrating a triple-backtick block
+        closes only at a run at least as long as its opener — the inner
+        fence must not end the mask and expose the example's tail."""
+        self.write(
+            "workflows/stages/gated.md",
+            self.GATED_STAGE + "\n## Notes\n\nAn example of a fenced block:\n\n"
+            "````markdown\nInner fence:\n```\ncode\n```\n## Gates\n\n"
+            "- **fake-gate** — still inside the example.\n````\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
     def test_a_step_block_under_a_malformed_heading_is_reported(self) -> None:
         """After one valid heading, a block under `### second` (no role)
         would silently attribute to the previous step and its member could

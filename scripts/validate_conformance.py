@@ -627,7 +627,11 @@ def manifest_problems(at: str, data: Any, outputs: dict[str, str]) -> list[str]:
 GATE_HEADING = re.compile(r"^- \*\*(?P<id>[a-z][a-z0-9-]*)\*\*", re.MULTILINE)
 
 
-FENCE = re.compile(r"^```.*?^```[ \t]*$", re.DOTALL | re.MULTILINE)
+# The closing run must be at least as long as the opener (CommonMark): a
+# four-backtick wrapper demonstrating a triple-backtick block would
+# otherwise close at the inner fence and leave the example's tail
+# unmasked.
+FENCE = re.compile(r"^(?P<fence>```+).*?^(?P=fence)`*[ \t]*$", re.DOTALL | re.MULTILINE)
 GENERIC_H3 = re.compile(r"^### ", re.MULTILINE)
 GATES_HEADING = re.compile(r"^## Gates[ \t]*$", re.MULTILINE)
 
