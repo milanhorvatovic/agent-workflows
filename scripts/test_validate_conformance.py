@@ -994,6 +994,25 @@ metadata:
         )
         self.assert_problem("import {run}/b.md arrives without {run}/a.md")
 
+    def test_closure_reads_an_omitted_required_as_required(self) -> None:
+        """The step schema defaults `required` to true, so an input that
+        omits the field is a prerequisite — reading absence as optional
+        would wave the closure past it."""
+        self.write(
+            "workflows/stages/chained.md",
+            self.CHAINED_STAGE.replace(
+                '        - artifact: "{run}/a.md"\n          required: true\n',
+                '        - artifact: "{run}/a.md"\n',
+            ),
+        )
+        self.write_run_state(
+            "  - id: maker\n    status: pending\n  - id: thing\n    status: skipped\n",
+            '\n  - "{run}/b.md"',
+            extra="imports:\n  - artifact: \"{run}/b.md\"\n    from: earlier-run\n"
+            "    at: '2026-08-16T09:00:00Z'\n",
+        )
+        self.assert_problem("import {run}/b.md arrives without {run}/a.md")
+
     def test_imports_from_several_source_runs_are_reported(self) -> None:
         """§8.6 has a run import from one source run: artifacts drawn from
         several never descended from one another, and the rewritten headers

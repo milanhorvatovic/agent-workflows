@@ -17,9 +17,15 @@ from .config import Config, ConfigError, load_config
 
 
 def _has_control_characters(value: str) -> bool:
-    # Newlines would split one name into several output records; the rest
-    # of C0 (NUL included) and DEL break paths or terminals the same way.
-    return any(character < " " or character == "\x7f" for character in value)
+    # Newlines would split one name into several output records; the rest of
+    # C0 (NUL included), DEL, and C1 break paths or terminals the same way,
+    # and U+2028/U+2029 are line breaks to Unicode-aware tooling.
+    return any(
+        character < " "
+        or "\x7f" <= character <= "\x9f"
+        or character in "\u2028\u2029"
+        for character in value
+    )
 
 
 def _is_link(path: Path) -> bool:
@@ -58,9 +64,14 @@ def _run_id(value: str) -> str:
     # rejecting every colon, which would refuse POSIX-legal ids such as
     # ISO timestamps. What a well-formed id looks like is the run-state
     # schema's business, enforced where run state is read, not here.
+    # A trailing dot or space is stripped by Windows normalization, so
+    # `demo.` and `demo` would resolve to one directory while naming two —
+    # an alias the state schema's directory-identity rules refuse, and the
+    # argument guard must refuse before any path is formed.
     if (
         not value.strip()
         or value in {".", ".."}
+        or value[-1] in ". "
         or _has_control_characters(value)
         or "/" in value
         or "\\" in value

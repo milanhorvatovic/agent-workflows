@@ -88,6 +88,10 @@ class CliTest(unittest.TestCase):
             "a\x00b",
             "a\nb",
             "a\rb",
+            "a\x85b",
+            "a\u2028b",
+            "demo.",
+            "demo ",
             "  ",
         ):
             with self.subTest(run_id=run_id):

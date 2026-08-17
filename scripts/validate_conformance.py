@@ -837,7 +837,11 @@ def import_record_problems(
                     resolved
                     for entry in items_of(step.get("inputs"))
                     if isinstance(entry, dict)
-                    and entry.get("required") is True
+                    # The step schema defaults `required` to true, so only an
+                    # explicit false is optional — reading absence as optional
+                    # would wave the closure past a prerequisite the contract
+                    # requires.
+                    and entry.get("required") is not False
                     and isinstance(entry.get("artifact"), str)
                     and "{P}" not in entry["artifact"]
                     for resolved in (entry["artifact"].replace("{N}", artifact_phase),)
