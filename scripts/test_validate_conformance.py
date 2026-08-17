@@ -883,6 +883,33 @@ metadata:
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
 
+    def test_a_fenced_gates_example_is_not_a_second_section(self) -> None:
+        """A `## Gates` line inside a fenced example is illustration: the
+        raw scan would count it as a real section and reject the stage as
+        carrying two, or read its bullets into parity."""
+        self.write(
+            "workflows/stages/gated.md",
+            self.GATED_STAGE + "\n## Notes\n\nAn example:\n\n"
+            "```markdown\n## Gates\n\n- **fake-gate** — an example bullet.\n```\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_step_block_under_a_malformed_heading_is_reported(self) -> None:
+        """After one valid heading, a block under `### second` (no role)
+        would silently attribute to the previous step and its member could
+        vanish from the sequence — the nearest heading above a step block
+        must itself be well-formed."""
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE
+            + "\n### second\n\nProse.\n\n"
+            + "```yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n"
+            + "    step:\n      role: analyst\n      output:\n"
+            + "        artifact: \"{run}/second.md\"\n```\n",
+        )
+        self.assert_problem("under a heading that does not match")
+
     def test_a_bold_bullet_in_notes_is_not_a_gate(self) -> None:
         """The gate scan is bounded to the Gates section: stages place
         `## Notes` after it, and a lowercase bold bullet there must not make

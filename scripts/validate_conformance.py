@@ -627,14 +627,30 @@ def manifest_problems(at: str, data: Any, outputs: dict[str, str]) -> list[str]:
 GATE_HEADING = re.compile(r"^- \*\*(?P<id>[a-z][a-z0-9-]*)\*\*", re.MULTILINE)
 
 
+FENCE = re.compile(r"^```.*?^```[ \t]*$", re.DOTALL | re.MULTILINE)
+GENERIC_H3 = re.compile(r"^### ", re.MULTILINE)
 GATES_HEADING = re.compile(r"^## Gates[ \t]*$", re.MULTILINE)
+
+
+def mask_fences(text: str) -> str:
+    """Fenced code blanked to spaces with newlines kept: an exact `## Gates`
+    or a `### <id> (<role>)` inside an example must not read as structure,
+    and preserving every offset and line number is what lets the scans that
+    follow keep pointing into the raw text."""
+    def blank(match: re.Match) -> str:
+        return "".join(c if c == "\n" else " " for c in match.group(0))
+
+    return FENCE.sub(blank, text)
 
 
 def gates_section(text: str) -> str:
     """The `## Gates` section's own text — from the exact level-2 heading
     (an inline mention or a `### Gates` would otherwise pose as the section
     start) to the next level-2 heading, since stages place `## Notes` after
-    it and a lowercase bold bullet there must not read as a gate."""
+    it and a lowercase bold bullet there must not read as a gate. Fenced
+    code is masked first, so an example carrying the heading is not a
+    second section and its bullets are not gates."""
+    text = mask_fences(text)
     match = GATES_HEADING.search(text)
     if match is None:
         return ""
@@ -955,10 +971,13 @@ def check_stage_sequences(root: Path) -> tuple[int, list[str]]:
             continue
         rel = path.relative_to(root).as_posix()
         text = path.read_text(encoding="utf-8")
+        # Structure scans run on the masked text: a heading or bullet inside
+        # a fenced example is illustration, not declaration.
+        masked = mask_fences(text)
         # A second Gates section would sit past the boundary gates_section
         # returns, its every gate invisible to parity and gate scoping — an
         # incomplete sequence would pass on the strength of what nobody read.
-        if len(GATES_HEADING.findall(text)) > 1:
+        if len(GATES_HEADING.findall(masked)) > 1:
             problems.append(
                 f"{rel}: more than one `## Gates` section — gates past the "
                 f"first are invisible to the sequence checks"
@@ -966,12 +985,15 @@ def check_stage_sequences(root: Path) -> tuple[int, list[str]]:
         # Lists, not sets: a member declared twice at the source — two
         # identical headings, two identical gate bullets — must surface as
         # the duplicate it is, not be erased before the comparison.
-        step_list = [m.group("id") for m in STAGE_STEP_HEADING.finditer(text)]
+        step_list = [m.group("id") for m in STAGE_STEP_HEADING.finditer(masked)]
         gate_list = [m.group("id") for m in GATE_HEADING.finditer(gates_section(text))]
-        # A step-contract block above the first heading has no id a sequence
-        # could name: silently skipping it would let a stage with contracts
-        # but malformed headings bypass §9.4 as "declaring nothing".
-        heading_offsets = [m.start() for m in STAGE_STEP_HEADING.finditer(text)]
+        # A step-contract block owes the well-formed heading nearest above it:
+        # with none at all it has no id a sequence could name, and under a
+        # malformed one — `### second` without the role — it would silently
+        # attribute to the previous valid step and its member could vanish
+        # from the sequence while conformance passed.
+        heading_offsets = [m.start() for m in STAGE_STEP_HEADING.finditer(masked)]
+        h3_offsets = [m.start() for m in GENERIC_H3.finditer(masked)]
         step_blocks = 0
         for block in yaml_blocks(text, rel, []):
             workflow = workflow_value(block.data)
@@ -980,10 +1002,18 @@ def check_stage_sequences(root: Path) -> tuple[int, list[str]]:
             step_blocks += 1
             line = int(block.at.rsplit(":", 1)[1])
             offset = sum(len(x) + 1 for x in text.splitlines(keepends=False)[: line - 1])
-            if not any(start < offset for start in heading_offsets):
+            nearest_h3 = max((s for s in h3_offsets if s < offset), default=None)
+            nearest_valid = max((s for s in heading_offsets if s < offset), default=None)
+            if nearest_h3 is None:
                 problems.append(
                     f"{block.at}: step block without a `### <id> (<role>)` heading "
                     f"above it — no sequence can name what has no id (spec §9.4)"
+                )
+            elif nearest_valid is None or nearest_valid < nearest_h3:
+                problems.append(
+                    f"{block.at}: step block under a heading that does not match "
+                    f"`### <id> (<role>)` — it would attribute to the previous "
+                    f"step, and no sequence can name it (spec §9.4)"
                 )
         for kind, names in (("step", step_list), ("gate", gate_list)):
             for name in sorted({x for x in names if names.count(x) > 1}):
