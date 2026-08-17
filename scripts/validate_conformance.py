@@ -775,9 +775,14 @@ def import_record_problems(
     for _, step in contracts.values():
         output = output_artifact(step)
         if isinstance(output, str):
-            expression = "([1-9][0-9]*)".join(
-                re.escape(part) for part in output.split("{N}")
-            )
+            # Every `{N}` in one declaration is the same executing phase, so
+            # the first occurrence captures and the rest backreference it — a
+            # fresh group per occurrence would match impossible paths like
+            # `phase-1/report-2.md` and misattribute them to phase 1.
+            parts = [re.escape(part) for part in output.split("{N}")]
+            expression = parts[0]
+            for index, part in enumerate(parts[1:]):
+                expression += ("([1-9][0-9]*)" if index == 0 else "\\1") + part
             templates.append((re.compile(expression), step))
 
     def producing(path: str) -> list[tuple[Any, str]]:

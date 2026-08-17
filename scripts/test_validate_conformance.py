@@ -1058,6 +1058,59 @@ metadata:
         )
         self.assert_problem("import {run}/nobody.md matches no step output")
 
+    TWICE_PHASED_STAGE = """---
+name: twicephased
+description: A stage whose step output names the phase twice.
+---
+
+# Stage: twicephased
+
+### twicephased (planner)
+
+Prose.
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    step:
+      role: planner
+      inputs:
+        - artifact: "{run}/a.md"
+          required: true
+      output:
+        artifact: "{run}/phase-{N}-of-{N}.md"
+```
+"""
+
+    def test_every_phase_placeholder_in_one_template_is_one_phase(self) -> None:
+        """Two `{N}`s in a declaration denote one executing phase, so a path
+        pairing different numbers matches no step output — a fresh capture
+        per occurrence would accept it and misattribute the phase."""
+        self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
+        self.write("workflows/stages/twicephased.md", self.TWICE_PHASED_STAGE)
+        self.write_run_state(
+            "  - id: twicephased\n    status: skipped\n",
+            '\n  - "{run}/phase-1-of-2.md"',
+            extra="imports:\n  - artifact: \"{run}/phase-1-of-2.md\"\n"
+            "    from: earlier-run\n    at: '2026-08-16T09:00:00Z'\n",
+        )
+        self.assert_problem("import {run}/phase-1-of-2.md matches no step output")
+
+    def test_a_consistent_doubled_phase_template_still_matches(self) -> None:
+        self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
+        self.write("workflows/stages/twicephased.md", self.TWICE_PHASED_STAGE)
+        self.write_run_state(
+            "  - id: twicephased\n    status: skipped\n",
+            '\n  - "{run}/a.md"\n  - "{run}/phase-2-of-2.md"',
+            extra="imports:\n  - artifact: \"{run}/a.md\"\n"
+            "    from: earlier-run\n    at: '2026-08-16T09:00:00Z'\n"
+            "  - artifact: \"{run}/phase-2-of-2.md\"\n"
+            "    from: earlier-run\n    at: '2026-08-16T09:00:00Z'\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
     def test_a_phase_one_import_still_binds_closure_in_a_phase_two_state(self) -> None:
         """Lineage persists, so a phase-2 document may carry phase-1 imports.
         Outputs are matched as templates — resolving `{N}` at `run.phase`
