@@ -167,8 +167,8 @@
       "properties": {
         "artifact": {
           "type": "string",
-          "pattern": "^\\{run\\}(?:/(?!\\.{1,2}(?:/|$))(?![A-Za-z]:)[^/\\\\\u0000-\u001f\u007f-\u009f]+(?<![. ]))+(?![\\s\\S])",
-          "description": "The `{run}`-relative path of the imported copy — the same relative path it had in the source run, normalized: anchored at `{run}/`, no `.` or `..` segments, no empty segments, no backslashes, no control characters, and no segment shaped like a Windows drive prefix, which would anchor a join elsewhere instead of descending (spec section 8.6). The pattern is the schema's half of path confinement; refusing link traversal is the executor's, being invisible to a document."
+          "pattern": "^\\{run\\}(?:/(?!\\.{1,2}(?:/|$))[^/\\\\:\u0000-\u001f\u007f-\u009f]+(?<![. ]))+(?![\\s\\S])",
+          "description": "The `{run}`-relative path of the imported copy — the same relative path it had in the source run, normalized: anchored at `{run}/`, no `.` or `..` segments, no empty segments, no backslashes, no control characters, no trailing dots or spaces, and no colon anywhere — unlike a run id's, since on NTFS `name:stream` aliases an alternate data stream and `brief.md::$DATA` would overwrite brief.md while recording a different path (spec section 8.6). The pattern is the schema's half of path confinement; refusing link traversal is the executor's, being invisible to a document."
         },
         "from": {
           "type": "string",
