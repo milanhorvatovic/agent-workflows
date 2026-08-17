@@ -1028,6 +1028,22 @@ metadata:
         )
         self.assert_problem("imports name 2 source runs (run-one, run-two)")
 
+    def test_an_unresolvable_workflow_is_reported_not_defaulted(self) -> None:
+        """A well-formed `run.workflow` that names no workflow file must not
+        fall back to every stage contract: a typo such as `featur` would
+        otherwise have its imports accepted against producers the run never
+        composes."""
+        self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
+        self.write_run_state(
+            "  - id: maker\n    status: skipped\n",
+            '\n  - "{run}/a.md"',
+            run="  workflow: featur\n",
+            extra="imports:\n  - artifact: \"{run}/a.md\"\n    from: earlier-run\n"
+            "    at: '2026-08-16T09:00:00Z'\n",
+        )
+        output = self.assert_problem("run.workflow `featur` names no workflow")
+        self.assertNotIn("matches no step output", output)
+
     def test_an_import_matching_no_step_output_is_reported(self) -> None:
         """§8.2's manifest lists what steps declare, so an import no composed
         step's output template matches is an artifact no conforming source

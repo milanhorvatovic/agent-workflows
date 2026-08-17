@@ -12,7 +12,7 @@ import os
 import re
 import stat
 import sys
-from pathlib import Path, PureWindowsPath
+from pathlib import Path
 
 from .config import Config, ConfigError, load_config
 
@@ -70,11 +70,13 @@ _RESERVED_DEVICE = re.compile(
 def _run_id(value: str) -> str:
     # Path safety only, not id-format validation — the run id joins under
     # {artifacts}/runs/, so control characters, separators, dot entries,
-    # absolute paths, and Windows drive prefixes would break or escape it.
-    # Drive prefixes are detected with PureWindowsPath rather than by
-    # rejecting every colon, which would refuse POSIX-legal ids such as
-    # ISO timestamps. What a well-formed id looks like is the run-state
-    # schema's business, enforced where run state is read, not here.
+    # absolute paths, and colons would break or escape it. Every colon is
+    # refused — an NTFS `name:stream` is a stream rather than a child
+    # directory, and the ban covers drive prefixes with it — which also
+    # retires the ISO-timestamp allowance the first cut of this guard made:
+    # an id only POSIX can create is a state file only POSIX can share, and
+    # the run-state schema now refuses the same set. What else a well-formed
+    # id looks like is that schema's business, enforced where state is read.
     # A trailing dot or space is stripped by Windows normalization, so
     # `demo.` and `demo` would resolve to one directory while naming two —
     # an alias the state schema's directory-identity rules refuse, and the
@@ -87,7 +89,7 @@ def _run_id(value: str) -> str:
         or _has_control_characters(value)
         or "/" in value
         or "\\" in value
-        or PureWindowsPath(value).drive
+        or ":" in value
         or Path(value).is_absolute()
     ):
         raise argparse.ArgumentTypeError(f"not a run id: {value!r}")

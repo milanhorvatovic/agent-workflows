@@ -892,23 +892,31 @@ def check_manifests(root: Path) -> tuple[int, list[str]]:
     problems: list[str] = []
     checked = 0
 
-    def composed(data: Any) -> dict[str, tuple[str, Any]]:
+    def composed(at: str, data: Any) -> tuple[dict[str, tuple[str, Any]], list[str]]:
         """The contracts scoped to the document's own workflow: §8.6 bounds
         imports to step outputs of the composed workflow, so a `plan` state
-        must not find a producer in a delivery stage it never composes. An
-        unresolvable workflow filters nothing — best effort over silence,
-        and a malformed document (not a mapping at all) is the schema
-        check's finding, never a crash here."""
+        must not find a producer in a delivery stage it never composes. A
+        malformed document (no mapping, no string workflow) is the schema
+        check's finding and filters nothing — but a well-formed name that
+        resolves to no workflow file is a defect of its own, reported here:
+        falling back to every contract would accept a typo's imports against
+        producers the run never composes."""
         run = data.get("run") if isinstance(data, dict) else None
         workflow = run.get("workflow") if isinstance(run, dict) else None
+        if not isinstance(workflow, str) or not workflow:
+            return contracts, []
         stages = composed_stage_files(root, workflow)
         if stages is None:
-            return contracts
+            return {}, [
+                f"{at}: run.workflow `{workflow}` names no workflow that "
+                f"composes stages — its imports cannot be checked against any "
+                f"composed contract"
+            ]
         return {
             step_id: entry
             for step_id, entry in contracts.items()
             if entry[0].rsplit(":", 1)[0] in stages
-        }
+        }, []
     for kind, path in fixture_paths(root, RUN_STATE):
         if kind != "valid" or not path.is_file():
             continue
@@ -921,7 +929,11 @@ def check_manifests(root: Path) -> tuple[int, list[str]]:
         problems += manifest_problems(rel, data, outputs)
         problems += gate_record_problems(rel, data, gates)
         problems += duplicate_record_problems(rel, data)
-        problems += import_record_problems(rel, data, composed(data))
+        if isinstance(data, dict) and data.get("imports"):
+            scoped, scope_problems = composed(rel, data)
+            problems += scope_problems
+            if not scope_problems:
+                problems += import_record_problems(rel, data, scoped)
     spec = root / SPEC
     if spec.is_file():
         for block in yaml_blocks(spec.read_text(encoding="utf-8"), SPEC.as_posix(), []):
@@ -930,7 +942,11 @@ def check_manifests(root: Path) -> tuple[int, list[str]]:
                 problems += manifest_problems(block.at, block.data, outputs)
                 problems += gate_record_problems(block.at, block.data, gates)
                 problems += duplicate_record_problems(block.at, block.data)
-                problems += import_record_problems(block.at, block.data, composed(block.data))
+                if isinstance(block.data, dict) and block.data.get("imports"):
+                    scoped, scope_problems = composed(block.at, block.data)
+                    problems += scope_problems
+                    if not scope_problems:
+                        problems += import_record_problems(block.at, block.data, scoped)
     return checked, problems
 
 

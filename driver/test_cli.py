@@ -106,12 +106,17 @@ class CliTest(unittest.TestCase):
                         cli.main(["resume", run_id, "--config", str(self.config_path)])
                 self.assertEqual(caught.exception.code, 2)
 
-    def test_resume_accepts_a_posix_legal_colon_in_a_run_id(self) -> None:
-        code, _, err = self.invoke(
-            "resume", "2026-08-17T09:58:06-fix", "--config", str(self.config_path)
-        )
-        self.assertEqual(code, 1)
-        self.assertIn("resume is not implemented yet", err)
+    def test_resume_refuses_any_colon_in_a_run_id(self) -> None:
+        # Every colon is refused — an NTFS `name:stream` is a stream rather
+        # than a child directory — which retires the ISO-timestamp allowance
+        # the first cut of this guard made: an id only POSIX can create is a
+        # state file only POSIX can share.
+        for run_id in ("2026-08-17T09:58:06-fix", "demo:stream"):
+            with self.subTest(run_id=run_id):
+                with contextlib.redirect_stderr(io.StringIO()):
+                    with self.assertRaises(SystemExit) as caught:
+                        cli.main(["resume", run_id, "--config", str(self.config_path)])
+                self.assertEqual(caught.exception.code, 2)
 
     def test_status_reports_an_unreadable_runs_directory(self) -> None:
         (self.base / "runs").mkdir()
