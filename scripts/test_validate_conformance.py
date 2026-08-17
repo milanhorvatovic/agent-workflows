@@ -1183,6 +1183,16 @@ metadata:
       output:
         artifact: "{run}/b.md"
 ```
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    stage:
+      sequence:
+        - step: maker
+        - step: thing
+```
 """
 
     def test_an_import_set_closed_over_derivation_passes(self) -> None:
@@ -1298,6 +1308,15 @@ metadata:
           required: true
       output:
         artifact: "{run}/phase-{N}-of-{N}.md"
+```
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    stage:
+      sequence:
+        - step: twicephased
 ```
 """
 
