@@ -138,6 +138,19 @@ RUN_STATE_SCHEMA = {
                 },
             },
         },
+        "imports": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["artifact", "from", "at"],
+                "properties": {
+                    "artifact": {"type": "string"},
+                    "from": {"type": "string"},
+                    "at": {"type": "string", "format": "date-time"},
+                },
+            },
+        },
     },
 }
 
@@ -765,10 +778,13 @@ metadata:
 ```
 """
 
-    def write_run_state(self, steps: str, artifacts: str, run: str = "") -> None:
+    def write_run_state(
+        self, steps: str, artifacts: str, run: str = "", extra: str = ""
+    ) -> None:
         self.write(
             "protocol/schemas/examples/run-state.valid.yaml",
-            f"run:\n  id: demo\n{run}steps:\n{steps}gates: []\nartifacts:{artifacts}\n",
+            f"run:\n  id: demo\n{run}steps:\n{steps}gates: []\n"
+            f"artifacts:{artifacts}\n{extra}",
         )
 
     def test_done_step_output_missing_from_the_manifest_is_reported(self) -> None:
@@ -854,6 +870,39 @@ metadata:
             ],
         }
         self.assertEqual(list(validator.iter_errors(doc)), [])
+
+    def test_a_manifested_import_from_another_run_passes(self) -> None:
+        self.write_run_state(
+            "  - id: thing\n    status: skipped\n",
+            '\n  - "{run}/a.md"',
+            extra="imports:\n  - artifact: \"{run}/a.md\"\n    from: earlier-run\n"
+            "    at: '2026-08-16T09:00:00Z'\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_an_import_missing_from_the_manifest_is_reported(self) -> None:
+        """§8.6 adds every copy to `artifacts`; an import the manifest omits is
+        invisible to every reader that resolves against it. Cross-field, so it
+        lives here rather than in the schema."""
+        self.write_run_state(
+            "  - id: thing\n    status: skipped\n",
+            " []",
+            extra="imports:\n  - artifact: \"{run}/a.md\"\n    from: earlier-run\n"
+            "    at: '2026-08-16T09:00:00Z'\n",
+        )
+        self.assert_problem("import {run}/a.md is not in the manifest")
+
+    def test_an_import_sourced_from_this_run_is_reported(self) -> None:
+        """§8.6 copies from an earlier run's directory, so a run importing from
+        itself records lineage that leads nowhere."""
+        self.write_run_state(
+            "  - id: thing\n    status: skipped\n",
+            '\n  - "{run}/a.md"',
+            extra="imports:\n  - artifact: \"{run}/a.md\"\n    from: demo\n"
+            "    at: '2026-08-16T09:00:00Z'\n",
+        )
+        self.assert_problem("names this run (`demo`) as its source")
 
     def test_repeated_gate_entries_are_not_duplicates(self) -> None:
         """`gates` carries one entry per decision, so a gate decided twice

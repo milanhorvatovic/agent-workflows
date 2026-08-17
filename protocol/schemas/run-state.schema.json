@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "run-state.schema.json",
   "title": "agent-workflows run state (protocol 0.2)",
-  "description": "Validates `{run}/workflow-state.yaml` \u2014 the runtime state with exactly one writer, the executor: run identity and risk, per-step status, the gate instrumentation record, optional enrichment, and the artifact manifest (spec section 10). The format is protocol-owned, so unknown keys are rejected.",
+  "description": "Validates `{run}/workflow-state.yaml` \u2014 the runtime state with exactly one writer, the executor: run identity and risk, per-step status, the gate instrumentation record, optional enrichment, the artifact manifest, and the import lineage record (spec section 10). The format is protocol-owned, so unknown keys are rejected.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -102,11 +102,19 @@
       ]
     },
     "artifacts": {
-      "description": "The run manifest: artifacts the run has produced, kept current by the executor (spec section 8.2).",
+      "description": "The run manifest: artifacts the run has produced or imported, kept current by the executor (spec sections 8.2 and 8.6).",
       "type": "array",
       "items": {
         "type": "string",
         "minLength": 1
+      }
+    },
+    "imports": {
+      "description": "The import lineage record: one entry per artifact copied in from an earlier run when this run was created (spec section 8.6). Present exactly where the run imported and absent otherwise — `minItems` is what rules out an empty list standing in for absence. Every path named here is also in `artifacts`: the manifest is what readers resolve against, and this list carries where the copies came from.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/importRecord"
       }
     }
   },
@@ -145,6 +153,32 @@
             "minLength": 1
           },
           "description": "Accumulated stall or drift signals (spec sections 9.2 and 10)."
+        }
+      }
+    },
+    "importRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact",
+        "from",
+        "at"
+      ],
+      "properties": {
+        "artifact": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The `{run}`-relative path of the imported copy — the same relative path it had in the source run (spec section 8.6)."
+        },
+        "from": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The source run's id (spec section 8.6). Never this run's own — a semantic the conformance checks hold, the schema seeing one field at a time."
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the copy landed — at run creation, before any step runs (spec section 8.6)."
         }
       }
     },

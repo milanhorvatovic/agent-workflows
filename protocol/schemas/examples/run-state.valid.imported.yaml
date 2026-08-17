@@ -1,0 +1,95 @@
+# Starter: a feature run executing a plan run's deliverable (spec §8.6).
+# At creation this run imported the plan run's six artifacts — copies at the
+# same {run}-relative paths, `Run` headers rewritten to this run's id, listed
+# in the manifest, lineage in `imports`. The steps that would have produced
+# them are populated `skipped`: nothing left to produce, though a `revise`
+# still reaches them (spec §10). Gates are never satisfied by an import —
+# `intake-approval` read the imported brief's Routing section and accepted a
+# class for THIS run, `plan-approval` decided on the imported plan, and both
+# outcomes are recorded here, in the run that took them (spec §7, §8.6).
+run:
+  id: 2026-08-16-feature-slug
+  workflow: feature
+  risk: R2
+  risk_rationale: "single module, no security surface, one phase"
+  protocol: "0.2"
+steps:
+  - id: brief-confirm # its output arrived by import
+    status: skipped
+  - id: clarifying-question # conditional; it never fired
+    status: skipped
+  - id: risk-route # writes into the brief, which arrived by import —
+    status: skipped # the proposal is in the imported Routing section
+  - id: intake-approval # a gate, so it decided here regardless of the import
+    status: done
+  - id: ground
+    status: skipped
+  - id: ideate
+    status: skipped
+  - id: ideate-validate
+    status: skipped
+  - id: ideate-revise # conditional; no verdict failed in this run
+    status: skipped
+  - id: plan-create
+    status: skipped
+  - id: plan-revise # conditional; a plan-approval `revise` would reach it
+    status: skipped # and run it on the imported copy
+  - id: plan-validate # its report arrived by import; an importer wanting a
+    status: skipped # fresh validation leaves the report out of the import set
+  - id: plan-approval # the second gate this run decided itself
+    status: done
+  - id: implement # execution starts here — the point of importing a plan
+    status: active
+  - id: implement-validate
+    status: pending
+  - id: review-code
+    status: pending
+  - id: review-security # conditional at R2, and the brief records no surface
+    status: skipped
+  - id: review-validate
+    status: pending
+  - id: review-arbitrate # at R2 only on reviewer/validator disagreement
+    status: skipped
+  - id: review-fix # conditional: the verdict routes to it
+    status: skipped
+  - id: deliver-prepare
+    status: pending
+  - id: deliver-validate
+    status: pending
+  - id: delivery-approval
+    status: pending
+gates:
+  - gate: intake-approval
+    transport: blocking
+    outcome: accept
+    at: "2026-08-16T09:05:00Z"
+  - gate: plan-approval
+    transport: blocking
+    outcome: accept
+    at: "2026-08-16T09:20:00Z"
+artifacts: # every import is manifested — the manifest is what readers resolve
+  - "{run}/brief.md" # against, imports or not (spec §8.2, §8.6)
+  - "{run}/grounding.md"
+  - "{run}/ideation.md"
+  - "{run}/ideation-validation.md"
+  - "{run}/phase-1-plan.md"
+  - "{run}/phase-1-plan-validation.md"
+imports: # the lineage: where each copy came from, landed at run creation
+  - artifact: "{run}/brief.md"
+    from: 2026-08-12-plan-slug
+    at: "2026-08-16T09:00:00Z"
+  - artifact: "{run}/grounding.md"
+    from: 2026-08-12-plan-slug
+    at: "2026-08-16T09:00:00Z"
+  - artifact: "{run}/ideation.md"
+    from: 2026-08-12-plan-slug
+    at: "2026-08-16T09:00:00Z"
+  - artifact: "{run}/ideation-validation.md"
+    from: 2026-08-12-plan-slug
+    at: "2026-08-16T09:00:00Z"
+  - artifact: "{run}/phase-1-plan.md"
+    from: 2026-08-12-plan-slug
+    at: "2026-08-16T09:00:00Z"
+  - artifact: "{run}/phase-1-plan-validation.md"
+    from: 2026-08-12-plan-slug
+    at: "2026-08-16T09:00:00Z"

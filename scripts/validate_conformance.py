@@ -30,10 +30,11 @@ Seven checks:
 - Step parity: a step-bound skill restates the step block its stage declares,
   identically — two copies of one contract drift silently, and spec §9.1
   makes the input declaration the executor's whole view of a step.
-- Run-state documents: every one this repo ships is checked for three
-  semantics its schema cannot hold — a manifest current with the steps
-  recorded `done`, a gate recorded `done` carrying a standing decision, and
-  at most one record per step. In every run-state document this repo ships, a step
+- Run-state documents: every one this repo ships is checked for semantics
+  its schema cannot hold — a manifest current with the steps recorded
+  `done`, a gate recorded `done` carrying a standing decision, at most one
+  record per step, and an import lineage whose every path is manifested and
+  whose source is another run (spec §8.6). In every run-state document this repo ships, a step
   recorded `done` has its declared output in the manifest, `{N}` resolved
   from `run.phase` (spec §8.2). The map from step id to output is read off
   the stage contracts, since a run's steps are the composed workflow's, and
@@ -727,6 +728,40 @@ def duplicate_record_problems(at: str, data: Any) -> list[str]:
     ]
 
 
+def import_record_problems(at: str, data: Any) -> list[str]:
+    """Spec §8.6: an import is adoption, and both halves are cross-field
+    semantics the schema cannot hold.
+
+    Every path `imports` names must be in `artifacts` — §8.2 defines the
+    manifest as what the run produced or imported, so an import the manifest
+    omits is invisible to every reader that resolves against it. And `from`
+    must name another run: §8.6 copies from an earlier run's directory, so a
+    run importing from itself records lineage that leads nowhere.
+    """
+    if not isinstance(data, dict):
+        return []
+    run = data.get("run")
+    run_id = run.get("id") if isinstance(run, dict) else None
+    manifest = {x for x in items_of(data.get("artifacts")) if isinstance(x, str)}
+    problems: list[str] = []
+    for record in items_of(data.get("imports")):
+        if not isinstance(record, dict):
+            continue  # not a usable record; check_fixtures faults it against the schema
+        artifact = record.get("artifact")
+        if isinstance(artifact, str) and artifact not in manifest:
+            problems.append(
+                f"{at}: import {artifact} is not in the manifest — spec §8.6 "
+                f"adds every copy to `artifacts`, which is what readers resolve against"
+            )
+        source = record.get("from")
+        if isinstance(source, str) and source == run_id:
+            problems.append(
+                f"{at}: import {artifact} names this run (`{source}`) as its "
+                f"source — spec §8.6 copies from an earlier run's directory"
+            )
+    return problems
+
+
 def check_manifests(root: Path) -> tuple[int, list[str]]:
     """Every run-state document this repo ships models a state an executor may
     resume from, so a stale manifest in one is a nonconforming example rather
@@ -748,6 +783,7 @@ def check_manifests(root: Path) -> tuple[int, list[str]]:
         problems += manifest_problems(rel, data, outputs)
         problems += gate_record_problems(rel, data, gates)
         problems += duplicate_record_problems(rel, data)
+        problems += import_record_problems(rel, data)
     spec = root / SPEC
     if spec.is_file():
         for block in yaml_blocks(spec.read_text(encoding="utf-8"), SPEC.as_posix(), []):
@@ -756,6 +792,7 @@ def check_manifests(root: Path) -> tuple[int, list[str]]:
                 problems += manifest_problems(block.at, block.data, outputs)
                 problems += gate_record_problems(block.at, block.data, gates)
                 problems += duplicate_record_problems(block.at, block.data)
+                problems += import_record_problems(block.at, block.data)
     return checked, problems
 
 
