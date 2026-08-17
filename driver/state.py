@@ -33,14 +33,15 @@ OUTCOMES = ("accept", "revise", "reject")
 TRANSPORTS = ("blocking", "inbox")
 RISKS = ("R0", "R1", "R2", "R3")
 
-# The run-state schema's plain-directory-name shape for run ids (§8.1): no
-# separators, no dot entries, no control characters, no drive prefix, no
-# trailing dot or space, not blank — matched here because the driver reads
-# state it did not necessarily write, and a state file naming an unusable
-# directory is a defect to surface at load, not at the next path join.
-PLAIN_NAME = re.compile(
-    r"^(?![A-Za-z]:)(?!\.{1,2}$)(?!\s+$)[^/\\\x00-\x1f\x7f-\x9f]+(?<![. ])$"
-)
+# The run-state schema's plain-directory-name shape for run ids (§8.1):
+# no separators, dot entries, control characters or Unicode line
+# separators, colons, Windows-forbidden filename characters, reserved
+# device basenames, drive prefixes, or trailing dots and spaces — matched
+# here because the driver reads state it did not necessarily write, and a
+# state file naming an unusable directory is a defect to surface at load,
+# not at the next path join. The literal is the schema's own pattern;
+# test_state pins the two byte-for-byte so they cannot drift.
+PLAIN_NAME = re.compile('^(?![A-Za-z]:)(?!\\.{1,2}$)(?!\\s+$)(?!(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Mm][1-9¹²³]|[Ll][Pp][Tt][1-9¹²³])(?:[.:]|$))[^/\\\\:?*"<>|\x00-\x1f\x7f-\x9f\u2028\u2029]+(?<![. ])(?![\\s\\S])')
 PROTOCOL_VERSION = re.compile(r"^[0-9]+\.[0-9]+$")
 
 
@@ -55,6 +56,13 @@ class StepRecord:
     status: str
     iterations: int | None = None
     stall_flags: list[str] | None = None
+
+
+@dataclass
+class ImportRecord:
+    artifact: str
+    from_run: str
+    at: str
 
 
 @dataclass
@@ -74,6 +82,7 @@ class RunState:
     steps: list[StepRecord]
     gates: list[GateRecord]
     artifacts: list[str]
+    imports: list[ImportRecord] | None = None
     phase: int | None = None
     risk: str | None = None
     risk_rationale: str | None = None
@@ -151,6 +160,11 @@ def save(state: RunState, run_dir: Path) -> None:
     if state.has_instrumentation:
         document["instrumentation"] = state.instrumentation
     document["artifacts"] = list(state.artifacts)
+    if state.imports is not None:
+        document["imports"] = [
+            {"artifact": record.artifact, "from": record.from_run, "at": record.at}
+            for record in state.imports
+        ]
     text = dumps(document)
     handle, temp_name = tempfile.mkstemp(
         prefix=f".{STATE_FILE}.", dir=run_dir, text=False
@@ -270,7 +284,9 @@ def _validate(data: object, path: Path) -> RunState:
 
     if not isinstance(data, dict):
         raise bad("not a mapping")
-    unknown = sorted(set(data) - {"run", "steps", "gates", "instrumentation", "artifacts"})
+    unknown = sorted(
+        set(data) - {"run", "steps", "gates", "instrumentation", "artifacts", "imports"}
+    )
     if unknown:
         raise bad(f"unknown keys: {', '.join(unknown)}")
     for key in ("run", "steps", "gates", "artifacts"):
@@ -333,6 +349,8 @@ def _validate(data: object, path: Path) -> RunState:
     ):
         raise bad("artifacts is not a list of paths")
 
+    imports = _validate_imports(data, run_id, set(artifacts_data), bad)
+
     return RunState(
         run_id=run_id,
         workflow=workflow,
@@ -340,12 +358,45 @@ def _validate(data: object, path: Path) -> RunState:
         steps=steps,
         gates=gates,
         artifacts=list(artifacts_data),
+        imports=imports,
         phase=phase,
         risk=risk,
         risk_rationale=rationale,
         instrumentation=data.get("instrumentation"),
         has_instrumentation="instrumentation" in data,
     )
+
+
+def _validate_imports(
+    data: dict, run_id: str, manifest: set[str], bad
+) -> list[ImportRecord] | None:
+    """The §8.6 lineage, held to the schema's essentials: one mapping per
+    copy with `artifact`, `from`, and `at`, every path manifested, the
+    source a plain name that is not this run. Deeper §8.6 semantics — the
+    derivation closure, canonical directory identity — belong to the import
+    materialization that a later module performs."""
+    if "imports" not in data:
+        return None
+    entries = data["imports"]
+    if not isinstance(entries, list) or not entries:
+        raise bad("imports must be a non-empty list when present (spec §10)")
+    records: list[ImportRecord] = []
+    for entry in entries:
+        if not isinstance(entry, dict) or sorted(entry) != ["artifact", "at", "from"]:
+            raise bad(f"import record must carry artifact, from, at: {entry!r}")
+        artifact, source, at = entry["artifact"], entry["from"], entry["at"]
+        if not isinstance(artifact, str) or not artifact.startswith("{run}/"):
+            raise bad(f"import artifact is not a {{run}}-relative path: {artifact!r}")
+        if artifact not in manifest:
+            raise bad(f"import {artifact!r} is not in the manifest (spec §8.6)")
+        if not isinstance(source, str) or not PLAIN_NAME.match(source):
+            raise bad(f"import source is not a plain run id: {source!r}")
+        if source == run_id:
+            raise bad(f"import {artifact!r} names this run as its source (spec §8.6)")
+        if not isinstance(at, str) or not at:
+            raise bad(f"import {artifact!r} without a timestamp")
+        records.append(ImportRecord(artifact=artifact, from_run=source, at=at))
+    return records
 
 
 def _validate_step(entry: object, bad) -> StepRecord:

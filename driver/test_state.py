@@ -51,7 +51,10 @@ class CreateRunTest(StateTestCase):
         self.assertIn("already exists", str(caught.exception))
 
     def test_refuses_an_id_that_is_not_a_plain_directory_name(self) -> None:
-        for run_id in ("../x", "a/b", "C:run", "x.", "x ", "a\x85b", ".."):
+        for run_id in (
+            "../x", "a/b", "C:run", "x.", "x ", "a\x85b", "..",
+            "a:b", "NUL", "com\u00b9", "demo?", "a|b", "a\u2028b",
+        ):
             with self.subTest(run_id=run_id):
                 with self.assertRaises(state.StateError):
                     state.create_run(self.runs, run_id, self.workflow, "0.2")
@@ -156,6 +159,66 @@ class LoadValidationTest(StateTestCase):
         loaded = state.load(self.write_state(self.BASE))
         self.assertEqual(loaded.run_id, "demo-run")
         self.assertFalse(loaded.has_instrumentation)
+
+    def test_plain_name_is_the_schema_pattern(self) -> None:
+        """The literal mirrors the run-state schema's id pattern — the schema
+        is the source of truth, and this pin is what keeps the two from
+        drifting apart silently."""
+        import json
+
+        schema = json.loads(
+            (REPO / "protocol" / "schemas" / "run-state.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(
+            state.PLAIN_NAME.pattern,
+            schema["properties"]["run"]["properties"]["id"]["pattern"],
+        )
+
+    def test_imports_load_validate_and_round_trip(self) -> None:
+        run_dir = self.runs / "with-imports"
+        run_dir.mkdir(parents=True)
+        (run_dir / state.STATE_FILE).write_text(
+            self.BASE.replace(
+                "artifacts: []\n",
+                'artifacts:\n  - "{run}/brief.md"\n'
+                "imports:\n"
+                '  - artifact: "{run}/brief.md"\n'
+                "    from: 2026-08-12-plan-slug\n"
+                '    at: "2026-08-16T09:00:00Z"\n',
+            ),
+            encoding="utf-8",
+        )
+        loaded = state.load(run_dir)
+        (record,) = loaded.imports
+        self.assertEqual(record.from_run, "2026-08-12-plan-slug")
+        state.save(loaded, run_dir)
+        self.assertEqual(state.load(run_dir), loaded)
+
+    def test_import_rejections(self) -> None:
+        cases = {
+            "unmanifested import": (
+                'artifacts: []\n'
+                'imports:\n  - artifact: "{run}/brief.md"\n'
+                "    from: earlier-run\n    at: \"2026-08-16T09:00:00Z\"\n"
+            ),
+            "self-import": (
+                'artifacts:\n  - "{run}/brief.md"\n'
+                'imports:\n  - artifact: "{run}/brief.md"\n'
+                "    from: demo-run\n    at: \"2026-08-16T09:00:00Z\"\n"
+            ),
+            "empty imports": ('artifacts: []\nimports: []\n'),
+        }
+        for name, tail in cases.items():
+            run_dir = self.runs / f"imp-{abs(hash(name))}"
+            run_dir.mkdir(parents=True)
+            (run_dir / state.STATE_FILE).write_text(
+                self.BASE.replace("artifacts: []\n", tail), encoding="utf-8"
+            )
+            with self.subTest(case=name):
+                with self.assertRaises(state.StateError):
+                    state.load(run_dir)
 
     def test_loads_every_shipped_valid_fixture(self) -> None:
         fixtures = sorted(
