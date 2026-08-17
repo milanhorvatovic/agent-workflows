@@ -106,7 +106,11 @@ RUN_STATE_SCHEMA = {
             "type": "object",
             "additionalProperties": False,
             "required": ["id"],
-            "properties": {"id": {"type": "string"}, "phase": {"type": "integer"}},
+            "properties": {
+                "id": {"type": "string"},
+                "workflow": {"type": "string"},
+                "phase": {"type": "integer"},
+            },
         },
         # Enough of the real shape for the manifest check to have something to
         # read; the schema itself is exercised by its own fixtures.
@@ -1022,6 +1026,29 @@ metadata:
             "    from: earlier-run\n    at: '2026-08-16T09:00:00Z'\n",
         )
         self.assert_problem("import {run}/phase-1-plan.md arrives without {run}/a.md")
+
+    def test_an_import_outside_the_composed_workflow_is_reported(self) -> None:
+        """§8.6 bounds imports to step outputs of the composed workflow: a
+        state whose workflow composes only one stage must not find a producer
+        in a stage it never composes, however real that stage's contract is
+        elsewhere in the repository."""
+        self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
+        self.write("workflows/stages/phased.md", self.PHASED_STAGE)
+        self.write(
+            "workflows/composed.md",
+            frontmatter("composed")
+            + "\n1. [stages/chained.md](stages/chained.md)\n"
+            + "\n"
+            + TRIGGER_BLOCK,
+        )
+        self.write_run_state(
+            "  - id: maker\n    status: skipped\n",
+            '\n  - "{run}/phase-1-plan.md"',
+            run="  workflow: composed\n",
+            extra="imports:\n  - artifact: \"{run}/phase-1-plan.md\"\n"
+            "    from: earlier-run\n    at: '2026-08-16T09:00:00Z'\n",
+        )
+        self.assert_problem("import {run}/phase-1-plan.md matches no step output")
 
     def test_a_duplicate_import_path_is_reported(self) -> None:
         """§10 keeps one entry per imported artifact, and the schema cannot —

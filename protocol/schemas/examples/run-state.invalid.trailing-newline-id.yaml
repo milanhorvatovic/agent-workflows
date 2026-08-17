@@ -1,0 +1,14 @@
+# INVALID on purpose — schema validation MUST reject this fixture:
+# - run.id ends in a newline: `$` alone would accept it — a regex `$` may
+#   match just before a final line terminator — so the pattern anchors to the
+#   true end of input, since the id names a directory and a multiline name
+#   is no name at all (spec §8.1, §8.6)
+run:
+  id: "2026-08-16-feature-slug\n"
+  workflow: feature
+  protocol: "0.2"
+steps:
+  - id: brief-confirm
+    status: pending
+gates: []
+artifacts: []

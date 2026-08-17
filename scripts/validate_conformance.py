@@ -854,6 +854,27 @@ def import_record_problems(
     return problems
 
 
+STAGE_LINK = re.compile(r"\(stages/([a-z][a-z0-9-]*)\.md\)")
+
+
+def composed_stage_files(root: Path, workflow: Any) -> set[str] | None:
+    """The stage files the named workflow composes, read from its
+    by-reference links (spec §6.1) — or None where the workflow cannot be
+    resolved, which callers read as "filter nothing" so a document that is
+    broken elsewhere still gets best-effort checks.
+    """
+    if not isinstance(workflow, str) or not re.fullmatch(r"[a-z][a-z0-9-]*", workflow):
+        return None
+    path = root / "workflows" / f"{workflow}.md"
+    if not path.is_file():
+        return None
+    stages = {
+        f"workflows/stages/{match.group(1)}.md"
+        for match in STAGE_LINK.finditer(path.read_text(encoding="utf-8"))
+    }
+    return stages or None
+
+
 def check_manifests(root: Path) -> tuple[int, list[str]]:
     """Every run-state document this repo ships models a state an executor may
     resume from, so a stale manifest in one is a nonconforming example rather
@@ -864,6 +885,21 @@ def check_manifests(root: Path) -> tuple[int, list[str]]:
     contracts = stage_steps(root, [])
     problems: list[str] = []
     checked = 0
+
+    def composed(data: Any) -> dict[str, tuple[str, Any]]:
+        """The contracts scoped to the document's own workflow: §8.6 bounds
+        imports to step outputs of the composed workflow, so a `plan` state
+        must not find a producer in a delivery stage it never composes. An
+        unresolvable workflow filters nothing — best effort over silence."""
+        workflow = data["run"].get("workflow") if isinstance(data.get("run"), dict) else None
+        stages = composed_stage_files(root, workflow)
+        if stages is None:
+            return contracts
+        return {
+            step_id: entry
+            for step_id, entry in contracts.items()
+            if entry[0].rsplit(":", 1)[0] in stages
+        }
     for kind, path in fixture_paths(root, RUN_STATE):
         if kind != "valid" or not path.is_file():
             continue
@@ -876,7 +912,7 @@ def check_manifests(root: Path) -> tuple[int, list[str]]:
         problems += manifest_problems(rel, data, outputs)
         problems += gate_record_problems(rel, data, gates)
         problems += duplicate_record_problems(rel, data)
-        problems += import_record_problems(rel, data, contracts)
+        problems += import_record_problems(rel, data, composed(data))
     spec = root / SPEC
     if spec.is_file():
         for block in yaml_blocks(spec.read_text(encoding="utf-8"), SPEC.as_posix(), []):
@@ -885,7 +921,7 @@ def check_manifests(root: Path) -> tuple[int, list[str]]:
                 problems += manifest_problems(block.at, block.data, outputs)
                 problems += gate_record_problems(block.at, block.data, gates)
                 problems += duplicate_record_problems(block.at, block.data)
-                problems += import_record_problems(block.at, block.data, contracts)
+                problems += import_record_problems(block.at, block.data, composed(block.data))
     return checked, problems
 
 
