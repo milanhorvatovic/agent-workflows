@@ -895,6 +895,18 @@ metadata:
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
 
+    def test_a_tilde_fence_masks_its_example(self) -> None:
+        """CommonMark fences come in tildes as well as backticks — an example
+        wrapped in `~~~` must not leave its Gates heading visible to the
+        structure scans."""
+        self.write(
+            "workflows/stages/gated.md",
+            self.GATED_STAGE + "\n## Notes\n\nA tilde-fenced example:\n\n"
+            "~~~markdown\n## Gates\n\n- **fake-gate** — inside the example.\n~~~\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
     def test_an_indented_fence_still_masks_its_example(self) -> None:
         """CommonMark allows both fence lines up to three spaces in — a mask
         demanding column 0 would leave the indented example's Gates heading
