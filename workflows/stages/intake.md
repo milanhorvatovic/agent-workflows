@@ -7,6 +7,21 @@ description: Entry stage of every workflow — confirms the brief through at mos
 
 The entry stage of every workflow (spec §6.2). Three parts, in order: the clarifying-question gate, the risk router, the intake gate. Outputs: a confirmed `{run}/brief.md` and a risk class with a one-line rationale in run state.
 
+The sequence (spec §9.4) declares the members in record order — here it matches reading order, the clarifying question sitting between the step that can raise it first and the classification its answer feeds:
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    stage:
+      sequence:
+        - step: brief-confirm
+        - gate: clarifying-question
+          conditional: true
+        - step: risk-route
+        - gate: intake-approval
+```
+
 ## Steps
 
 ### brief-confirm (analyst)

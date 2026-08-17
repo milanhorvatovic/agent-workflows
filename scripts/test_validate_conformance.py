@@ -96,6 +96,36 @@ TRIGGER_SCHEMA = {
     },
 }
 
+STAGE_SCHEMA = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "required": ["protocol", "stage"],
+    "properties": {
+        "protocol": PROTOCOL,
+        "stage": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["sequence"],
+            "properties": {
+                "sequence": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "step": {"type": "string"},
+                            "gate": {"type": "string"},
+                            "conditional": {"const": True},
+                        },
+                        "oneOf": [{"required": ["step"]}, {"required": ["gate"]}],
+                    },
+                }
+            },
+        },
+    },
+}
+
 RUN_STATE_SCHEMA = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
@@ -239,9 +269,18 @@ class ValidateConformanceTest(unittest.TestCase):
             ("step", STEP_SCHEMA),
             ("loop", LOOP_SCHEMA),
             ("trigger", TRIGGER_SCHEMA),
+            ("stage", STAGE_SCHEMA),
             ("run-state", RUN_STATE_SCHEMA),
         ):
             self.write(f"protocol/schemas/{name}.schema.json", json.dumps(schema))
+        self.write(
+            "protocol/schemas/examples/stage.valid.yaml",
+            'protocol: "0.2"\nstage:\n  sequence:\n    - step: thing\n',
+        )
+        self.write(
+            "protocol/schemas/examples/stage.invalid.yaml",
+            'protocol: "0.2"\nstage:\n  sequence:\n    - step: thing\n      gate: also-a-gate\n',
+        )
         self.write(
             "protocol/schemas/examples/step.valid.yaml",
             'protocol: "0.2"\nstep:\n  role: analyst\n  output:\n    artifact: "{run}/a.md"\n',
@@ -312,10 +351,11 @@ class ValidateConformanceTest(unittest.TestCase):
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
         self.assertIn("conformance: OK", output)
-        self.assertIn("8 fixtures", output)
+        self.assertIn("10 fixtures", output)
         self.assertIn("2 spec examples", output)
         self.assertIn("2 workflow blocks", output)
         self.assertIn("3 frontmatter files", output)
+        self.assertIn("0 stage sequences", output)
 
     def test_schema_violation_in_workflow_block_reported_with_location(self) -> None:
         broken = STEP_BLOCK.replace("role: analyst", "role: analyst\n      rogue: true")
@@ -675,6 +715,15 @@ metadata:
         PASS: next-step
         FAIL: fix-step
 ```
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    stage:
+      sequence:
+        - step: thing
+```
 """
 
     SKILL = """---
@@ -754,6 +803,56 @@ metadata:
         message = self.run_main_expecting_exit_with_root(self.root / "elsewhere")
         self.assertIn("not found", message)
 
+    # ---- stage sequences (spec §9.4) ----
+
+    def test_a_stage_with_a_complete_sequence_passes_and_tallies(self) -> None:
+        self.write("workflows/stages/demo.md", self.STAGE)
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+        self.assertIn("1 stage sequences", output)
+
+    def test_a_stage_declaring_members_without_a_sequence_is_reported(self) -> None:
+        """§9.4 has every member-declaring stage carry the sequence: run-state
+        population follows it verbatim, so a stage without one is a stage no
+        run can be populated from."""
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE.replace("\n```yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n    stage:\n      sequence:\n        - step: thing\n```\n", ""),
+        )
+        self.assert_problem("0 stage sequence blocks")
+
+    def test_a_sequence_missing_a_declared_member_is_reported(self) -> None:
+        self.write(
+            "workflows/stages/gated.md",
+            self.GATED_STAGE.replace("        - gate: demo-approval\n", "        - gate: other-gate\n").replace(
+                "- **demo-approval** — collects the human decision.",
+                "- **demo-approval** — collects the human decision.\n- **other-gate** — another decision.",
+            ),
+        )
+        self.assert_problem("gate `demo-approval` is missing from the sequence")
+
+    def test_a_sequence_naming_an_undeclared_member_is_reported(self) -> None:
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE.replace(
+                "      sequence:\n        - step: thing\n",
+                "      sequence:\n        - step: thing\n        - step: phantom\n",
+            ),
+        )
+        self.assert_problem("sequence names step `phantom`, which the stage does not declare")
+
+    def test_a_duplicate_sequence_member_is_reported(self) -> None:
+        """§10 keeps one record per member, and the sequence is the record
+        order population follows — a member named twice is two records."""
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE.replace(
+                "      sequence:\n        - step: thing\n",
+                "      sequence:\n        - step: thing\n        - step: thing\n",
+            ),
+        )
+        self.assert_problem("step `thing` appears 2 times in the sequence")
+
     # ---- run-state documents (spec §8.2, §7, §10) ----
 
     # A stage, not a skill: the manifest check reads what composes the
@@ -780,6 +879,15 @@ metadata:
           required: true
       output:
         artifact: "{run}/phase-{N}-plan.md"
+```
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    stage:
+      sequence:
+        - step: phased
 ```
 """
 
@@ -1367,6 +1475,16 @@ metadata:
 ## Gates
 
 - **demo-approval** — collects the human decision.
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    stage:
+      sequence:
+        - step: phasedgate
+        - gate: demo-approval
+```
 """
 
     GATED_STAGE = """---
@@ -1379,6 +1497,15 @@ description: A stage that declares a gate.
 ## Gates
 
 - **demo-approval** — collects the human decision.
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    stage:
+      sequence:
+        - gate: demo-approval
+```
 """
 
     def test_a_prior_phase_output_is_not_required(self) -> None:

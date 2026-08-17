@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate the protocol surface against the schemas in protocol/schemas/.
 
-Seven checks:
+Eight checks:
 
 - Fixtures: every `protocol/schemas/examples/<name>.valid.yaml` must satisfy
   its schema and every `<name>.invalid.yaml` must be rejected — the
@@ -14,8 +14,8 @@ Seven checks:
 - Workflow blocks: every `metadata.workflow` block in every other markdown
   file — fenced in the body or declared in Agent Skills frontmatter (spec
   §9) — validates against the schema of each structure it declares (`step`,
-  `loop`, `trigger`); unknown sibling keys are tolerated per the 0.x
-  degradation rules (spec §9.4). Placeholders in declared strings must be
+  `loop`, `trigger`, `stage`); unknown sibling keys are tolerated per the 0.x
+  degradation rules (spec §9.5). Placeholders in declared strings must be
   spec-defined — {run}, {N}, {P}, {machine-checks} — and a declared output
   template must exist relative to the declaring file. A step's output may not
   carry {P}, which the step schema rejects: one path per phase cannot name the
@@ -30,6 +30,10 @@ Seven checks:
 - Step parity: a step-bound skill restates the step block its stage declares,
   identically — two copies of one contract drift silently, and spec §9.1
   makes the input declaration the executor's whole view of a step.
+- Stage sequences: every stage that declares members carries exactly one
+  `stage` sequence block naming each declared step and gate exactly once
+  (spec §9.4) — the record order run-state population follows, so a member
+  missing from it is a record no run could carry.
 - Run-state documents: every one this repo ships is checked for semantics
   its schema cannot hold — a manifest current with the steps recorded
   `done`, a gate recorded `done` carrying a standing decision, at most one
@@ -79,7 +83,7 @@ SPEC = Path("protocol/spec.md")
 SCHEMA_DIR = Path("protocol/schemas")
 FIXTURE_DIR = SCHEMA_DIR / "examples"
 
-STRUCTURES = ("step", "loop", "trigger")  # metadata.workflow structures, one schema each
+STRUCTURES = ("step", "loop", "trigger", "stage")  # metadata.workflow structures, one schema each
 RUN_STATE = "run-state"
 
 PLACEHOLDERS = {"run", "N", "P", "machine-checks"}  # spec §8.1 and §9.2
@@ -891,6 +895,88 @@ def composed_stage_files(root: Path, workflow: Any) -> set[str] | None:
     return stages or None
 
 
+def sequence_members(workflow: Any) -> tuple[list[str], list[str], list[str]]:
+    """The step ids, gate ids, and malformed entries of one stage block's
+    sequence, in declaration order. Malformed entries are counted rather than
+    read: the schema already faults them, and guessing a kind here would
+    double-report every fault as a parity problem too."""
+    steps: list[str] = []
+    gates: list[str] = []
+    malformed: list[str] = []
+    stage = workflow.get("stage") if isinstance(workflow, dict) else None
+    entries = stage.get("sequence") if isinstance(stage, dict) else None
+    for entry in items_of(entries):
+        step = entry.get("step") if isinstance(entry, dict) else None
+        gate = entry.get("gate") if isinstance(entry, dict) else None
+        if isinstance(step, str) and gate is None:
+            steps.append(step)
+        elif isinstance(gate, str) and step is None:
+            gates.append(gate)
+        else:
+            malformed.append(repr(entry))
+    return steps, gates, malformed
+
+
+def check_stage_sequences(root: Path) -> tuple[int, list[str]]:
+    """Spec §9.4: a stage that declares members carries exactly one sequence
+    block naming every declared step and gate exactly once. The schema sees
+    one block at a time, so completeness — sequence against the stage's own
+    headings and Gates bullets — is this check's to hold: run-state
+    population follows the sequence verbatim, and a member missing from it is
+    a record no run could carry."""
+    problems: list[str] = []
+    checked = 0
+    for path in sorted(root.glob("workflows/stages/*.md")):
+        if path.name == "README.md":
+            continue
+        rel = path.relative_to(root).as_posix()
+        text = path.read_text(encoding="utf-8")
+        declared_steps = {m.group("id") for m in STAGE_STEP_HEADING.finditer(text)}
+        section = text.split("## Gates", 1)
+        declared_gates = (
+            {m.group("id") for m in GATE_HEADING.finditer(section[1])}
+            if len(section) == 2
+            else set()
+        )
+        blocks = [
+            block
+            for block in yaml_blocks(text, rel, [])
+            if isinstance(workflow_value(block.data), dict)
+            and "stage" in workflow_value(block.data)
+        ]
+        if not declared_steps and not declared_gates and not blocks:
+            continue  # nothing declared either way; not a stage contract yet
+        checked += 1
+        if len(blocks) != 1:
+            problems.append(
+                f"{rel}: {len(blocks)} stage sequence blocks — spec §9.4 has a "
+                f"stage declare its members once"
+            )
+            continue
+        steps, gates, malformed = sequence_members(workflow_value(blocks[0].data))
+        at = blocks[0].at
+        for kind, named, declared in (
+            ("step", steps, declared_steps),
+            ("gate", gates, declared_gates),
+        ):
+            for name in sorted(set(named) - declared):
+                problems.append(
+                    f"{at}: sequence names {kind} `{name}`, which the stage does "
+                    f"not declare — spec §9.4 sequences only declared members"
+                )
+            for name in sorted(declared - set(named)):
+                problems.append(
+                    f"{at}: {kind} `{name}` is missing from the sequence — spec "
+                    f"§9.4 names every member, or population cannot carry its record"
+                )
+            for name in sorted({x for x in named if named.count(x) > 1}):
+                problems.append(
+                    f"{at}: {kind} `{name}` appears {named.count(name)} times in "
+                    f"the sequence — spec §10 keeps one record per member"
+                )
+    return checked, problems
+
+
 def check_manifests(root: Path) -> tuple[int, list[str]]:
     """Every run-state document this repo ships models a state an executor may
     resume from, so a stale manifest in one is a nonconforming example rather
@@ -988,9 +1074,10 @@ def main(argv: list[str] | None = None) -> int:
     files, frontmatter_problems = check_frontmatter(root)
     skills, skill_problems = check_skill_budgets(root)
     bound, parity_problems = check_step_parity(root)
+    sequences, sequence_problems = check_stage_sequences(root)
     manifests, manifest_faults = check_manifests(root)
     problems += spec_problems + block_problems + frontmatter_problems + skill_problems
-    problems += parity_problems + manifest_faults
+    problems += parity_problems + sequence_problems + manifest_faults
 
     for problem in problems:
         print(problem)
@@ -1000,7 +1087,8 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"conformance: OK — {fixtures} fixtures, {examples} spec examples, "
         f"{blocks} workflow blocks, {files} frontmatter files, {skills} skill bodies, "
-        f"{bound} step-bound skills, {manifests} run-state documents"
+        f"{bound} step-bound skills, {sequences} stage sequences, "
+        f"{manifests} run-state documents"
     )
     return 0
 

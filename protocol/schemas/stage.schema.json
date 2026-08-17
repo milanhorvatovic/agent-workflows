@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stage.schema.json",
+  "title": "agent-workflows stage sequence (protocol 0.2)",
+  "description": "Validates a `metadata.workflow` block that declares a stage's sequence: the stage's members — steps and gates — in record order, the order their records take in the run-state list that resume is defined over (spec sections 9.4, 8.5, and 10). Sibling structures and unknown keys are tolerated per the 0.x degradation rules (spec section 9.5).",
+  "type": "object",
+  "required": [
+    "protocol",
+    "stage"
+  ],
+  "properties": {
+    "protocol": {
+      "$ref": "#/$defs/protocol"
+    },
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sequence"
+      ],
+      "properties": {
+        "sequence": {
+          "description": "The stage's members in record order (spec section 9.4). Completeness — every declared step and gate named exactly once — is a cross-surface semantic the conformance checks hold against the stage's own declarations; the schema sees one block at a time.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/member"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "protocol": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$",
+      "description": "Protocol version this block was authored against, `<major>.<minor>` (spec section 11)."
+    },
+    "member": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "step": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "description": "A step id the stage declares under a `###` heading (spec section 9.4)."
+        },
+        "gate": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "description": "A gate id the stage declares in its Gates section (spec sections 7 and 9.4)."
+        },
+        "conditional": {
+          "const": true,
+          "description": "Marks a member populated `skipped` until a condition fires or a route returns to it (spec sections 9.4 and 10). Absence is the default — a member the run's path reaches — so `conditional: false` is not a form this schema admits."
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "step"
+          ]
+        },
+        {
+          "required": [
+            "gate"
+          ]
+        }
+      ]
+    }
+  }
+}
