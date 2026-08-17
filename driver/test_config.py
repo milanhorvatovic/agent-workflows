@@ -115,6 +115,11 @@ class ConfigTest(unittest.TestCase):
             self.variant(artifacts_dir="  "), "artifacts_dir must be a non-empty string"
         )
 
+    def test_nul_in_artifacts_dir_is_rejected(self) -> None:
+        self.assert_rejected(
+            self.variant(artifacts_dir="artifacts\x00"), "artifacts_dir must not contain NUL"
+        )
+
     def test_missing_backends_is_rejected(self) -> None:
         values = self.variant()
         del values["backends"]
@@ -157,6 +162,11 @@ class ConfigTest(unittest.TestCase):
         values = self.variant()
         values["backends"]["claude"]["command"] = ["claude", 1]
         self.assert_rejected(values, "backend 'claude' command must be a non-empty list")
+
+    def test_nul_in_command_part_is_rejected(self) -> None:
+        values = self.variant()
+        values["backends"]["claude"]["command"] = ["claude", "-p\x00"]
+        self.assert_rejected(values, "backend 'claude' command must not contain NUL")
 
     def test_missing_roles_is_rejected(self) -> None:
         values = self.variant()

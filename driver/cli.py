@@ -10,21 +10,26 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from .config import Config, ConfigError, load_config
 
 
 def _run_id(value: str) -> str:
     # Path safety only, not id-format validation — the run id joins under
-    # {artifacts}/runs/, so separators, dot entries, absolute paths, and
-    # Windows drive prefixes would escape it. What a well-formed id looks
-    # like is the run-state schema's business, enforced where run state is
-    # read, not here.
+    # {artifacts}/runs/, so NUL, separators, dot entries, absolute paths,
+    # and Windows drive prefixes would break or escape it. Drive prefixes
+    # are detected with PureWindowsPath rather than by rejecting every
+    # colon, which would refuse POSIX-legal ids such as ISO timestamps.
+    # What a well-formed id looks like is the run-state schema's business,
+    # enforced where run state is read, not here.
     if (
         not value.strip()
         or value in {".", ".."}
-        or any(separator in value for separator in ("/", "\\", ":"))
+        or "\x00" in value
+        or "/" in value
+        or "\\" in value
+        or PureWindowsPath(value).drive
         or Path(value).is_absolute()
     ):
         raise argparse.ArgumentTypeError(f"not a run id: {value!r}")
@@ -83,21 +88,36 @@ def _status(config: Config) -> int:
     # No probes: pathlib's probe methods (exists, is_dir) suppress
     # filesystem errors, so an unreadable path would read as absent and an
     # unclassifiable child would be silently dropped — zero runs as the
-    # wrong answer either way. os.scandir iterates directly and its
-    # DirEntry.is_dir propagates real errors while reading a dangling
-    # symlink as False. The exceptions distinguish the cases: absence is
-    # zero runs (the first run creates the directory), while a
-    # non-directory or any other filesystem failure is a defect — exit 1
-    # is reserved for unimplemented commands, so these land in 2 rather
-    # than escaping as tracebacks or hiding as empty output.
+    # wrong answer either way. os.scandir opens the directory directly,
+    # and only absence at that open means zero runs (the first run creates
+    # the directory) — and true absence only: a dangling runs symlink
+    # raises the same error and is a defect, not an empty state. Every
+    # later failure is a defect too — exit 1 is reserved for unimplemented
+    # commands, so defects land in 2 rather than escaping as tracebacks or
+    # hiding as empty output.
     try:
-        with os.scandir(config.runs_dir) as entries:
-            run_ids = sorted(entry.name for entry in entries if entry.is_dir())
+        scan = os.scandir(config.runs_dir)
     except FileNotFoundError:
+        if config.runs_dir.is_symlink():
+            print(f"driver: {config.runs_dir} is a dangling symlink", file=sys.stderr)
+            return 2
         return 0
     except NotADirectoryError:
         print(f"driver: {config.runs_dir} is not a directory", file=sys.stderr)
         return 2
+    except OSError as error:
+        print(f"driver: cannot read {config.runs_dir}: {error}", file=sys.stderr)
+        return 2
+    # follow_symlinks=False: a symlink is never a run — following one
+    # would present an external directory as a run under {artifacts}/runs/
+    # and let a later resume escape the artifact root past the run-id
+    # guard. A child that cannot be classified — vanished mid-scan
+    # included, hence no FileNotFoundError carve-out here — is a defect.
+    try:
+        with scan:
+            run_ids = sorted(
+                entry.name for entry in scan if entry.is_dir(follow_symlinks=False)
+            )
     except OSError as error:
         print(f"driver: cannot read {config.runs_dir}: {error}", file=sys.stderr)
         return 2

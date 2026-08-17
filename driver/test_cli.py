@@ -8,6 +8,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -75,12 +76,29 @@ class CliTest(unittest.TestCase):
         self.assertEqual(caught.exception.code, 2)
 
     def test_resume_rejects_run_ids_that_are_not_plain_directory_names(self) -> None:
-        for run_id in ("../other-run", "/tmp/run", ".", "..", "a/b", "a\\b", "C:run", "  "):
+        for run_id in (
+            "../other-run",
+            "/tmp/run",
+            ".",
+            "..",
+            "a/b",
+            "a\\b",
+            "C:run",
+            "a\x00b",
+            "  ",
+        ):
             with self.subTest(run_id=run_id):
                 with contextlib.redirect_stderr(io.StringIO()):
                     with self.assertRaises(SystemExit) as caught:
                         cli.main(["resume", run_id, "--config", str(self.config_path)])
                 self.assertEqual(caught.exception.code, 2)
+
+    def test_resume_accepts_a_posix_legal_colon_in_a_run_id(self) -> None:
+        code, _, err = self.invoke(
+            "resume", "2026-08-17T09:58:06-fix", "--config", str(self.config_path)
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("resume is not implemented yet", err)
 
     def test_status_reports_an_unreadable_runs_directory(self) -> None:
         (self.base / "runs").mkdir()
@@ -93,17 +111,46 @@ class CliTest(unittest.TestCase):
         self.assertIn("cannot read", err)
 
     def test_status_reports_a_child_it_cannot_classify(self) -> None:
-        (self.base / "runs").mkdir()
-        entry = unittest.mock.Mock()
-        entry.name = "2026-08-13-feature-one"
-        entry.is_dir.side_effect = PermissionError("permission denied")
-        scandir_result = unittest.mock.MagicMock()
-        scandir_result.__enter__.return_value = iter([entry])
-        with unittest.mock.patch("driver.cli.os.scandir", return_value=scandir_result):
-            code, out, err = self.invoke("status", "--config", str(self.config_path))
+        # A vanished child raises FileNotFoundError, which must read as a
+        # defect here — only absence of the runs directory itself is the
+        # zero-runs case.
+        for failure in (PermissionError("permission denied"), FileNotFoundError("vanished")):
+            with self.subTest(failure=type(failure).__name__):
+                (self.base / "runs").mkdir(exist_ok=True)
+                entry = unittest.mock.Mock()
+                entry.name = "2026-08-13-feature-one"
+                entry.is_dir.side_effect = failure
+                # The real scandir object is its own iterator and context
+                # manager; the mock must honor both halves of that contract.
+                scandir_result = unittest.mock.MagicMock()
+                scandir_result.__enter__.return_value = scandir_result
+                scandir_result.__iter__.return_value = iter([entry])
+                with unittest.mock.patch(
+                    "driver.cli.os.scandir", return_value=scandir_result
+                ):
+                    code, out, err = self.invoke("status", "--config", str(self.config_path))
+                self.assertEqual(code, 2)
+                self.assertEqual(out, "")
+                self.assertIn("cannot read", err)
+
+    @unittest.skipIf(os.name == "nt", "POSIX symlink semantics")
+    def test_status_never_lists_a_symlink_as_a_run(self) -> None:
+        runs = self.base / "runs"
+        (runs / "2026-08-17-real-run").mkdir(parents=True)
+        elsewhere = self.base / "elsewhere"
+        elsewhere.mkdir()
+        (runs / "2026-08-17-linked").symlink_to(elsewhere, target_is_directory=True)
+        code, out, _ = self.invoke("status", "--config", str(self.config_path))
+        self.assertEqual(code, 0)
+        self.assertEqual(out, "2026-08-17-real-run\n")
+
+    @unittest.skipIf(os.name == "nt", "POSIX symlink semantics")
+    def test_status_reports_a_dangling_runs_symlink(self) -> None:
+        (self.base / "runs").symlink_to(self.base / "absent", target_is_directory=True)
+        code, out, err = self.invoke("status", "--config", str(self.config_path))
         self.assertEqual(code, 2)
         self.assertEqual(out, "")
-        self.assertIn("cannot read", err)
+        self.assertIn("dangling symlink", err)
 
     def test_config_defect_names_the_file_and_exits_2(self) -> None:
         self.config_path.write_text("{not json", encoding="utf-8")

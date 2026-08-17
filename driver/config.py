@@ -96,6 +96,10 @@ def _parse_artifacts_dir(data: dict, config_path: Path) -> Path:
     value = data.get("artifacts_dir", DEFAULT_ARTIFACTS_DIR)
     if not isinstance(value, str) or not value.strip():
         raise ConfigError("artifacts_dir must be a non-empty string")
+    # JSON strings may carry NUL, but no filesystem call accepts one — it
+    # raises ValueError at use, far from the config that caused it.
+    if "\x00" in value:
+        raise ConfigError("artifacts_dir must not contain NUL")
     # JSON has no shell, so a leading ~ arrives literally; expand it rather
     # than creating a directory named `~` under the project.
     try:
@@ -131,6 +135,10 @@ def _parse_backends(data: dict) -> dict[str, Backend]:
             raise ConfigError(
                 f"backend {name!r} command must be a non-empty list of non-empty strings"
             )
+        # No OS can pass a NUL inside an argv element; without this check
+        # the config only fails when the backend is invoked, not at load.
+        if any("\x00" in part for part in command):
+            raise ConfigError(f"backend {name!r} command must not contain NUL")
         backends[name] = Backend(command=tuple(command))
     return backends
 
