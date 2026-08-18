@@ -1,0 +1,14 @@
+# Starter: a stage sequence — the planning stage's members in record order
+# (spec §9.4). Record order, not execution order: `plan-revise` precedes the
+# validator that runs before it because a `plan-approval` revise returns to
+# the revision and invalidates the validation in one write, and §10 obliges
+# the destination's record to precede what the write invalidates. The one
+# conditional member is populated `skipped` until a route reaches it.
+protocol: "0.2"
+stage:
+  sequence:
+    - step: plan-create
+    - step: plan-revise
+      conditional: true
+    - step: plan-validate
+    - gate: plan-approval

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate the protocol surface against the schemas in protocol/schemas/.
 
-Seven checks:
+Eight checks:
 
 - Fixtures: every `protocol/schemas/examples/<name>.valid.yaml` must satisfy
   its schema and every `<name>.invalid.yaml` must be rejected — the
@@ -14,8 +14,8 @@ Seven checks:
 - Workflow blocks: every `metadata.workflow` block in every other markdown
   file — fenced in the body or declared in Agent Skills frontmatter (spec
   §9) — validates against the schema of each structure it declares (`step`,
-  `loop`, `trigger`); unknown sibling keys are tolerated per the 0.x
-  degradation rules (spec §9.4). Placeholders in declared strings must be
+  `loop`, `trigger`, `stage`); unknown sibling keys are tolerated per the 0.x
+  degradation rules (spec §9.5). Placeholders in declared strings must be
   spec-defined — {run}, {N}, {P}, {machine-checks} — and a declared output
   template must exist relative to the declaring file. A step's output may not
   carry {P}, which the step schema rejects: one path per phase cannot name the
@@ -30,15 +30,24 @@ Seven checks:
 - Step parity: a step-bound skill restates the step block its stage declares,
   identically — two copies of one contract drift silently, and spec §9.1
   makes the input declaration the executor's whole view of a step.
+- Stage sequences: every stage that declares members carries exactly one
+  `stage` sequence block naming each declared step and gate exactly once
+  (spec §9.4) — the record order run-state population follows, so a member
+  missing from it is a record no run could carry — member ids stay unique
+  across stages and off the stage namespace, since composing two stages
+  that share one would duplicate the record §10 forbids and a §9.1 target
+  naming a stage's id would be ambiguous, and each heading owns exactly one
+  contract that agrees with it about the role.
 - Run-state documents: every one this repo ships is checked for semantics
   its schema cannot hold — a manifest current with the steps recorded
   `done`, a gate recorded `done` carrying a standing decision, at most one
   record per step, and an import lineage whose every path is manifested and
   named once, whose records name one source run that is not this one, and
   whose set is closed over some producing step's required inputs (spec
-  §8.6). In every run-state document this repo ships, a step
-  recorded `done` has its declared output in the manifest, `{N}` resolved
-  from `run.phase` (spec §8.2). The map from step id to output is read off
+  §8.6), and a `steps` list following the composed stages' sequences, which
+  is the order §8.5's resume reads (spec §9.4, §10). In every run-state
+  document this repo ships, a step recorded `done` has its declared output
+  in the manifest, `{N}` resolved from `run.phase` (spec §8.2). The map from step id to output is read off
   the stage contracts, since a run's steps are the composed workflow's, and
   bounded to the phase now executing — what an earlier phase owes cannot be
   read from records the phase reset, see `manifest_problems`.
@@ -79,14 +88,33 @@ SPEC = Path("protocol/spec.md")
 SCHEMA_DIR = Path("protocol/schemas")
 FIXTURE_DIR = SCHEMA_DIR / "examples"
 
-STRUCTURES = ("step", "loop", "trigger")  # metadata.workflow structures, one schema each
+STRUCTURES = ("step", "loop", "trigger", "stage")  # metadata.workflow structures, one schema each
 RUN_STATE = "run-state"
 
 PLACEHOLDERS = {"run", "N", "P", "machine-checks"}  # spec §8.1 and §9.2
 # {token} occurrences; the lookbehind skips ${...} shell expansions in commands.
 PLACEHOLDER = re.compile(r"(?<!\$)\{([^{}]*)\}")
 
-YAML_BLOCK = re.compile(r"^```yaml[ \t]*\n(.*?)^```", re.DOTALL | re.MULTILINE)
+# One fence model, two scopes. Masking tolerates what CommonMark writes —
+# backticks or tildes, both fence lines up to three spaces in, the closer at
+# least the opener's length or absent (an unclosed fence extends to end of
+# file) — while extraction takes first-column fences only, §9's own rule for
+# where a declaration may live. Container-nested fences (block quotes, list
+# items) are outside both scopes deliberately: a declaration there is
+# nonconforming by §9, an indented fence is indistinguishable from a list
+# item's content without parsing containers, and a container's example
+# carries its marker or indent on every line, which already keeps its
+# headings and bullets out of the line-anchored structure scans. finditer
+# consumes each outermost fence whole, so a block nested inside a longer
+# wrapper is never discovered as a declaration — the same fact that lets
+# mask_fences blank examples out of the text scans.
+FENCE = re.compile(
+    r"^(?P<indent> {0,3})"
+    r"(?:(?P<bt>```+)(?P<bti>[^`\n]*)\n(?P<btb>.*?)(?:^ {0,3}(?P=bt)`*[ \t]*$|\Z)"
+    r"|(?P<td>~~~+)(?P<tdi>[^\n]*)\n(?P<tdb>.*?)(?:^ {0,3}(?P=td)~*[ \t]*$|\Z))",
+    re.DOTALL | re.MULTILINE,
+)
+
 FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 
 NAME = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
@@ -95,6 +123,12 @@ DESCRIPTION_MAX = 1024  # Agent Skills frontmatter cap
 SKILL_BODY_MAX_LINES = 500
 SKILL_BODY_MAX_TOKENS = 5000
 CHARS_PER_TOKEN = 4  # rough budget heuristic, matches common tokenizer averages
+
+# §9's two carriers, each at one location — the paths a declaration may
+# live at, so a block elsewhere is reported rather than executed by nothing.
+WORKFLOW_FILE = re.compile(r"workflows/[a-z][a-z0-9-]*\.md")
+STAGE_FILE = re.compile(r"workflows/stages/[a-z][a-z0-9-]*\.md")
+SKILL_FILE = re.compile(r"skills/[a-z][a-z0-9-]*/SKILL\.md")
 
 FRONTMATTER_GLOBS = (
     "roles/*.md",
@@ -158,12 +192,29 @@ def schema_problems(
 
 
 def yaml_blocks(text: str, rel: str, problems: list[str]) -> list[Block]:
+    """Every declaration fence: a `yaml` fence of either marker beginning at
+    the first column, which is where spec §9 places a declaration. An
+    indented fence is an example — masking tolerates CommonMark's three
+    spaces, extraction does not, since a legal top-level indent and a list
+    item's content indent are the same bytes. Discovery consumes outermost
+    fences whole, so a block inside a longer wrapper is never a
+    declaration."""
     blocks: list[Block] = []
-    for match in YAML_BLOCK.finditer(text):
+    for match in FENCE.finditer(text):
+        info = (match.group("bti") or match.group("tdi") or "").strip()
+        if info != "yaml":
+            continue
+        # Declarations begin at the first column (spec §9): a 1-3-space
+        # indent is legal CommonMark at top level, but so is a list item's
+        # content indent, and no line-anchored rule can tell the two apart —
+        # so an indented fence is masked as an example, never extracted.
+        if match.group("indent"):
+            continue
+        body = match.group("btb") if match.group("bt") else match.group("tdb")
         line = text.count("\n", 0, match.start()) + 1
         at = f"{rel}:{line}"
         try:
-            data = jsonify(YAML_LOADER.load(match.group(1)))
+            data = jsonify(YAML_LOADER.load(body))
         except YAMLError as error:
             problems.append(f"{at}: yaml block does not parse: {first_line(error)}")
             continue
@@ -350,10 +401,33 @@ def check_workflow_blocks(
             continue
         rel = path.relative_to(root).as_posix()
         text = path.read_text(encoding="utf-8")
+        # §9's carriers are per file, and each is one location: a workflow
+        # or stage file declares in its body, a skill in its frontmatter.
+        # A declaration in the other carrier, or in a file that is neither,
+        # is reported rather than validated as live — a declaration nothing
+        # composes is one nothing executes.
+        declares_in_body = WORKFLOW_FILE.fullmatch(rel) or STAGE_FILE.fullmatch(rel)
+        declares_in_frontmatter = SKILL_FILE.fullmatch(rel)
         blocks = yaml_blocks(text, rel, problems)
+        if not declares_in_body:
+            for block in blocks:
+                if workflow_value(block.data) is not None:
+                    problems.append(
+                        f"{block.at}: `metadata.workflow` in the body of a file "
+                        f"that is neither a workflow nor a stage — §9 gives them "
+                        f"the body carrier and a skill its frontmatter"
+                    )
+            blocks = []
         front = frontmatter_block(text, rel)
         if front is not None:
-            blocks.append(front)
+            if declares_in_frontmatter:
+                blocks.append(front)
+            elif workflow_value(front.data) is not None:
+                problems.append(
+                    f"{front.at}: `metadata.workflow` in the frontmatter of a "
+                    f"file that is not a skill — §9 gives skills that carrier "
+                    f"and workflow and stage files the body one"
+                )
         for block in blocks:
             workflow = workflow_value(block.data)
             if workflow is None:
@@ -452,7 +526,12 @@ def check_skill_budgets(root: Path) -> tuple[int, list[str]]:
     return len(paths), problems
 
 
-STAGE_STEP_HEADING = re.compile(r"^### (?P<id>[a-z][a-z0-9-]*) \(", re.MULTILINE)
+# The complete form, anchored to line end: a truncated `### thing (` or a
+# heading with trailing text is malformed, not a valid declaration whose
+# contract may associate.
+STAGE_STEP_HEADING = re.compile(
+    r"^### (?P<id>[a-z][a-z0-9-]*) \((?P<role>[a-z]+)\)[ \t]*$", re.MULTILINE
+)
 
 
 def step_of(block: Block | None) -> Any:
@@ -502,7 +581,14 @@ def stage_steps(root: Path, problems: list[str]) -> dict[str, tuple[str, Any]]:
     for path in sorted(root.glob("workflows/stages/*.md")):
         rel = path.relative_to(root).as_posix()
         text = path.read_text(encoding="utf-8")
-        headings = [(m.start(), m.group("id")) for m in STAGE_STEP_HEADING.finditer(text)]
+        # Headings come from the masked text: a `### fake (role)` inside a
+        # fenced example between a real heading and its contract would
+        # otherwise key the contract as `fake`, corrupting parity and the
+        # output maps. The mask keeps offsets, so block association holds.
+        headings = [
+            (m.start(), m.group("id"))
+            for m in STAGE_STEP_HEADING.finditer(mask_fences(text))
+        ]
         for block in yaml_blocks(text, rel, problems):
             step = step_of(block)
             if step is None:
@@ -619,6 +705,46 @@ def manifest_problems(at: str, data: Any, outputs: dict[str, str]) -> list[str]:
 
 
 GATE_HEADING = re.compile(r"^- \*\*(?P<id>[a-z][a-z0-9-]*)\*\*", re.MULTILINE)
+# Anything bullet-and-bold in a Gates section is gate-shaped; one that then
+# fails GATE_HEADING's id form is a malformed gate to report, never silence.
+GATE_SHAPED = re.compile(r"^- \*\*(?P<raw>[^*\n]+)\*\*", re.MULTILINE)
+
+
+# The closing run must be at least as long as the opener (CommonMark): a
+# four-backtick wrapper demonstrating a triple-backtick block would
+# otherwise close at the inner fence and leave the example's tail
+# unmasked.
+
+GENERIC_H3 = re.compile(r"^### ", re.MULTILINE)
+GENERIC_H2 = re.compile(r"^## ", re.MULTILINE)
+GATES_HEADING = re.compile(r"^## Gates[ \t]*$", re.MULTILINE)
+
+
+def mask_fences(text: str) -> str:
+    """Fenced code blanked to spaces with newlines kept: an exact `## Gates`
+    or a `### <id> (<role>)` inside an example must not read as structure,
+    and preserving every offset and line number is what lets the scans that
+    follow keep pointing into the raw text."""
+    def blank(match: re.Match) -> str:
+        return "".join(c if c == "\n" else " " for c in match.group(0))
+
+    return FENCE.sub(blank, text)
+
+
+def gates_section(text: str) -> str:
+    """The `## Gates` section's own text — from the exact level-2 heading
+    (an inline mention or a `### Gates` would otherwise pose as the section
+    start) to the next level-2 heading, since stages place `## Notes` after
+    it and a lowercase bold bullet there must not read as a gate. Fenced
+    code is masked first, so an example carrying the heading is not a
+    second section and its bullets are not gates."""
+    text = mask_fences(text)
+    match = GATES_HEADING.search(text)
+    if match is None:
+        return ""
+    tail = text[match.end() :]
+    boundary = tail.find("\n## ")
+    return tail if boundary == -1 else tail[:boundary]
 
 
 def gate_scopes(root: Path) -> dict[str, bool]:
@@ -643,10 +769,8 @@ def gate_scopes(root: Path) -> dict[str, bool]:
                 if step_of(block) is not None
             )
         )
-        section = text.split("## Gates", 1)
-        if len(section) == 2:
-            for match in GATE_HEADING.finditer(section[1]):
-                found[match.group("id")] = phased
+        for match in GATE_HEADING.finditer(gates_section(text)):
+            found[match.group("id")] = phased
     return found
 
 
@@ -891,6 +1015,371 @@ def composed_stage_files(root: Path, workflow: Any) -> set[str] | None:
     return stages or None
 
 
+def sequence_members(workflow: Any) -> tuple[list[str], list[str], list[str]]:
+    """The step ids, gate ids, and malformed entries of one stage block's
+    sequence, in declaration order. Malformed entries are counted rather than
+    read: the schema already faults them, and guessing a kind here would
+    double-report every fault as a parity problem too."""
+    steps: list[str] = []
+    gates: list[str] = []
+    malformed: list[str] = []
+    stage = workflow.get("stage") if isinstance(workflow, dict) else None
+    entries = stage.get("sequence") if isinstance(stage, dict) else None
+    for entry in items_of(entries):
+        step = entry.get("step") if isinstance(entry, dict) else None
+        gate = entry.get("gate") if isinstance(entry, dict) else None
+        if isinstance(step, str) and gate is None:
+            steps.append(step)
+        elif isinstance(gate, str) and step is None:
+            gates.append(gate)
+        else:
+            malformed.append(repr(entry))
+    return steps, gates, malformed
+
+
+def check_stage_sequences(root: Path) -> tuple[int, list[str]]:
+    """Spec §9.4: a stage that declares members carries exactly one sequence
+    block naming every declared step and gate exactly once. The schema sees
+    one block at a time, so completeness — sequence against the stage's own
+    headings and Gates bullets — is this check's to hold: run-state
+    population follows the sequence verbatim, and a member missing from it is
+    a record no run could carry. Ids are held unique across stages too:
+    workflows concatenate stage sequences into one record list, so an id two
+    stages share — or one stage declares twice at the source — duplicates
+    the §10 record the moment a workflow composes them."""
+    problems: list[str] = []
+    checked = 0
+    # Member ids accumulate across stages: workflows concatenate stage
+    # sequences into one record list, and §10 keeps one record per member
+    # there — an id two stages share duplicates the moment they compose,
+    # whichever kinds it wears in each.
+    owners: dict[str, str] = {}
+    stage_slugs = {
+        path.stem
+        for path in root.glob("workflows/stages/*.md")
+        if path.name != "README.md"
+    }
+    for path in sorted(root.glob("workflows/stages/*.md")):
+        if path.name == "README.md":
+            continue
+        rel = path.relative_to(root).as_posix()
+        text = path.read_text(encoding="utf-8")
+        # Structure scans run on the masked text: a heading or bullet inside
+        # a fenced example is illustration, not declaration.
+        masked = mask_fences(text)
+        # A second Gates section would sit past the boundary gates_section
+        # returns, its every gate invisible to parity and gate scoping — an
+        # incomplete sequence would pass on the strength of what nobody read.
+        if len(GATES_HEADING.findall(masked)) > 1:
+            problems.append(
+                f"{rel}: more than one `## Gates` section — gates past the "
+                f"first are invisible to the sequence checks"
+            )
+        # Lists, not sets: a member declared twice at the source — two
+        # identical headings, two identical gate bullets — must surface as
+        # the duplicate it is, not be erased before the comparison.
+        step_list = [m.group("id") for m in STAGE_STEP_HEADING.finditer(masked)]
+        section = gates_section(text)
+        gate_list = [m.group("id") for m in GATE_HEADING.finditer(section)]
+        # A gate-shaped bullet whose id fails the strict form must not make
+        # the file read as declaring nothing: `**Demo-approval**` is a typo
+        # to report, and it still marks the file as a stage contract.
+        malformed_gates = 0
+        for match in GATE_SHAPED.finditer(section):
+            if not GATE_HEADING.match(section, match.start()):
+                malformed_gates += 1
+                problems.append(
+                    f"{rel}: gate bullet `{match.group('raw')}` does not match "
+                    f"the `- **<id>**` form — ids are lowercase kebab-case "
+                    f"(spec §9.4)"
+                )
+        # A step-contract block owes the well-formed heading nearest above it:
+        # with none at all it has no id a sequence could name, and under a
+        # malformed one — `### second` without the role — it would silently
+        # attribute to the previous valid step and its member could vanish
+        # from the sequence while conformance passed. And the association is
+        # one-to-one both ways: a heading with no contract is a record the
+        # driver has no role or handoff for, and one with two has no single
+        # contract to execute.
+        headings = [
+            (m.start(), m.group("id"), m.group("role"))
+            for m in STAGE_STEP_HEADING.finditer(masked)
+        ]
+        heading_offsets = [start for start, _, _ in headings]
+        roles_at = {start: role for start, _, role in headings}
+        h3_offsets = [m.start() for m in GENERIC_H3.finditer(masked)]
+        h2_offsets = [m.start() for m in GENERIC_H2.finditer(masked)]
+        contracts_under: dict[int, int] = {start: 0 for start in heading_offsets}
+        step_blocks = 0
+        sequence_blocks = []
+        for block in yaml_blocks(text, rel, []):
+            line = int(block.at.rsplit(":", 1)[1])
+            offset = sum(len(x) + 1 for x in text.splitlines(keepends=False)[: line - 1])
+            workflow = workflow_value(block.data)
+            if isinstance(workflow, dict) and "stage" in workflow:
+                sequence_blocks.append(block)
+            if not isinstance(workflow, dict) or "step" not in workflow:
+                continue
+            step_blocks += 1
+            nearest_h3 = max((s for s in h3_offsets if s < offset), default=None)
+            nearest_valid = max((s for s in heading_offsets if s < offset), default=None)
+            nearest_h2 = max((s for s in h2_offsets if s < offset), default=None)
+            if nearest_h3 is not None and nearest_h2 is not None and nearest_h2 > nearest_h3:
+                # An H2 closes the step section above it — `## Gates`, `## Notes` —
+                # so this block sits under no step heading at all, however
+                # many valid ones precede it.
+                problems.append(
+                    f"{block.at}: step block below a `## ` heading that closed "
+                    f"the step section above it — it belongs to no step, and no "
+                    f"sequence can name it (spec §9.4)"
+                )
+            elif nearest_h3 is None:
+                problems.append(
+                    f"{block.at}: step block without a `### <id> (<role>)` heading "
+                    f"above it — no sequence can name what has no id (spec §9.4)"
+                )
+            elif nearest_valid is None or nearest_valid < nearest_h3:
+                problems.append(
+                    f"{block.at}: step block under a heading that does not match "
+                    f"`### <id> (<role>)` — it would attribute to the previous "
+                    f"step, and no sequence can name it (spec §9.4)"
+                )
+            else:
+                contracts_under[nearest_valid] += 1
+                # The heading is what a human executing the prose reads, the
+                # contract what a driver executes: a disagreement about the
+                # role hands the same step to two different roles.
+                # A schema-invalid `step` value is the schema check's
+                # finding; reading a role off it would abort the pass before
+                # that finding prints.
+                declaration = workflow["step"]
+                declared_role = (
+                    declaration.get("role") if isinstance(declaration, dict) else None
+                )
+                if (
+                    isinstance(declared_role, str)
+                    and declared_role != roles_at[nearest_valid]
+                ):
+                    problems.append(
+                        f"{block.at}: contract declares role `{declared_role}` "
+                        f"under a heading that says `{roles_at[nearest_valid]}` — "
+                        f"prose and driver would execute it as different roles "
+                        f"(spec §9.1)"
+                    )
+        for start, step_id, _ in headings:
+            if contracts_under[start] == 0:
+                problems.append(
+                    f"{rel}: step `{step_id}` declares no contract block — a "
+                    f"sequence names it, and the driver would have no role or "
+                    f"handoff to execute (spec §9.1, §9.4)"
+                )
+            elif contracts_under[start] > 1:
+                problems.append(
+                    f"{rel}: step `{step_id}` declares {contracts_under[start]} "
+                    f"contract blocks — a step has one contract (spec §9.1)"
+                )
+        for kind, names in (("step", step_list), ("gate", gate_list)):
+            for name in sorted({x for x in names if names.count(x) > 1}):
+                problems.append(
+                    f"{rel}: {kind} `{name}` is declared {names.count(name)} times — "
+                    f"population can carry only one record (spec §10)"
+                )
+        for name in step_list + gate_list:
+            # A member wearing a stage's id would make every §9.1 edge naming
+            # it ambiguous: a target is an untyped string that may resolve to
+            # a member or to a stage's first runnable record.
+            if name in stage_slugs:
+                problems.append(
+                    f"{rel}: member `{name}` carries a stage's id — a §9.1 "
+                    f"target naming it could mean the member or the stage "
+                    f"(spec §9.4)"
+                )
+            owner = owners.get(name)
+            if owner is not None and owner != rel:
+                problems.append(
+                    f"{rel}: member `{name}` is also declared by {owner} — a "
+                    f"workflow composing both stages would carry two records "
+                    f"with one id (spec §10)"
+                )
+            else:
+                owners[name] = rel
+        declared_steps = set(step_list)
+        declared_gates = set(gate_list)
+        blocks = sequence_blocks
+        if (
+            not declared_steps
+            and not declared_gates
+            and not blocks
+            and not step_blocks
+            and not malformed_gates
+        ):
+            continue  # nothing declared any way; not a stage contract yet
+        checked += 1
+        if len(blocks) != 1:
+            problems.append(
+                f"{rel}: {len(blocks)} stage sequence blocks — spec §9.4 has a "
+                f"stage declare its members once"
+            )
+            continue
+        steps, gates, malformed = sequence_members(workflow_value(blocks[0].data))
+        at = blocks[0].at
+        for kind, named, declared in (
+            ("step", steps, declared_steps),
+            ("gate", gates, declared_gates),
+        ):
+            for name in sorted(set(named) - declared):
+                problems.append(
+                    f"{at}: sequence names {kind} `{name}`, which the stage does "
+                    f"not declare — spec §9.4 sequences only declared members"
+                )
+            # A malformed entry could have been any member, so with one in
+            # the block the missing-member direction would cascade a parity
+            # error onto every name the broken entry might have carried —
+            # the schema already faults the entry, and that is the report.
+            if malformed:
+                continue
+            for name in sorted(declared - set(named)):
+                problems.append(
+                    f"{at}: {kind} `{name}` is missing from the sequence — spec "
+                    f"§9.4 names every member, or population cannot carry its record"
+                )
+            for name in sorted({x for x in named if named.count(x) > 1}):
+                problems.append(
+                    f"{at}: {kind} `{name}` appears {named.count(name)} times in "
+                    f"the sequence — spec §10 keeps one record per member"
+                )
+        # Across kinds too: a step and a gate sharing a name would populate
+        # two `steps` records with one id, which §10 forbids no less for
+        # being differently flavored.
+        for name in sorted(set(steps) & set(gates)):
+            problems.append(
+                f"{at}: `{name}` is both a step and a gate in the sequence — "
+                f"spec §10 keeps one record per member"
+            )
+    return checked, problems
+
+
+def run_workflow(data: Any) -> Any:
+    """The document's declared workflow, or None where the shape is not a
+    run state at all — the schema check's finding, never this one's."""
+    run = data.get("run") if isinstance(data, dict) else None
+    return run.get("workflow") if isinstance(run, dict) else None
+
+
+def composed_member_order(root: Path, workflow: Any) -> tuple[list[str], int] | None:
+    """The member ids a workflow's composed stages declare, in composition
+    order — §9.4's sequences concatenated, which §10 makes the order of the
+    populated `steps` list — with the count the entry stage contributes,
+    since §10's pre-acceptance list is that stage's members alone. None
+    where the workflow or any stage's sequence cannot be read; a document
+    broken elsewhere is not this check's finding.
+    """
+    if not isinstance(workflow, str) or not re.fullmatch(r"[a-z][a-z0-9-]*", workflow):
+        return None
+    path = root / "workflows" / f"{workflow}.md"
+    if not path.is_file():
+        return None
+    slugs: list[str] = []
+    for match in STAGE_LINK.finditer(path.read_text(encoding="utf-8")):
+        if match.group(1) not in slugs:
+            slugs.append(match.group(1))
+    order: list[str] = []
+    entry_count = 0
+    for index, slug in enumerate(slugs):
+        stage_path = root / "workflows" / "stages" / f"{slug}.md"
+        if not stage_path.is_file():
+            return None
+        text = stage_path.read_text(encoding="utf-8")
+        blocks = [
+            block
+            for block in yaml_blocks(text, stage_path.name, [])
+            if isinstance(workflow_value(block.data), dict)
+            and "stage" in workflow_value(block.data)
+        ]
+        if len(blocks) != 1:
+            return None
+        steps, gates, malformed = sequence_members(workflow_value(blocks[0].data))
+        if malformed:
+            return None
+        stage = workflow_value(blocks[0].data).get("stage")
+        if not isinstance(stage, dict):
+            return None  # schema-invalid: its own finding, not an order
+        for entry in items_of(stage.get("sequence")):
+            member = entry.get("step") or entry.get("gate") if isinstance(entry, dict) else None
+            if isinstance(member, str):
+                order.append(member)
+        if index == 0:
+            entry_count = len(order)
+    return (order, entry_count) if order else None
+
+
+def record_order_problems(
+    at: str, data: Any, composed: tuple[list[str], int] | None
+) -> list[str]:
+    """Spec §10: the populated `steps` list follows the composed stages'
+    sequences, which is what makes §8.5's resume — the first record neither
+    done nor skipped — mean what the stages declared. The schema cannot
+    constrain id order, so swapping two records would silently change where
+    a resume lands; only this check stands between that and a green run.
+
+    Which part of the composition a document owes depends on where it is,
+    and `run.risk` is what says which — the class the intake gate accepted,
+    absent before and present after. Before that acceptance §10's list is
+    the entry stage's members alone, so ids are bounded to that stage and
+    read as a subsequence of it: a later stage's member has no record yet,
+    the acceptance being the write that creates them. From the acceptance
+    onward the list is complete, so a populated state owes every member of
+    every composed stage, in the declared order.
+    """
+    if composed is None or not isinstance(data, dict):
+        return []
+    order, entry_count = composed
+    run = data.get("run") if isinstance(data, dict) else None
+    accepted = isinstance(run, dict) and run.get("risk") is not None
+    if not accepted:
+        # §10: until the intake gate accepts, the list holds the entry
+        # stage's records alone — the acceptance is the write that creates
+        # the rest, so a later stage's member here is a record nothing wrote.
+        order = order[:entry_count]
+    recorded = [
+        step["id"]
+        for step in items_of(data.get("steps"))
+        if isinstance(step, dict) and isinstance(step.get("id"), str)
+    ]
+    problems: list[str] = []
+    position = 0
+    for step_id in recorded:
+        if step_id not in order:
+            problems.append(
+                f"{at}: step `{step_id}` is not a member "
+                + (
+                    "any composed stage declares"
+                    if accepted
+                    else "the entry stage declares, and no class is accepted "
+                    "yet — §10's pre-acceptance list is that stage's alone"
+                )
+                + " (spec §9.4)"
+            )
+            continue
+        index = order.index(step_id)
+        if index < position:
+            problems.append(
+                f"{at}: step `{step_id}` is recorded after `{order[position - 1]}` "
+                f"but the composed sequences declare it before — §10's order is "
+                f"what §8.5's resume reads (spec §9.4)"
+            )
+            continue
+        position = index + 1
+    if accepted:
+        missing = [member for member in order if member not in set(recorded)]
+        if missing:
+            problems.append(
+                f"{at}: the accepted class makes the list complete (spec §10) "
+                f"and these members have no record: {', '.join(missing)}"
+            )
+    return problems
+
+
 def check_manifests(root: Path) -> tuple[int, list[str]]:
     """Every run-state document this repo ships models a state an executor may
     resume from, so a stale manifest in one is a nonconforming example rather
@@ -901,6 +1390,24 @@ def check_manifests(root: Path) -> tuple[int, list[str]]:
     contracts = stage_steps(root, [])
     problems: list[str] = []
     checked = 0
+
+    def order_problems(at: str, data: Any) -> list[str]:
+        """The record-order check, plus the diagnostic that keeps it from
+        disabling itself: `run.workflow` is only schema-checked as a
+        non-empty string, so a typo would resolve to no composition and
+        every membership, completeness, and order rule would pass by
+        vacuously. An unresolvable name is the finding instead."""
+        workflow = run_workflow(data)
+        if workflow is None:
+            return []  # not a run state's shape; the schema check reports it
+        composed_order = composed_member_order(root, workflow)
+        if composed_order is None:
+            return [
+                f"{at}: run.workflow `{workflow}` names no workflow whose stages "
+                f"declare their sequences — §10's order cannot be checked against "
+                f"a composition that cannot be read (spec §9.4)"
+            ]
+        return record_order_problems(at, data, composed_order)
 
     def composed(at: str, data: Any) -> tuple[dict[str, tuple[str, Any]], list[str]]:
         """The contracts scoped to the document's own workflow: §8.6 bounds
@@ -939,6 +1446,7 @@ def check_manifests(root: Path) -> tuple[int, list[str]]:
         problems += manifest_problems(rel, data, outputs)
         problems += gate_record_problems(rel, data, gates)
         problems += duplicate_record_problems(rel, data)
+        problems += order_problems(rel, data)
         if isinstance(data, dict) and data.get("imports"):
             scoped, scope_problems = composed(rel, data)
             problems += scope_problems
@@ -952,6 +1460,7 @@ def check_manifests(root: Path) -> tuple[int, list[str]]:
                 problems += manifest_problems(block.at, block.data, outputs)
                 problems += gate_record_problems(block.at, block.data, gates)
                 problems += duplicate_record_problems(block.at, block.data)
+                problems += order_problems(block.at, block.data)
                 if isinstance(block.data, dict) and block.data.get("imports"):
                     scoped, scope_problems = composed(block.at, block.data)
                     problems += scope_problems
@@ -988,9 +1497,10 @@ def main(argv: list[str] | None = None) -> int:
     files, frontmatter_problems = check_frontmatter(root)
     skills, skill_problems = check_skill_budgets(root)
     bound, parity_problems = check_step_parity(root)
+    sequences, sequence_problems = check_stage_sequences(root)
     manifests, manifest_faults = check_manifests(root)
     problems += spec_problems + block_problems + frontmatter_problems + skill_problems
-    problems += parity_problems + manifest_faults
+    problems += parity_problems + sequence_problems + manifest_faults
 
     for problem in problems:
         print(problem)
@@ -1000,7 +1510,8 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"conformance: OK — {fixtures} fixtures, {examples} spec examples, "
         f"{blocks} workflow blocks, {files} frontmatter files, {skills} skill bodies, "
-        f"{bound} step-bound skills, {manifests} run-state documents"
+        f"{bound} step-bound skills, {sequences} stage sequences, "
+        f"{manifests} run-state documents"
     )
     return 0
 

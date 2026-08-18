@@ -7,7 +7,7 @@ This file is the discovery surface: one line per role, skill, workflow, and stag
 ## Protocol
 
 - `protocol/spec.md` — the versioned protocol surface: roles, execution modes, risk classes, gates, artifacts, orchestration metadata, versioning
-- `protocol/schemas/` — JSON Schemas: step/handoff, loop contract, trigger, run state; commented starter fixtures in `examples/`
+- `protocol/schemas/` — JSON Schemas: step/handoff, loop contract, trigger, stage sequence, run state; commented starter fixtures in `examples/`
 
 ## Roles
 

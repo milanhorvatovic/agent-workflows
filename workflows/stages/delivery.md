@@ -7,6 +7,19 @@ description: Closes the run — analyst assembles the delivery artifact from the
 
 Closes the run: assemble what shipped, validate it against the brief one last time, and collect the human decision. Where the delivery gate fires it is the run's last checkpoint, and the only one this stage's verdict reaches — wherever `deliver-validate` runs, the gate sees what it rendered. Where the risk class skips the validator there is no verdict to see: at R1 the gate reads the artifact alone, and at R0 neither step nor gate fires ([overlays](../overlays.md)).
 
+The sequence (spec §9.4) declares the members in record order, which is reading order here — and reading order already satisfies spec §10's constraint rather than escaping it: the gate's `revise` returns to `deliver-prepare` by spec §7's default and invalidates the validation between them, and `deliver-prepare` precedes `deliver-validate` exactly as the destination must precede what the revision invalidates. Planning inverts only because its destination reads last:
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    stage:
+      sequence:
+        - step: deliver-prepare
+        - step: deliver-validate
+        - gate: delivery-approval
+```
+
 ## Steps
 
 ### deliver-prepare (analyst)

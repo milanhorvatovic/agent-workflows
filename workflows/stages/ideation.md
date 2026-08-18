@@ -7,6 +7,21 @@ description: Explores the solution space before planning — analyst grounding, 
 
 Explores the solution space before committing to a plan: ground the problem in the codebase, generate distinct approaches, recommend one, validate the exploration. Composed by `feature` and `plan`; risk-class participation per [overlays](../overlays.md).
 
+The sequence (spec §9.4) declares the members in record order — the revising member follows its validator here, because only the loop routes to it and no gate's `revise` orders it earlier:
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    stage:
+      sequence:
+        - step: ground
+        - step: ideate
+        - step: ideate-validate
+        - step: ideate-revise
+          conditional: true
+```
+
 ## Steps
 
 ### ground (analyst)

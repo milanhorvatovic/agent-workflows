@@ -7,6 +7,18 @@ description: Builds the change within the file scope the plan declares — imple
 
 Builds the current phase within the scope its plan declares. The loop contract — not step edges — routes this stage: the validation verdict and the machine checks are its exit criteria (spec §9.2), and on exit the run proceeds in composition order.
 
+The sequence (spec §9.4) declares the members in record order — two steps, no gate, the loop re-entering `implement` itself rather than any revising member:
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    stage:
+      sequence:
+        - step: implement
+        - step: implement-validate
+```
+
 ## Steps
 
 ### implement (implementer)

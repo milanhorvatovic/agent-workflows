@@ -96,6 +96,36 @@ TRIGGER_SCHEMA = {
     },
 }
 
+STAGE_SCHEMA = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "required": ["protocol", "stage"],
+    "properties": {
+        "protocol": PROTOCOL,
+        "stage": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["sequence"],
+            "properties": {
+                "sequence": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "step": {"type": "string"},
+                            "gate": {"type": "string"},
+                            "conditional": {"const": True},
+                        },
+                        "oneOf": [{"required": ["step"]}, {"required": ["gate"]}],
+                    },
+                }
+            },
+        },
+    },
+}
+
 RUN_STATE_SCHEMA = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
@@ -110,6 +140,7 @@ RUN_STATE_SCHEMA = {
                 "id": {"type": "string"},
                 "workflow": {"type": "string"},
                 "phase": {"type": "integer"},
+                "risk": {"type": "string"},
             },
         },
         # Enough of the real shape for the manifest check to have something to
@@ -210,6 +241,18 @@ def frontmatter(name: str, description: str = "A description.") -> str:
     return f"---\nname: {name}\ndescription: {description}\n---\n\n# {name}\n"
 
 
+def stage_file(block: str) -> str:
+    """A well-formed scratch stage: one heading, the block under it, and the
+    §9.4 sequence naming the one member — the shape every stage now owes."""
+    return (
+        frontmatter("build")
+        + "\n### builder (analyst)\n\nProse.\n\n"
+        + block
+        + "\n```yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n"
+        + "    stage:\n      sequence:\n        - step: builder\n```\n"
+    )
+
+
 def skill_frontmatter(name: str, extra: str = "license: MIT\n") -> str:
     return f"---\nname: {name}\ndescription: A description.\n{extra}---\n\n# {name}\n"
 
@@ -239,9 +282,18 @@ class ValidateConformanceTest(unittest.TestCase):
             ("step", STEP_SCHEMA),
             ("loop", LOOP_SCHEMA),
             ("trigger", TRIGGER_SCHEMA),
+            ("stage", STAGE_SCHEMA),
             ("run-state", RUN_STATE_SCHEMA),
         ):
             self.write(f"protocol/schemas/{name}.schema.json", json.dumps(schema))
+        self.write(
+            "protocol/schemas/examples/stage.valid.yaml",
+            'protocol: "0.2"\nstage:\n  sequence:\n    - step: thing\n',
+        )
+        self.write(
+            "protocol/schemas/examples/stage.invalid.yaml",
+            'protocol: "0.2"\nstage:\n  sequence:\n    - step: thing\n      gate: also-a-gate\n',
+        )
         self.write(
             "protocol/schemas/examples/step.valid.yaml",
             'protocol: "0.2"\nstep:\n  role: analyst\n  output:\n    artifact: "{run}/a.md"\n',
@@ -277,7 +329,7 @@ class ValidateConformanceTest(unittest.TestCase):
         self.write("protocol/spec.md", SPEC)
         self.write("roles/analyst.md", frontmatter("analyst"))
         self.write("workflows/demo.md", frontmatter("demo") + "\n" + TRIGGER_BLOCK)
-        self.write("workflows/stages/build.md", frontmatter("build") + "\n" + STEP_BLOCK)
+        self.write("workflows/stages/build.md", stage_file(STEP_BLOCK))
 
     def write(self, relative: str, content: str) -> None:
         path = self.root / relative
@@ -312,10 +364,11 @@ class ValidateConformanceTest(unittest.TestCase):
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
         self.assertIn("conformance: OK", output)
-        self.assertIn("8 fixtures", output)
+        self.assertIn("10 fixtures", output)
         self.assertIn("2 spec examples", output)
-        self.assertIn("2 workflow blocks", output)
+        self.assertIn("3 workflow blocks", output)
         self.assertIn("3 frontmatter files", output)
+        self.assertIn("1 stage sequences", output)
 
     def test_schema_violation_in_workflow_block_reported_with_location(self) -> None:
         broken = STEP_BLOCK.replace("role: analyst", "role: analyst\n      rogue: true")
@@ -461,9 +514,7 @@ class ValidateConformanceTest(unittest.TestCase):
         the phases behind it bound."""
         self.write(
             "workflows/stages/build.md",
-            frontmatter("build")
-            + "\n"
-            + STEP_BLOCK.replace("{run}/brief.md", "{run}/phase-{P}-impl-log.md"),
+            stage_file(STEP_BLOCK.replace("{run}/brief.md", "{run}/phase-{P}-impl-log.md")),
         )
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
@@ -516,7 +567,7 @@ class ValidateConformanceTest(unittest.TestCase):
             'artifact: "{run}/grounding.md"',
             'artifact: "{run}/grounding.md"\n        template: references/g.template.md',
         )
-        self.write("workflows/stages/build.md", frontmatter("build") + "\n" + block)
+        self.write("workflows/stages/build.md", stage_file(block))
         self.write("workflows/stages/references/g.template.md", "# template\n")
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
@@ -575,7 +626,7 @@ class ValidateConformanceTest(unittest.TestCase):
         self.write("skills/demo-skill/references/g.template.md", "# template\n")
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
-        self.assertIn("3 workflow blocks", output)
+        self.assertIn("4 workflow blocks", output)
 
     def test_frontmatter_workflow_schema_violation_reported_at_line_one(self) -> None:
         broken = SKILL_WORKFLOW.replace("role: analyst", "role: analyst\n      rogue: true")
@@ -675,6 +726,15 @@ metadata:
         PASS: next-step
         FAIL: fix-step
 ```
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    stage:
+      sequence:
+        - step: thing
+```
 """
 
     SKILL = """---
@@ -754,6 +814,719 @@ metadata:
         message = self.run_main_expecting_exit_with_root(self.root / "elsewhere")
         self.assertIn("not found", message)
 
+    # ---- stage sequences (spec §9.4) ----
+
+    def test_a_stage_with_a_complete_sequence_passes_and_tallies(self) -> None:
+        self.write("workflows/stages/demo.md", self.STAGE)
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+        self.assertIn("2 stage sequences", output)
+
+    def test_an_orphaned_step_block_is_reported(self) -> None:
+        """A step contract above the first heading has no id a sequence could
+        name — skipping it silently would let a stage with contracts but
+        malformed headings bypass §9.4 as "declaring nothing"."""
+        self.write("workflows/stages/demo.md", frontmatter("demo") + "\n" + STEP_BLOCK)
+        self.assert_problem("step block without a `### <id> (<role>)` heading")
+
+    def test_a_second_gates_section_is_reported(self) -> None:
+        """Gates past the first section sit beyond the boundary the scan
+        returns — invisible to parity, so the file is refused instead."""
+        self.write(
+            "workflows/stages/gated.md",
+            self.GATED_STAGE + "\n## Gates\n\n- **extra-gate** — unseen.\n",
+        )
+        self.assert_problem("more than one `## Gates` section")
+
+    def test_a_stage_declaring_members_without_a_sequence_is_reported(self) -> None:
+        """§9.4 has every member-declaring stage carry the sequence: run-state
+        population follows it verbatim, so a stage without one is a stage no
+        run can be populated from."""
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE.replace("\n```yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n    stage:\n      sequence:\n        - step: thing\n```\n", ""),
+        )
+        self.assert_problem("0 stage sequence blocks")
+
+    def test_a_fenced_fake_heading_does_not_rekey_a_contract(self) -> None:
+        """stage_steps reads headings from the masked text: a `### fake
+        (role)` inside a fenced example between the real heading and its
+        contract must not key the contract as `fake` and break parity."""
+        self.write_pair()
+        stage = Path(self.root / "workflows/stages/demo.md").read_text(encoding="utf-8")
+        stage = stage.replace(
+            "Prose.",
+            "Prose with an example:\n\n```markdown\n### fake (analyst)\n```",
+            1,
+        )
+        self.write("workflows/stages/demo.md", stage)
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_member_wearing_a_stage_id_is_reported(self) -> None:
+        """§9.1 targets are untyped strings — a member named like a stage
+        makes every edge naming it ambiguous between the member and the
+        stage's first runnable record."""
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE.replace("thing", "gated"),
+        )
+        self.write("workflows/stages/gated.md", self.GATED_STAGE)
+        self.assert_problem("member `gated` carries a stage's id")
+
+    def test_a_malformed_gate_bullet_is_reported_not_silenced(self) -> None:
+        """A gate-shaped bullet whose id fails the strict form — a
+        capitalized `**Demo-approval**` — must not make a gate-only file
+        read as declaring nothing and bypass both reports."""
+        self.write(
+            "workflows/stages/gated.md",
+            "---\nname: gated\ndescription: A stage.\n---\n\n"
+            "# Stage: gated\n\n## Gates\n\n"
+            "- **Demo-approval** — capitalized by mistake.\n",
+        )
+        output = self.assert_problem("gate bullet `Demo-approval` does not match")
+        # The typo also makes the file a stage contract, so the missing
+        # sequence is reported alongside rather than silenced with it.
+        self.assertIn("0 stage sequence blocks", output)
+
+    def test_a_sequence_missing_a_declared_member_is_reported(self) -> None:
+        self.write(
+            "workflows/stages/gated.md",
+            self.GATED_STAGE.replace("        - gate: demo-approval\n", "        - gate: other-gate\n").replace(
+                "- **demo-approval** — collects the human decision.",
+                "- **demo-approval** — collects the human decision.\n- **other-gate** — another decision.",
+            ),
+        )
+        self.assert_problem("gate `demo-approval` is missing from the sequence")
+
+    def test_a_sequence_naming_an_undeclared_member_is_reported(self) -> None:
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE.replace(
+                "      sequence:\n        - step: thing\n",
+                "      sequence:\n        - step: thing\n        - step: phantom\n",
+            ),
+        )
+        self.assert_problem("sequence names step `phantom`, which the stage does not declare")
+
+    def test_an_inline_gates_mention_does_not_start_the_section(self) -> None:
+        """Only the exact level-2 heading opens the Gates section: a prose
+        mention of `## Gates` — or a `### Gates`, which contains the same
+        substring — must not make the real heading read as the boundary and
+        every actual gate as undeclared."""
+        self.write(
+            "workflows/stages/gated.md",
+            self.GATED_STAGE.replace(
+                "# Stage: gated\n",
+                "# Stage: gated\n\nProse that mentions `## Gates` inline.\n\n"
+                "### Gates prelude\n\nMore prose.\n",
+            ),
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_fenced_gates_example_is_not_a_second_section(self) -> None:
+        """A `## Gates` line inside a fenced example is illustration: the
+        raw scan would count it as a real section and reject the stage as
+        carrying two, or read its bullets into parity."""
+        self.write(
+            "workflows/stages/gated.md",
+            self.GATED_STAGE + "\n## Notes\n\nAn example:\n\n"
+            "```markdown\n## Gates\n\n- **fake-gate** — an example bullet.\n```\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_block_quoted_example_stays_inert(self) -> None:
+        """Container-nested fences sit outside the protocol's top-level
+        declaration surface, and their content is already inert to the
+        line-anchored scans: every line carries the quote marker, so a
+        quoted `## Gates` or gate bullet never reads as structure."""
+        self.write(
+            "workflows/stages/gated.md",
+            self.GATED_STAGE + "\n## Notes\n\nA quoted example:\n\n"
+            "> ```markdown\n> ## Gates\n> - **fake-gate** — quoted.\n> ```\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_container_nested_declaration_is_not_a_declaration(self) -> None:
+        """§9 places declarations at the top level of the body — a sequence
+        block inside a block quote is nonconforming, and the checker reads
+        the stage as missing its sequence rather than discovering it there."""
+        quoted = "\n".join(
+            "> " + line if line else ">"
+            for line in (
+                "```yaml", "metadata:", "  workflow:", '    protocol: "0.2"',
+                "    stage:", "      sequence:", "        - step: thing", "```",
+            )
+        )
+        plain_sequence = (
+            "\n```yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n    stage:\n"
+            "      sequence:\n        - step: thing\n```\n"
+        )
+        assert plain_sequence in self.STAGE
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE.replace(plain_sequence, "\n" + quoted + "\n"),
+        )
+        self.assert_problem("0 stage sequence blocks")
+
+    def test_an_unclosed_wrapper_masks_to_end_of_file(self) -> None:
+        """CommonMark extends an unclosed fence to EOF: an unclosed
+        four-backtick wrapper must consume its complete inner yaml snippet
+        rather than fail to match and let the snippet extract as a real
+        declaration."""
+        self.write(
+            "workflows/stages/gated.md",
+            self.GATED_STAGE + "\n## Notes\n\nAn unclosed example:\n\n"
+            "````markdown\n```yaml\nmetadata:\n  workflow:\n"
+            "    protocol: \"0.2\"\n    stage:\n      sequence:\n"
+            "        - step: phantom\n```\n## Gates\n\n- **fake-gate** — x.\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_tilde_fenced_declaration_is_discovered(self) -> None:
+        """Extraction reads the same CommonMark the mask does: a stage whose
+        sequence block uses `~~~yaml` is a declaration, not code to hide —
+        masked-but-never-extracted was a complete stage reported missing."""
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE.replace(
+                "```yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n    stage:",
+                "~~~yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n    stage:",
+            ).replace(
+                "        - step: thing\n```",
+                "        - step: thing\n~~~",
+            ),
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_an_indented_fence_is_not_a_declaration(self) -> None:
+        """Declarations begin at the first column (spec §9): a 1-3-space
+        indent is legal CommonMark at top level but indistinguishable from a
+        list item's content indent, so an indented sequence fence is an
+        example — masked, never extracted — and the stage reads as missing
+        its sequence."""
+        block = (
+            "  ```yaml\n"
+            "  metadata:\n"
+            "    workflow:\n"
+            '      protocol: "0.2"\n'
+            "      stage:\n"
+            "        sequence:\n"
+            "          - step: thing\n"
+            "  ```\n"
+        )
+        plain_sequence = (
+            "\n```yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n    stage:\n"
+            "      sequence:\n        - step: thing\n```\n"
+        )
+        assert plain_sequence in self.STAGE
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE.replace(plain_sequence, "\n" + block),
+        )
+        self.assert_problem("0 stage sequence blocks")
+
+    def test_a_list_contained_fence_is_not_a_declaration(self) -> None:
+        """The round's own reproducer: a two-space-indented fence under a
+        list item matches the masking tolerance yet must not extract."""
+        block = (
+            "- an item introducing an example:\n\n"
+            "  ```yaml\n"
+            "  metadata:\n"
+            "    workflow:\n"
+            '      protocol: "0.2"\n'
+            "      stage:\n"
+            "        sequence:\n"
+            "          - step: thing\n"
+            "  ```\n"
+        )
+        plain_sequence = (
+            "\n```yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n    stage:\n"
+            "      sequence:\n        - step: thing\n```\n"
+        )
+        assert plain_sequence in self.STAGE
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE.replace(plain_sequence, "\n" + block),
+        )
+        self.assert_problem("0 stage sequence blocks")
+
+    def test_a_tilde_fence_masks_its_example(self) -> None:
+        """CommonMark fences come in tildes as well as backticks — an example
+        wrapped in `~~~` must not leave its Gates heading visible to the
+        structure scans."""
+        self.write(
+            "workflows/stages/gated.md",
+            self.GATED_STAGE + "\n## Notes\n\nA tilde-fenced example:\n\n"
+            "~~~markdown\n## Gates\n\n- **fake-gate** — inside the example.\n~~~\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_an_indented_fence_still_masks_its_example(self) -> None:
+        """CommonMark allows both fence lines up to three spaces in — a mask
+        demanding column 0 would leave the indented example's Gates heading
+        and bullet visible to the structure scans."""
+        self.write(
+            "workflows/stages/gated.md",
+            self.GATED_STAGE + "\n## Notes\n\nAn indented example:\n\n"
+            "  ````markdown\n## Gates\n\n- **fake-gate** — inside the example.\n  ````\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_fenced_stage_block_example_is_not_a_second_sequence(self) -> None:
+        """The mask hides examples from the text scans, and the same fence
+        spans must exclude them from block extraction — a stage example in a
+        four-backtick wrapper is illustration, not a second declaration."""
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE + "\nAn example of a whole stage block:\n\n"
+            "````markdown\n```yaml\nmetadata:\n  workflow:\n"
+            "    protocol: \"0.2\"\n    stage:\n      sequence:\n"
+            "        - step: example-step\n```\n````\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_heading_without_a_contract_is_reported(self) -> None:
+        """A sequence can name the heading's id, but the driver would have no
+        role or handoff to execute — the association is one-to-one."""
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE.replace(
+                "      sequence:\n        - step: thing\n",
+                "      sequence:\n        - step: thing\n        - step: ghost\n",
+            ) + "\n### ghost (analyst)\n\nProse without a block.\n",
+        )
+        self.assert_problem("step `ghost` declares no contract block")
+
+    def test_two_contracts_under_one_heading_are_reported(self) -> None:
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE + "\n```yaml\nmetadata:\n  workflow:\n"
+            "    protocol: \"0.2\"\n    step:\n      role: analyst\n"
+            "      output:\n        artifact: \"{run}/again.md\"\n```\n",
+        )
+        self.assert_problem("step `thing` declares 2 contract blocks")
+
+    def test_a_longer_fence_masks_its_inner_fences_whole(self) -> None:
+        """A four-backtick wrapper demonstrating a triple-backtick block
+        closes only at a run at least as long as its opener — the inner
+        fence must not end the mask and expose the example's tail."""
+        self.write(
+            "workflows/stages/gated.md",
+            self.GATED_STAGE + "\n## Notes\n\nAn example of a fenced block:\n\n"
+            "````markdown\nInner fence:\n```\ncode\n```\n## Gates\n\n"
+            "- **fake-gate** — still inside the example.\n````\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_role_mismatch_between_heading_and_contract_is_reported(self) -> None:
+        """The heading is what a human executing the prose reads and the
+        contract what a driver executes — a disagreement hands one step to
+        two different roles."""
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE.replace("### thing (analyst)", "### thing (validator)"),
+        )
+        self.assert_problem("contract declares role `analyst` under a heading that says `validator`")
+
+    def test_a_step_block_below_a_section_heading_is_reported(self) -> None:
+        """An H2 closes the step section above it: a contract moved under
+        `## Gates` or `## Notes` belongs to no step, however many valid step
+        headings precede it."""
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE + "\n## Notes\n\nProse.\n\n"
+            "```yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n"
+            "    step:\n      role: analyst\n      output:\n"
+            '        artifact: "{run}/stray.md"\n```\n',
+        )
+        self.assert_problem("step block below a `## ` heading that closed")
+
+    def test_a_frontmatter_declaration_outside_a_skill_is_reported(self) -> None:
+        """§9's frontmatter carrier is the Agent Skills one: a role or any
+        other file declaring there is a declaration no skill loader reads."""
+        self.write(
+            "roles/analyst.md",
+            "---\nname: analyst\ndescription: A role.\n" + SKILL_WORKFLOW + "---\n\n# analyst\n",
+        )
+        self.assert_problem("in the frontmatter of a file that is not a skill")
+
+    def test_a_nested_workflows_file_is_not_a_body_carrier(self) -> None:
+        """`workflows/references/example.md` is neither a workflow nor a
+        stage, however much its path starts with `workflows/`."""
+        self.write("workflows/references/example.md", frontmatter("example") + "\n" + STEP_BLOCK)
+        self.assert_problem("in the body of a file that is neither a workflow nor a stage")
+
+    def test_a_body_declaration_outside_a_workflow_file_is_reported(self) -> None:
+        """§9's body carrier belongs to workflow and stage files; a skill
+        declares in frontmatter. A body block anywhere else is a declaration
+        nothing composes."""
+        self.write(
+            "roles/analyst.md",
+            frontmatter("analyst") + "\n" + STEP_BLOCK,
+        )
+        self.assert_problem("in the body of a file that is neither a workflow nor a stage")
+
+    def test_a_truncated_heading_is_not_a_valid_declaration(self) -> None:
+        """`### thing (` is a malformed heading, not a prefix-match: its
+        contract must not associate, and the sequence entry naming `thing`
+        has no declared member behind it."""
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE.replace("### thing (analyst)", "### thing ("),
+        )
+        output = self.assert_problem("under a heading that does not match")
+        self.assertIn("sequence names step `thing`, which the stage does not declare", output)
+
+    def test_a_step_block_under_a_malformed_heading_is_reported(self) -> None:
+        """After one valid heading, a block under `### second` (no role)
+        would silently attribute to the previous step and its member could
+        vanish from the sequence — the nearest heading above a step block
+        must itself be well-formed."""
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE
+            + "\n### second\n\nProse.\n\n"
+            + "```yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n"
+            + "    step:\n      role: analyst\n      output:\n"
+            + "        artifact: \"{run}/second.md\"\n```\n",
+        )
+        self.assert_problem("under a heading that does not match")
+
+    def test_a_bold_bullet_in_notes_is_not_a_gate(self) -> None:
+        """The gate scan is bounded to the Gates section: stages place
+        `## Notes` after it, and a lowercase bold bullet there must not make
+        a complete sequence fail parity."""
+        self.write(
+            "workflows/stages/gated.md",
+            self.GATED_STAGE
+            + "\n## Notes\n\n- **run-state** — a bold term, not a gate.\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_malformed_entry_does_not_cascade_parity_errors(self) -> None:
+        """A both-kinds entry could have been any member, so the schema error
+        it already earns must not be joined by a missing-member report for
+        every name the broken entry might have carried."""
+        self.write(
+            "workflows/stages/gated.md",
+            self.GATED_STAGE.replace(
+                "        - gate: demo-approval\n",
+                "        - gate: demo-approval\n          step: also-a-step\n",
+            ),
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 1, output)
+        self.assertIn("[stage]", output)
+        self.assertNotIn("missing from the sequence", output)
+
+    def test_a_member_declared_twice_at_the_source_is_reported(self) -> None:
+        """Sets would erase a doubled heading before the parity comparison —
+        the source declares the member twice, and population can carry only
+        one record for it."""
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE.replace(
+                "### thing (analyst)",
+                "### thing (analyst)\n\nProse.\n\n### thing (analyst)",
+            ),
+        )
+        self.assert_problem("step `thing` is declared 2 times")
+
+    def test_a_member_shared_across_stages_is_reported(self) -> None:
+        """Workflows concatenate stage sequences into one record list, so an
+        id two stages share duplicates the §10 record the moment they
+        compose — each stage passing alone proves nothing about the pair."""
+        self.write("workflows/stages/demo.md", self.STAGE)
+        self.write(
+            "workflows/stages/second.md",
+            self.STAGE.replace("name: demo", "name: second").replace(
+                "# Stage: demo", "# Stage: second"
+            ),
+        )
+        self.assert_problem("member `thing` is also declared by workflows/stages/demo.md")
+
+    def test_a_name_shared_across_kinds_is_reported(self) -> None:
+        """A step and a gate sharing a name would populate two `steps`
+        records with one id — §10 forbids that no less for the two being
+        differently flavored, and the per-kind duplicate checks cannot see
+        across the kinds."""
+        self.write(
+            "workflows/stages/gated.md",
+            self.GATED_STAGE.replace("# Stage: gated", "# Stage: gated\n\n### demo-approval (analyst)\n\nProse.\n").replace(
+                "      sequence:\n        - gate: demo-approval\n",
+                "      sequence:\n        - step: demo-approval\n        - gate: demo-approval\n",
+            ),
+        )
+        self.assert_problem("`demo-approval` is both a step and a gate")
+
+    def test_a_duplicate_sequence_member_is_reported(self) -> None:
+        """§10 keeps one record per member, and the sequence is the record
+        order population follows — a member named twice is two records."""
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE.replace(
+                "      sequence:\n        - step: thing\n",
+                "      sequence:\n        - step: thing\n        - step: thing\n",
+            ),
+        )
+        self.assert_problem("step `thing` appears 2 times in the sequence")
+
+    # ---- run-state record order (spec §9.4, §10) ----
+
+    ORDERED_WORKFLOW = """---
+name: ordered
+description: A workflow composing two stages.
+---
+
+# Workflow: ordered
+
+1. [stages/planlike.md](stages/planlike.md)
+2. [stages/laterlike.md](stages/laterlike.md)
+"""
+
+    LATERLIKE_STAGE = """---
+name: laterlike
+description: A later stage, whose members no pre-acceptance list may carry.
+---
+
+# Stage: laterlike
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    stage:
+      sequence:
+        - step: assemble
+```
+
+### assemble (implementer)
+
+Prose.
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    step:
+      role: implementer
+      output:
+        artifact: "{run}/log.md"
+```
+"""
+
+    PLANLIKE_STAGE = """---
+name: planlike
+description: A stage whose record order inverts its reading order.
+---
+
+# Stage: planlike
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    stage:
+      sequence:
+        - step: make
+        - step: revise
+          conditional: true
+        - step: validate
+```
+
+### make (planner)
+
+Prose.
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    step:
+      role: planner
+      output:
+        artifact: "{run}/plan.md"
+```
+
+### revise (planner)
+
+Prose.
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    step:
+      role: planner
+      output:
+        artifact: "{run}/plan.md"
+```
+
+### validate (validator)
+
+Prose.
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    step:
+      role: validator
+      output:
+        artifact: "{run}/plan-validation.md"
+```
+"""
+
+    def write_ordered(
+        self, steps: str, run_extra: str = "", artifacts: str = " []"
+    ) -> None:
+        self.write("workflows/ordered.md", self.ORDERED_WORKFLOW)
+        self.write("workflows/stages/planlike.md", self.PLANLIKE_STAGE)
+        self.write("workflows/stages/laterlike.md", self.LATERLIKE_STAGE)
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            f"run:\n  id: demo\n  workflow: ordered\n{run_extra}"
+            f"steps:\n{steps}gates: []\nartifacts:{artifacts}\n",
+        )
+
+    def test_records_following_the_declared_order_pass(self) -> None:
+        self.write_ordered(
+            "  - id: make\n    status: pending\n"
+            "  - id: revise\n    status: skipped\n"
+            "  - id: validate\n    status: pending\n"
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_swapped_pair_of_records_is_reported(self) -> None:
+        """§10's list is the sequences', and the schema cannot constrain id
+        order: swapping the revising member and its validator changes where
+        §8.5's resume lands while every other check stays green."""
+        self.write_ordered(
+            "  - id: make\n    status: pending\n"
+            "  - id: validate\n    status: pending\n"
+            "  - id: revise\n    status: skipped\n"
+        )
+        self.assert_problem("step `revise` is recorded after `validate`")
+
+    def test_a_prefix_of_the_order_passes(self) -> None:
+        """Before the intake gate's acceptance a document holds the entry
+        stage's records alone (spec §10), so the rule is subsequence."""
+        self.write_ordered("  - id: make\n    status: active\n")
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_an_accepted_state_owes_every_member(self) -> None:
+        """§10 makes the list complete from the intake gate's acceptance, and
+        `run.risk` is what says that acceptance happened — a populated state
+        missing a member is not a prefix, it is a record no resume can find."""
+        self.write_ordered(
+            "  - id: make\n    status: done\n  - id: revise\n    status: skipped\n",
+            run_extra="  risk: R2\n",
+            artifacts='\n  - "{run}/plan.md"',
+        )
+        self.assert_problem("these members have no record: validate")
+
+    def test_a_pre_acceptance_prefix_still_passes(self) -> None:
+        """The same document without the accepted class is the pre-acceptance
+        state §10 describes, and its short list is legitimate."""
+        self.write_ordered(
+            "  - id: make\n    status: active\n  - id: revise\n    status: skipped\n"
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_an_unresolvable_workflow_is_reported_for_any_run_state(self) -> None:
+        """A typo'd `run.workflow` resolves to no composition, and every
+        membership, completeness, and order rule would then pass vacuously —
+        the name is the finding instead, imports or no imports."""
+        self.write_ordered("  - id: make\n    status: pending\n")
+        state = self.root / "protocol/schemas/examples/run-state.valid.yaml"
+        state.write_text(
+            state.read_text(encoding="utf-8").replace("ordered", "ordere"),
+            encoding="utf-8",
+        )
+        self.assert_problem("run.workflow `ordere` names no workflow whose stages")
+
+    def test_a_pre_acceptance_state_may_not_carry_a_later_stage_member(self) -> None:
+        """§10's pre-acceptance list is the entry stage's records alone: the
+        acceptance is the write that creates the rest, so a later stage's
+        member here is a record nothing wrote."""
+        self.write_ordered(
+            "  - id: make\n    status: active\n  - id: assemble\n    status: pending\n"
+        )
+        self.assert_problem("`assemble` is not a member the entry stage declares")
+
+    def test_an_accepted_state_may_carry_later_stage_members(self) -> None:
+        self.write_ordered(
+            "  - id: make\n    status: done\n  - id: revise\n    status: skipped\n"
+            "  - id: validate\n    status: done\n  - id: assemble\n    status: pending\n",
+            run_extra="  risk: R2\n",
+            artifacts='\n  - "{run}/plan.md"\n  - "{run}/plan-validation.md"',
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_schema_invalid_stage_block_does_not_abort_the_pass(self) -> None:
+        """A malformed `stage` value is the schema check's finding: reading an
+        order off it would raise before that finding printed."""
+        self.write_ordered("  - id: make\n    status: pending\n")
+        self.write(
+            "workflows/stages/planlike.md",
+            self.PLANLIKE_STAGE.replace(
+                "    stage:\n      sequence:\n        - step: make\n"
+                "        - step: revise\n          conditional: true\n"
+                "        - step: validate\n",
+                "    stage: malformed\n",
+            ),
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 1, output)
+        self.assertIn("[stage]", output)
+        self.assertNotIn("Traceback", output)
+
+    def test_a_schema_invalid_step_block_does_not_abort_the_pass(self) -> None:
+        """Same for a malformed `step` value under a valid heading — the role
+        comparison must not read it before the schema error prints."""
+        step_block = (
+            "```yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n"
+            "    step:\n      role: analyst\n      inputs:\n"
+            '        - artifact: "{run}/a.md"\n          required: true\n'
+            "      output:\n" '        artifact: "{run}/b.md"\n'
+            "      on:\n        PASS: next-step\n        FAIL: fix-step\n```"
+        )
+        assert step_block in self.STAGE
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE.replace(
+                step_block,
+                "```yaml\nmetadata:\n  workflow:\n"
+                '    protocol: "0.2"\n    step: malformed\n```',
+            ),
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 1, output)
+        self.assertIn("[step]", output)
+        self.assertNotIn("Traceback", output)
+
+    def test_a_record_no_stage_declares_is_reported(self) -> None:
+        self.write_ordered(
+            "  - id: make\n    status: pending\n"
+            "  - id: phantom\n    status: pending\n"
+        )
+        self.assert_problem("step `phantom` is not a member the entry stage declares")
+
     # ---- run-state documents (spec §8.2, §7, §10) ----
 
     # A stage, not a skill: the manifest check reads what composes the
@@ -765,7 +1538,7 @@ description: A stage whose step output carries the phase placeholder.
 
 # Stage: phased
 
-### phased (planner)
+### phasedstep (planner)
 
 Prose.
 
@@ -780,6 +1553,15 @@ metadata:
           required: true
       output:
         artifact: "{run}/phase-{N}-plan.md"
+```
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    stage:
+      sequence:
+        - step: phasedstep
 ```
 """
 
@@ -828,7 +1610,7 @@ metadata:
         run wants phase 2's artifact and phase 1's does not stand in for it."""
         self.write("workflows/stages/phased.md", self.PHASED_STAGE)
         self.write_run_state(
-            "  - id: phased\n    status: done\n",
+            "  - id: phasedstep\n    status: done\n",
             '\n  - "{run}/phase-1-plan.md"',
             run="  phase: 2\n",
         )
@@ -965,6 +1747,16 @@ metadata:
       output:
         artifact: "{run}/b.md"
 ```
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    stage:
+      sequence:
+        - step: maker
+        - step: thing
+```
 """
 
     def test_an_import_set_closed_over_derivation_passes(self) -> None:
@@ -1065,7 +1857,7 @@ description: A stage whose step output names the phase twice.
 
 # Stage: twicephased
 
-### twicephased (planner)
+### twicestep (planner)
 
 Prose.
 
@@ -1080,6 +1872,15 @@ metadata:
           required: true
       output:
         artifact: "{run}/phase-{N}-of-{N}.md"
+```
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    stage:
+      sequence:
+        - step: twicestep
 ```
 """
 
@@ -1096,7 +1897,7 @@ metadata:
             ),
         )
         self.write_run_state(
-            "  - id: twicephased\n    status: skipped\n",
+            "  - id: twicestep\n    status: skipped\n",
             '\n  - "{run}/phase-1-of-20.md"',
             extra="imports:\n  - artifact: \"{run}/phase-1-of-20.md\"\n"
             "    from: earlier-run\n    at: '2026-08-16T09:00:00Z'\n",
@@ -1110,7 +1911,7 @@ metadata:
         self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
         self.write("workflows/stages/twicephased.md", self.TWICE_PHASED_STAGE)
         self.write_run_state(
-            "  - id: twicephased\n    status: skipped\n",
+            "  - id: twicestep\n    status: skipped\n",
             '\n  - "{run}/phase-1-of-2.md"',
             extra="imports:\n  - artifact: \"{run}/phase-1-of-2.md\"\n"
             "    from: earlier-run\n    at: '2026-08-16T09:00:00Z'\n",
@@ -1121,7 +1922,7 @@ metadata:
         self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
         self.write("workflows/stages/twicephased.md", self.TWICE_PHASED_STAGE)
         self.write_run_state(
-            "  - id: twicephased\n    status: skipped\n",
+            "  - id: twicestep\n    status: skipped\n",
             '\n  - "{run}/a.md"\n  - "{run}/phase-2-of-2.md"',
             extra="imports:\n  - artifact: \"{run}/a.md\"\n"
             "    from: earlier-run\n    at: '2026-08-16T09:00:00Z'\n"
@@ -1139,7 +1940,7 @@ metadata:
         self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
         self.write("workflows/stages/phased.md", self.PHASED_STAGE)
         self.write_run_state(
-            "  - id: maker\n    status: pending\n  - id: phased\n    status: pending\n",
+            "  - id: maker\n    status: pending\n  - id: phasedstep\n    status: pending\n",
             '\n  - "{run}/phase-1-plan.md"',
             run="  phase: 2\n",
             extra="imports:\n  - artifact: \"{run}/phase-1-plan.md\"\n"
@@ -1347,7 +2148,7 @@ description: A stage a phase repeats, declaring a gate.
 
 # Stage: phasedgate
 
-### phasedgate (planner)
+### phasedplanner (planner)
 
 Prose.
 
@@ -1367,6 +2168,16 @@ metadata:
 ## Gates
 
 - **demo-approval** — collects the human decision.
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    stage:
+      sequence:
+        - step: phasedplanner
+        - gate: demo-approval
+```
 """
 
     GATED_STAGE = """---
@@ -1379,6 +2190,15 @@ description: A stage that declares a gate.
 ## Gates
 
 - **demo-approval** — collects the human decision.
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    stage:
+      sequence:
+        - gate: demo-approval
+```
 """
 
     def test_a_prior_phase_output_is_not_required(self) -> None:
@@ -1393,7 +2213,7 @@ description: A stage that declares a gate.
         """
         self.write("workflows/stages/phased.md", self.PHASED_STAGE)
         self.write_run_state(
-            "  - id: phased\n    status: done\n",
+            "  - id: phasedstep\n    status: done\n",
             '\n  - "{run}/phase-2-plan.md"',  # phase 1's is absent and stays legal
             run="  phase: 2\n",
         )
@@ -1403,7 +2223,7 @@ description: A stage that declares a gate.
     def test_the_phase_placeholder_defaults_to_phase_one(self) -> None:
         self.write("workflows/stages/phased.md", self.PHASED_STAGE)
         self.write_run_state(
-            "  - id: phased\n    status: done\n", '\n  - "{run}/phase-1-plan.md"'
+            "  - id: phasedstep\n    status: done\n", '\n  - "{run}/phase-1-plan.md"'
         )
         code, output = self.run_main()
         self.assertEqual(code, 0, output)

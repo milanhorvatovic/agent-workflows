@@ -11,6 +11,21 @@ All three steps declare that phase-1 plan as an input, because all three are bou
 
 Every plan MUST declare its file scope — the files and modules the phase may touch. That section is the contract the implementation loop binds to (spec §9.2).
 
+The sequence (spec §9.4) declares the members in record order, which is not this stage's reading order: `plan-revise` precedes `plan-validate` because `plan-approval`'s `revise` returns to the revision and invalidates the validation in one write, and spec §10 obliges the destination's record to precede what that write invalidates.
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    stage:
+      sequence:
+        - step: plan-create
+        - step: plan-revise
+          conditional: true
+        - step: plan-validate
+        - gate: plan-approval
+```
+
 ## Steps
 
 ### plan-create (planner)
