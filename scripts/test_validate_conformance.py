@@ -1243,6 +1243,123 @@ metadata:
         )
         self.assert_problem("step `thing` appears 2 times in the sequence")
 
+    # ---- run-state record order (spec §9.4, §10) ----
+
+    ORDERED_WORKFLOW = """---
+name: ordered
+description: A workflow composing one stage.
+---
+
+# Workflow: ordered
+
+1. [stages/planlike.md](stages/planlike.md)
+"""
+
+    PLANLIKE_STAGE = """---
+name: planlike
+description: A stage whose record order inverts its reading order.
+---
+
+# Stage: planlike
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    stage:
+      sequence:
+        - step: make
+        - step: revise
+          conditional: true
+        - step: validate
+```
+
+### make (planner)
+
+Prose.
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    step:
+      role: planner
+      output:
+        artifact: "{run}/plan.md"
+```
+
+### revise (planner)
+
+Prose.
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    step:
+      role: planner
+      output:
+        artifact: "{run}/plan.md"
+```
+
+### validate (validator)
+
+Prose.
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    step:
+      role: validator
+      output:
+        artifact: "{run}/plan-validation.md"
+```
+"""
+
+    def write_ordered(self, steps: str) -> None:
+        self.write("workflows/ordered.md", self.ORDERED_WORKFLOW)
+        self.write("workflows/stages/planlike.md", self.PLANLIKE_STAGE)
+        self.write(
+            "protocol/schemas/examples/run-state.valid.yaml",
+            "run:\n  id: demo\n  workflow: ordered\n"
+            f"steps:\n{steps}gates: []\nartifacts: []\n",
+        )
+
+    def test_records_following_the_declared_order_pass(self) -> None:
+        self.write_ordered(
+            "  - id: make\n    status: pending\n"
+            "  - id: revise\n    status: skipped\n"
+            "  - id: validate\n    status: pending\n"
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_swapped_pair_of_records_is_reported(self) -> None:
+        """§10's list is the sequences', and the schema cannot constrain id
+        order: swapping the revising member and its validator changes where
+        §8.5's resume lands while every other check stays green."""
+        self.write_ordered(
+            "  - id: make\n    status: pending\n"
+            "  - id: validate\n    status: pending\n"
+            "  - id: revise\n    status: skipped\n"
+        )
+        self.assert_problem("step `revise` is recorded after `validate`")
+
+    def test_a_prefix_of_the_order_passes(self) -> None:
+        """Before the intake gate's acceptance a document holds the entry
+        stage's records alone (spec §10), so the rule is subsequence."""
+        self.write_ordered("  - id: make\n    status: active\n")
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_record_no_stage_declares_is_reported(self) -> None:
+        self.write_ordered(
+            "  - id: make\n    status: pending\n"
+            "  - id: phantom\n    status: pending\n"
+        )
+        self.assert_problem("step `phantom` is not a member any composed stage declares")
+
     # ---- run-state documents (spec §8.2, §7, §10) ----
 
     # A stage, not a skill: the manifest check reads what composes the

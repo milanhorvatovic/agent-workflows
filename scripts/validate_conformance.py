@@ -33,18 +33,21 @@ Eight checks:
 - Stage sequences: every stage that declares members carries exactly one
   `stage` sequence block naming each declared step and gate exactly once
   (spec §9.4) — the record order run-state population follows, so a member
-  missing from it is a record no run could carry — and member ids stay
-  unique across stages, since composing two stages that share one would
-  duplicate the record §10 forbids.
+  missing from it is a record no run could carry — member ids stay unique
+  across stages and off the stage namespace, since composing two stages
+  that share one would duplicate the record §10 forbids and a §9.1 target
+  naming a stage's id would be ambiguous, and each heading owns exactly one
+  contract that agrees with it about the role.
 - Run-state documents: every one this repo ships is checked for semantics
   its schema cannot hold — a manifest current with the steps recorded
   `done`, a gate recorded `done` carrying a standing decision, at most one
   record per step, and an import lineage whose every path is manifested and
   named once, whose records name one source run that is not this one, and
   whose set is closed over some producing step's required inputs (spec
-  §8.6). In every run-state document this repo ships, a step
-  recorded `done` has its declared output in the manifest, `{N}` resolved
-  from `run.phase` (spec §8.2). The map from step id to output is read off
+  §8.6), and a `steps` list following the composed stages' sequences, which
+  is the order §8.5's resume reads (spec §9.4, §10). In every run-state
+  document this repo ships, a step recorded `done` has its declared output
+  in the manifest, `{N}` resolved from `run.phase` (spec §8.2). The map from step id to output is read off
   the stage contracts, since a run's steps are the composed workflow's, and
   bounded to the phase now executing — what an earlier phase owes cannot be
   read from records the phase reset, see `manifest_problems`.
@@ -101,9 +104,10 @@ PLACEHOLDER = re.compile(r"(?<!\$)\{([^{}]*)\}")
 # nonconforming by §9, an indented fence is indistinguishable from a list
 # item's content without parsing containers, and a container's example
 # carries its marker or indent on every line, which already keeps its
-# headings and bullets out of the line-anchored structure scans. finditer consumes each outermost fence whole, so a block
-# nested inside a longer wrapper is never discovered as a declaration — the
-# same fact that lets mask_fences blank examples out of the text scans.
+# headings and bullets out of the line-anchored structure scans. finditer
+# consumes each outermost fence whole, so a block nested inside a longer
+# wrapper is never discovered as a declaration — the same fact that lets
+# mask_fences blank examples out of the text scans.
 FENCE = re.compile(
     r"^(?P<indent> {0,3})"
     r"(?:(?P<bt>```+)(?P<bti>[^`\n]*)\n(?P<btb>.*?)(?:^ {0,3}(?P=bt)`*[ \t]*$|\Z)"
@@ -182,10 +186,12 @@ def schema_problems(
 
 
 def yaml_blocks(text: str, rel: str, problems: list[str]) -> list[Block]:
-    """Every `yaml` fence the CommonMark scan discovers — tilde or backtick,
-    indented or not, with an indented fence's body dedented by its opener's
-    indent, the way a renderer reads it. Discovery consumes outermost fences
-    whole, so a block inside a longer wrapper is an example, never a
+    """Every declaration fence: a `yaml` fence of either marker beginning at
+    the first column, which is where spec §9 places a declaration. An
+    indented fence is an example — masking tolerates CommonMark's three
+    spaces, extraction does not, since a legal top-level indent and a list
+    item's content indent are the same bytes. Discovery consumes outermost
+    fences whole, so a block inside a longer wrapper is never a
     declaration."""
     blocks: list[Block] = []
     for match in FENCE.finditer(text):
@@ -1206,6 +1212,93 @@ def check_stage_sequences(root: Path) -> tuple[int, list[str]]:
     return checked, problems
 
 
+def run_workflow(data: Any) -> Any:
+    """The document's declared workflow, or None where the shape is not a
+    run state at all — the schema check's finding, never this one's."""
+    run = data.get("run") if isinstance(data, dict) else None
+    return run.get("workflow") if isinstance(run, dict) else None
+
+
+def composed_member_order(root: Path, workflow: Any) -> list[str] | None:
+    """The member ids a workflow's composed stages declare, in composition
+    order — §9.4's sequences concatenated, which §10 makes the order of the
+    populated `steps` list. None where the workflow or any stage's sequence
+    cannot be read; a document broken elsewhere is not this check's finding.
+    """
+    if not isinstance(workflow, str) or not re.fullmatch(r"[a-z][a-z0-9-]*", workflow):
+        return None
+    path = root / "workflows" / f"{workflow}.md"
+    if not path.is_file():
+        return None
+    slugs: list[str] = []
+    for match in STAGE_LINK.finditer(path.read_text(encoding="utf-8")):
+        if match.group(1) not in slugs:
+            slugs.append(match.group(1))
+    order: list[str] = []
+    for slug in slugs:
+        stage_path = root / "workflows" / "stages" / f"{slug}.md"
+        if not stage_path.is_file():
+            return None
+        text = stage_path.read_text(encoding="utf-8")
+        blocks = [
+            block
+            for block in yaml_blocks(text, stage_path.name, [])
+            if isinstance(workflow_value(block.data), dict)
+            and "stage" in workflow_value(block.data)
+        ]
+        if len(blocks) != 1:
+            return None
+        steps, gates, malformed = sequence_members(workflow_value(blocks[0].data))
+        if malformed:
+            return None
+        entries = workflow_value(blocks[0].data)["stage"].get("sequence")
+        for entry in items_of(entries):
+            member = entry.get("step") or entry.get("gate")
+            if isinstance(member, str):
+                order.append(member)
+    return order or None
+
+
+def record_order_problems(at: str, data: Any, order: list[str] | None) -> list[str]:
+    """Spec §10: the populated `steps` list follows the composed stages'
+    sequences, which is what makes §8.5's resume — the first record neither
+    done nor skipped — mean what the stages declared. The schema cannot
+    constrain id order, so swapping two records would silently change where
+    a resume lands; only this check stands between that and a green run.
+
+    A document may hold fewer records than the composition — before the
+    intake gate's acceptance it holds the intake steps alone — so the rule
+    is subsequence rather than equality: every id the document carries must
+    appear in the declared order, and in that order.
+    """
+    if order is None or not isinstance(data, dict):
+        return []
+    recorded = [
+        step["id"]
+        for step in items_of(data.get("steps"))
+        if isinstance(step, dict) and isinstance(step.get("id"), str)
+    ]
+    problems: list[str] = []
+    position = 0
+    for step_id in recorded:
+        if step_id not in order:
+            problems.append(
+                f"{at}: step `{step_id}` is not a member any composed stage "
+                f"declares — §10's list is the sequences' (spec §9.4)"
+            )
+            continue
+        index = order.index(step_id)
+        if index < position:
+            problems.append(
+                f"{at}: step `{step_id}` is recorded after `{order[position - 1]}` "
+                f"but the composed sequences declare it before — §10's order is "
+                f"what §8.5's resume reads (spec §9.4)"
+            )
+            continue
+        position = index + 1
+    return problems
+
+
 def check_manifests(root: Path) -> tuple[int, list[str]]:
     """Every run-state document this repo ships models a state an executor may
     resume from, so a stale manifest in one is a nonconforming example rather
@@ -1254,6 +1347,9 @@ def check_manifests(root: Path) -> tuple[int, list[str]]:
         problems += manifest_problems(rel, data, outputs)
         problems += gate_record_problems(rel, data, gates)
         problems += duplicate_record_problems(rel, data)
+        problems += record_order_problems(
+            rel, data, composed_member_order(root, run_workflow(data))
+        )
         if isinstance(data, dict) and data.get("imports"):
             scoped, scope_problems = composed(rel, data)
             problems += scope_problems
@@ -1267,6 +1363,11 @@ def check_manifests(root: Path) -> tuple[int, list[str]]:
                 problems += manifest_problems(block.at, block.data, outputs)
                 problems += gate_record_problems(block.at, block.data, gates)
                 problems += duplicate_record_problems(block.at, block.data)
+                problems += record_order_problems(
+                    block.at,
+                    block.data,
+                    composed_member_order(root, run_workflow(block.data)),
+                )
                 if isinstance(block.data, dict) and block.data.get("imports"):
                     scoped, scope_problems = composed(block.at, block.data)
                     problems += scope_problems
