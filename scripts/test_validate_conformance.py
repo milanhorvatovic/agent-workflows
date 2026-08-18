@@ -1127,6 +1127,17 @@ metadata:
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
 
+    def test_a_truncated_heading_is_not_a_valid_declaration(self) -> None:
+        """`### thing (` is a malformed heading, not a prefix-match: its
+        contract must not associate, and the sequence entry naming `thing`
+        has no declared member behind it."""
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE.replace("### thing (analyst)", "### thing ("),
+        )
+        output = self.assert_problem("under a heading that does not match")
+        self.assertIn("sequence names step `thing`, which the stage does not declare", output)
+
     def test_a_step_block_under_a_malformed_heading_is_reported(self) -> None:
         """After one valid heading, a block under `### second` (no role)
         would silently attribute to the previous step and its member could

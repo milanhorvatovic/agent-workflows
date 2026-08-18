@@ -491,7 +491,12 @@ def check_skill_budgets(root: Path) -> tuple[int, list[str]]:
     return len(paths), problems
 
 
-STAGE_STEP_HEADING = re.compile(r"^### (?P<id>[a-z][a-z0-9-]*) \(", re.MULTILINE)
+# The complete form, anchored to line end: a truncated `### thing (` or a
+# heading with trailing text is malformed, not a valid declaration whose
+# contract may associate.
+STAGE_STEP_HEADING = re.compile(
+    r"^### (?P<id>[a-z][a-z0-9-]*) \((?P<role>[a-z]+)\)[ \t]*$", re.MULTILINE
+)
 
 
 def step_of(block: Block | None) -> Any:
