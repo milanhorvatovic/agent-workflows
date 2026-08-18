@@ -1108,7 +1108,13 @@ def check_stage_sequences(root: Path) -> tuple[int, list[str]]:
                 # The heading is what a human executing the prose reads, the
                 # contract what a driver executes: a disagreement about the
                 # role hands the same step to two different roles.
-                declared_role = workflow["step"].get("role")
+                # A schema-invalid `step` value is the schema check's
+                # finding; reading a role off it would abort the pass before
+                # that finding prints.
+                declaration = workflow["step"]
+                declared_role = (
+                    declaration.get("role") if isinstance(declaration, dict) else None
+                )
                 if (
                     isinstance(declared_role, str)
                     and declared_role != roles_at[nearest_valid]
@@ -1251,9 +1257,11 @@ def composed_member_order(root: Path, workflow: Any) -> list[str] | None:
         steps, gates, malformed = sequence_members(workflow_value(blocks[0].data))
         if malformed:
             return None
-        entries = workflow_value(blocks[0].data)["stage"].get("sequence")
-        for entry in items_of(entries):
-            member = entry.get("step") or entry.get("gate")
+        stage = workflow_value(blocks[0].data).get("stage")
+        if not isinstance(stage, dict):
+            return None  # schema-invalid: its own finding, not an order
+        for entry in items_of(stage.get("sequence")):
+            member = entry.get("step") or entry.get("gate") if isinstance(entry, dict) else None
             if isinstance(member, str):
                 order.append(member)
     return order or None
@@ -1266,10 +1274,13 @@ def record_order_problems(at: str, data: Any, order: list[str] | None) -> list[s
     constrain id order, so swapping two records would silently change where
     a resume lands; only this check stands between that and a green run.
 
-    A document may hold fewer records than the composition — before the
-    intake gate's acceptance it holds the intake steps alone — so the rule
-    is subsequence rather than equality: every id the document carries must
-    appear in the declared order, and in that order.
+    How much of the composition a document owes depends on where it is.
+    Before the intake gate accepts a class the list holds the entry stage's
+    records alone, so the rule there is subsequence: every id declared, in
+    the declared order. From that acceptance onward §10 makes the list
+    complete, and `run.risk` is what says the acceptance happened — the
+    class the gate accepted, absent before and present after — so a
+    populated state owes every member as well as the order.
     """
     if order is None or not isinstance(data, dict):
         return []
@@ -1296,6 +1307,15 @@ def record_order_problems(at: str, data: Any, order: list[str] | None) -> list[s
             )
             continue
         position = index + 1
+    run = data.get("run") if isinstance(data, dict) else None
+    accepted = isinstance(run, dict) and run.get("risk") is not None
+    if accepted:
+        missing = [member for member in order if member not in set(recorded)]
+        if missing:
+            problems.append(
+                f"{at}: the accepted class makes the list complete (spec §10) "
+                f"and these members have no record: {', '.join(missing)}"
+            )
     return problems
 
 

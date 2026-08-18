@@ -1317,12 +1317,12 @@ metadata:
 ```
 """
 
-    def write_ordered(self, steps: str) -> None:
+    def write_ordered(self, steps: str, run_extra: str = "") -> None:
         self.write("workflows/ordered.md", self.ORDERED_WORKFLOW)
         self.write("workflows/stages/planlike.md", self.PLANLIKE_STAGE)
         self.write(
             "protocol/schemas/examples/run-state.valid.yaml",
-            "run:\n  id: demo\n  workflow: ordered\n"
+            f"run:\n  id: demo\n  workflow: ordered\n{run_extra}"
             f"steps:\n{steps}gates: []\nartifacts: []\n",
         )
 
@@ -1352,6 +1352,67 @@ metadata:
         self.write_ordered("  - id: make\n    status: active\n")
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
+
+    def test_an_accepted_state_owes_every_member(self) -> None:
+        """§10 makes the list complete from the intake gate's acceptance, and
+        `run.risk` is what says that acceptance happened — a populated state
+        missing a member is not a prefix, it is a record no resume can find."""
+        self.write_ordered(
+            "  - id: make\n    status: done\n  - id: revise\n    status: skipped\n",
+            run_extra="  risk: R2\n",
+        )
+        self.assert_problem("these members have no record: validate")
+
+    def test_a_pre_acceptance_prefix_still_passes(self) -> None:
+        """The same document without the accepted class is the pre-acceptance
+        state §10 describes, and its short list is legitimate."""
+        self.write_ordered(
+            "  - id: make\n    status: active\n  - id: revise\n    status: skipped\n"
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_schema_invalid_stage_block_does_not_abort_the_pass(self) -> None:
+        """A malformed `stage` value is the schema check's finding: reading an
+        order off it would raise before that finding printed."""
+        self.write_ordered("  - id: make\n    status: pending\n")
+        self.write(
+            "workflows/stages/planlike.md",
+            self.PLANLIKE_STAGE.replace(
+                "    stage:\n      sequence:\n        - step: make\n"
+                "        - step: revise\n          conditional: true\n"
+                "        - step: validate\n",
+                "    stage: malformed\n",
+            ),
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 1, output)
+        self.assertIn("[stage]", output)
+        self.assertNotIn("Traceback", output)
+
+    def test_a_schema_invalid_step_block_does_not_abort_the_pass(self) -> None:
+        """Same for a malformed `step` value under a valid heading — the role
+        comparison must not read it before the schema error prints."""
+        step_block = (
+            "```yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n"
+            "    step:\n      role: analyst\n      inputs:\n"
+            '        - artifact: "{run}/a.md"\n          required: true\n'
+            "      output:\n" '        artifact: "{run}/b.md"\n'
+            "      on:\n        PASS: next-step\n        FAIL: fix-step\n```"
+        )
+        assert step_block in self.STAGE
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE.replace(
+                step_block,
+                "```yaml\nmetadata:\n  workflow:\n"
+                '    protocol: "0.2"\n    step: malformed\n```',
+            ),
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 1, output)
+        self.assertIn("[step]", output)
+        self.assertNotIn("Traceback", output)
 
     def test_a_record_no_stage_declares_is_reported(self) -> None:
         self.write_ordered(
