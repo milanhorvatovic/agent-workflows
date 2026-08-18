@@ -92,9 +92,15 @@ PLACEHOLDERS = {"run", "N", "P", "machine-checks"}  # spec §8.1 and §9.2
 # {token} occurrences; the lookbehind skips ${...} shell expansions in commands.
 PLACEHOLDER = re.compile(r"(?<!\$)\{([^{}]*)\}")
 
-# One fence model for masking and extraction alike (CommonMark): backticks
-# or tildes, both fence lines up to three spaces in, the closer at least the
-# opener's length — or absent, an unclosed fence extending to end of file. finditer consumes each outermost fence whole, so a block
+# One fence model for masking and extraction alike, scoped to the protocol's
+# declaration surface: TOP-LEVEL fences only, which is §9's own rule for
+# where a declaration may live — backticks or tildes, both fence lines up to
+# three spaces in, the closer at least the opener's length or absent (an
+# unclosed fence extends to end of file). Container-nested fences (block
+# quotes, list items) are deliberately outside the model on both sides: a
+# declaration there is nonconforming by §9, and an example there carries its
+# container's marker or indent on every line, which already keeps its
+# headings and bullets out of the line-anchored structure scans. finditer consumes each outermost fence whole, so a block
 # nested inside a longer wrapper is never discovered as a declaration — the
 # same fact that lets mask_fences blank examples out of the text scans.
 FENCE = re.compile(

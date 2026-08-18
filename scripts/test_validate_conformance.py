@@ -936,6 +936,41 @@ metadata:
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
 
+    def test_a_block_quoted_example_stays_inert(self) -> None:
+        """Container-nested fences sit outside the protocol's top-level
+        declaration surface, and their content is already inert to the
+        line-anchored scans: every line carries the quote marker, so a
+        quoted `## Gates` or gate bullet never reads as structure."""
+        self.write(
+            "workflows/stages/gated.md",
+            self.GATED_STAGE + "\n## Notes\n\nA quoted example:\n\n"
+            "> ```markdown\n> ## Gates\n> - **fake-gate** — quoted.\n> ```\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_container_nested_declaration_is_not_a_declaration(self) -> None:
+        """§9 places declarations at the top level of the body — a sequence
+        block inside a block quote is nonconforming, and the checker reads
+        the stage as missing its sequence rather than discovering it there."""
+        quoted = "\n".join(
+            "> " + line if line else ">"
+            for line in (
+                "```yaml", "metadata:", "  workflow:", '    protocol: "0.2"',
+                "    stage:", "      sequence:", "        - step: thing", "```",
+            )
+        )
+        plain_sequence = (
+            "\n```yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n    stage:\n"
+            "      sequence:\n        - step: thing\n```\n"
+        )
+        assert plain_sequence in self.STAGE
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE.replace(plain_sequence, "\n" + quoted + "\n"),
+        )
+        self.assert_problem("0 stage sequence blocks")
+
     def test_an_unclosed_wrapper_masks_to_end_of_file(self) -> None:
         """CommonMark extends an unclosed fence to EOF: an unclosed
         four-backtick wrapper must consume its complete inner yaml snippet
