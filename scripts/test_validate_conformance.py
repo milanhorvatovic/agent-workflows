@@ -1151,6 +1151,21 @@ metadata:
         )
         self.assert_problem("step block below a `## ` heading that closed")
 
+    def test_a_frontmatter_declaration_outside_a_skill_is_reported(self) -> None:
+        """§9's frontmatter carrier is the Agent Skills one: a role or any
+        other file declaring there is a declaration no skill loader reads."""
+        self.write(
+            "roles/analyst.md",
+            "---\nname: analyst\ndescription: A role.\n" + SKILL_WORKFLOW + "---\n\n# analyst\n",
+        )
+        self.assert_problem("in the frontmatter of a file that is not a skill")
+
+    def test_a_nested_workflows_file_is_not_a_body_carrier(self) -> None:
+        """`workflows/references/example.md` is neither a workflow nor a
+        stage, however much its path starts with `workflows/`."""
+        self.write("workflows/references/example.md", frontmatter("example") + "\n" + STEP_BLOCK)
+        self.assert_problem("in the body of a file that is neither a workflow nor a stage")
+
     def test_a_body_declaration_outside_a_workflow_file_is_reported(self) -> None:
         """§9's body carrier belongs to workflow and stage files; a skill
         declares in frontmatter. A body block anywhere else is a declaration
@@ -1159,7 +1174,7 @@ metadata:
             "roles/analyst.md",
             frontmatter("analyst") + "\n" + STEP_BLOCK,
         )
-        self.assert_problem("`metadata.workflow` in the body of a file that is not")
+        self.assert_problem("in the body of a file that is neither a workflow nor a stage")
 
     def test_a_truncated_heading_is_not_a_valid_declaration(self) -> None:
         """`### thing (` is a malformed heading, not a prefix-match: its

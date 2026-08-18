@@ -124,6 +124,12 @@ SKILL_BODY_MAX_LINES = 500
 SKILL_BODY_MAX_TOKENS = 5000
 CHARS_PER_TOKEN = 4  # rough budget heuristic, matches common tokenizer averages
 
+# §9's two carriers, each at one location — the paths a declaration may
+# live at, so a block elsewhere is reported rather than executed by nothing.
+WORKFLOW_FILE = re.compile(r"workflows/[a-z][a-z0-9-]*\.md")
+STAGE_FILE = re.compile(r"workflows/stages/[a-z][a-z0-9-]*\.md")
+SKILL_FILE = re.compile(r"skills/[a-z][a-z0-9-]*/SKILL\.md")
+
 FRONTMATTER_GLOBS = (
     "roles/*.md",
     "workflows/*.md",
@@ -395,24 +401,33 @@ def check_workflow_blocks(
             continue
         rel = path.relative_to(root).as_posix()
         text = path.read_text(encoding="utf-8")
-        # §9's carriers are per file: a workflow or stage file declares in
-        # its body, a skill in its frontmatter. A body declaration anywhere
-        # else is misplaced — reported rather than validated as live, since
-        # a declaration nothing composes is one nothing executes.
-        declares_in_body = rel.startswith("workflows/") and rel.count("/") <= 2
+        # §9's carriers are per file, and each is one location: a workflow
+        # or stage file declares in its body, a skill in its frontmatter.
+        # A declaration in the other carrier, or in a file that is neither,
+        # is reported rather than validated as live — a declaration nothing
+        # composes is one nothing executes.
+        declares_in_body = WORKFLOW_FILE.fullmatch(rel) or STAGE_FILE.fullmatch(rel)
+        declares_in_frontmatter = SKILL_FILE.fullmatch(rel)
         blocks = yaml_blocks(text, rel, problems)
         if not declares_in_body:
             for block in blocks:
                 if workflow_value(block.data) is not None:
                     problems.append(
                         f"{block.at}: `metadata.workflow` in the body of a file "
-                        f"that is not a workflow or stage — §9's body carrier is "
-                        f"theirs, a skill declaring in frontmatter instead"
+                        f"that is neither a workflow nor a stage — §9 gives them "
+                        f"the body carrier and a skill its frontmatter"
                     )
             blocks = []
         front = frontmatter_block(text, rel)
         if front is not None:
-            blocks.append(front)
+            if declares_in_frontmatter:
+                blocks.append(front)
+            elif workflow_value(front.data) is not None:
+                problems.append(
+                    f"{front.at}: `metadata.workflow` in the frontmatter of a "
+                    f"file that is not a skill — §9 gives skills that carrier "
+                    f"and workflow and stage files the body one"
+                )
         for block in blocks:
             workflow = workflow_value(block.data)
             if workflow is None:
