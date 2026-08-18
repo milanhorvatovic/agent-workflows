@@ -92,7 +92,18 @@ PLACEHOLDERS = {"run", "N", "P", "machine-checks"}  # spec §8.1 and §9.2
 # {token} occurrences; the lookbehind skips ${...} shell expansions in commands.
 PLACEHOLDER = re.compile(r"(?<!\$)\{([^{}]*)\}")
 
-YAML_BLOCK = re.compile(r"^```yaml[ \t]*\n(.*?)^```", re.DOTALL | re.MULTILINE)
+# One fence model for masking and extraction alike (CommonMark): backticks
+# or tildes, both fence lines up to three spaces in, the closer at least the
+# opener's length. finditer consumes each outermost fence whole, so a block
+# nested inside a longer wrapper is never discovered as a declaration — the
+# same fact that lets mask_fences blank examples out of the text scans.
+FENCE = re.compile(
+    r"^(?P<indent> {0,3})"
+    r"(?:(?P<bt>```+)(?P<bti>[^`\n]*)\n(?P<btb>.*?)^ {0,3}(?P=bt)`*"
+    r"|(?P<td>~~~+)(?P<tdi>[^\n]*)\n(?P<tdb>.*?)^ {0,3}(?P=td)~*)[ \t]*$",
+    re.DOTALL | re.MULTILINE,
+)
+
 FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 
 NAME = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
@@ -164,12 +175,29 @@ def schema_problems(
 
 
 def yaml_blocks(text: str, rel: str, problems: list[str]) -> list[Block]:
+    """Every `yaml` fence the CommonMark scan discovers — tilde or backtick,
+    indented or not, with an indented fence's body dedented by its opener's
+    indent, the way a renderer reads it. Discovery consumes outermost fences
+    whole, so a block inside a longer wrapper is an example, never a
+    declaration."""
     blocks: list[Block] = []
-    for match in YAML_BLOCK.finditer(text):
+    for match in FENCE.finditer(text):
+        info = (match.group("bti") or match.group("tdi") or "").strip()
+        if info != "yaml":
+            continue
+        body = match.group("btb") if match.group("bt") else match.group("tdb")
+        indent = len(match.group("indent"))
+        if indent:
+            # CommonMark removes up to the opener's indent from each content
+            # line — fewer where the line has fewer leading spaces.
+            body = "\n".join(
+                line[min(indent, len(line) - len(line.lstrip(" "))):]
+                for line in body.split("\n")
+            )
         line = text.count("\n", 0, match.start()) + 1
         at = f"{rel}:{line}"
         try:
-            data = jsonify(YAML_LOADER.load(match.group(1)))
+            data = jsonify(YAML_LOADER.load(body))
         except YAMLError as error:
             problems.append(f"{at}: yaml block does not parse: {first_line(error)}")
             continue
@@ -631,13 +659,7 @@ GATE_HEADING = re.compile(r"^- \*\*(?P<id>[a-z][a-z0-9-]*)\*\*", re.MULTILINE)
 # four-backtick wrapper demonstrating a triple-backtick block would
 # otherwise close at the inner fence and leave the example's tail
 # unmasked.
-# Both fence lines may sit up to three spaces in, and a fence is backticks
-# or tildes alike (CommonMark); a mask that demanded column 0 or knew only
-# one marker would leave such an example visible to the structure scans.
-FENCE = re.compile(
-    r"^ {0,3}(?:(?P<bt>```+).*?^ {0,3}(?P=bt)`*|(?P<td>~~~+).*?^ {0,3}(?P=td)~*)[ \t]*$",
-    re.DOTALL | re.MULTILINE,
-)
+
 GENERIC_H3 = re.compile(r"^### ", re.MULTILINE)
 GATES_HEADING = re.compile(r"^## Gates[ \t]*$", re.MULTILINE)
 
@@ -1008,18 +1030,12 @@ def check_stage_sequences(root: Path) -> tuple[int, list[str]]:
         headings = [(m.start(), m.group("id")) for m in STAGE_STEP_HEADING.finditer(masked)]
         heading_offsets = [start for start, _ in headings]
         h3_offsets = [m.start() for m in GENERIC_H3.finditer(masked)]
-        # A block inside a longer fenced wrapper is an example, not a
-        # declaration: the mask hides it from the text scans, and the same
-        # spans exclude it here, where blocks come from the raw text.
-        fence_spans = [(m.start(), m.end()) for m in FENCE.finditer(text)]
         contracts_under: dict[int, int] = {start: 0 for start in heading_offsets}
         step_blocks = 0
         sequence_blocks = []
         for block in yaml_blocks(text, rel, []):
             line = int(block.at.rsplit(":", 1)[1])
             offset = sum(len(x) + 1 for x in text.splitlines(keepends=False)[: line - 1])
-            if any(start < offset < end for start, end in fence_spans):
-                continue  # nested inside a longer fence: illustration only
             workflow = workflow_value(block.data)
             if isinstance(workflow, dict) and "stage" in workflow:
                 sequence_blocks.append(block)

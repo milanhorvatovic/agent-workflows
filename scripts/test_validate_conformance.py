@@ -895,6 +895,48 @@ metadata:
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
 
+    def test_a_tilde_fenced_declaration_is_discovered(self) -> None:
+        """Extraction reads the same CommonMark the mask does: a stage whose
+        sequence block uses `~~~yaml` is a declaration, not code to hide —
+        masked-but-never-extracted was a complete stage reported missing."""
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE.replace(
+                "```yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n    stage:",
+                "~~~yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n    stage:",
+            ).replace(
+                "        - step: thing\n```",
+                "        - step: thing\n~~~",
+            ),
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_an_indented_declaration_is_discovered_and_dedented(self) -> None:
+        """An indented fence's body reads with the opener's indent removed —
+        without the dedent the YAML would parse wrong or not at all."""
+        block = (
+            "  ```yaml\n"
+            "  metadata:\n"
+            "    workflow:\n"
+            '      protocol: "0.2"\n'
+            "      stage:\n"
+            "        sequence:\n"
+            "          - step: thing\n"
+            "  ```\n"
+        )
+        plain_sequence = (
+            "\n```yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n    stage:\n"
+            "      sequence:\n        - step: thing\n```\n"
+        )
+        assert plain_sequence in self.STAGE
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE.replace(plain_sequence, "\n" + block),
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
     def test_a_tilde_fence_masks_its_example(self) -> None:
         """CommonMark fences come in tildes as well as backticks — an example
         wrapped in `~~~` must not leave its Gates heading visible to the
