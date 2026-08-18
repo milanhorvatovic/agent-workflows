@@ -189,19 +189,31 @@ def _members(text: str, rel: str) -> tuple[Member, ...]:
 
 
 def _steps(text: str, rel: str) -> dict[str, StepDeclaration]:
-    headings = [(m.start(), m.group("id")) for m in STEP_HEADING.finditer(text)]
+    headings = [
+        (m.start(), m.group("id"), m.group("role")) for m in STEP_HEADING.finditer(text)
+    ]
     steps: dict[str, StepDeclaration] = {}
     for offset, workflow in _blocks(text, rel):
         declaration = workflow.get("step")
         if not isinstance(declaration, dict):
             continue
-        prior = [heading_id for start, heading_id in headings if start < offset]
+        prior = [(x, role) for start, x, role in headings if start < offset]
         if not prior:
             raise WorkflowError(f"{rel}: step block above the first step heading")
-        step_id = prior[-1]
+        step_id, heading_role = prior[-1]
         if step_id in steps:
             raise WorkflowError(f"{rel}: step {step_id!r} declares two step blocks")
-        steps[step_id] = _step_declaration(declaration, step_id, rel)
+        step = _step_declaration(declaration, step_id, rel)
+        # The heading is what a human executing the prose reads and the
+        # contract what this driver executes; a disagreement would run the
+        # step as a role its own stage does not name (the conformance suite
+        # holds the same rule).
+        if step.role != heading_role:
+            raise WorkflowError(
+                f"{rel}: step {step_id!r} declares role {step.role!r} under a "
+                f"heading that says {heading_role!r}"
+            )
+        steps[step_id] = step
     return steps
 
 

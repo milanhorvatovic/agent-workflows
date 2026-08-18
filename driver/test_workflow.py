@@ -117,6 +117,17 @@ class SyntheticTreeTest(unittest.TestCase):
             load_workflow(self.framework, "empty")
         self.assertIn("composes no stages", str(caught.exception))
 
+    def test_a_role_mismatch_between_heading_and_contract_is_an_error(self) -> None:
+        """A heading naming one role over a contract declaring another would
+        run the step as a role its own stage does not name."""
+        self.write(
+            "workflows/stages/demo.md",
+            STAGE.replace("### make (analyst)", "### make (planner)"),
+        )
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "demo")
+        self.assertIn("under a heading that says 'planner'", str(caught.exception))
+
     def test_a_truncated_heading_declares_no_step(self) -> None:
         """`### make (` is malformed, not a prefix-match: the contract under
         it must not associate, so the sequence step has no block."""
