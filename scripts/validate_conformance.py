@@ -1225,11 +1225,13 @@ def run_workflow(data: Any) -> Any:
     return run.get("workflow") if isinstance(run, dict) else None
 
 
-def composed_member_order(root: Path, workflow: Any) -> list[str] | None:
+def composed_member_order(root: Path, workflow: Any) -> tuple[list[str], int] | None:
     """The member ids a workflow's composed stages declare, in composition
     order — §9.4's sequences concatenated, which §10 makes the order of the
-    populated `steps` list. None where the workflow or any stage's sequence
-    cannot be read; a document broken elsewhere is not this check's finding.
+    populated `steps` list — with the count the entry stage contributes,
+    since §10's pre-acceptance list is that stage's members alone. None
+    where the workflow or any stage's sequence cannot be read; a document
+    broken elsewhere is not this check's finding.
     """
     if not isinstance(workflow, str) or not re.fullmatch(r"[a-z][a-z0-9-]*", workflow):
         return None
@@ -1241,7 +1243,8 @@ def composed_member_order(root: Path, workflow: Any) -> list[str] | None:
         if match.group(1) not in slugs:
             slugs.append(match.group(1))
     order: list[str] = []
-    for slug in slugs:
+    entry_count = 0
+    for index, slug in enumerate(slugs):
         stage_path = root / "workflows" / "stages" / f"{slug}.md"
         if not stage_path.is_file():
             return None
@@ -1264,26 +1267,39 @@ def composed_member_order(root: Path, workflow: Any) -> list[str] | None:
             member = entry.get("step") or entry.get("gate") if isinstance(entry, dict) else None
             if isinstance(member, str):
                 order.append(member)
-    return order or None
+        if index == 0:
+            entry_count = len(order)
+    return (order, entry_count) if order else None
 
 
-def record_order_problems(at: str, data: Any, order: list[str] | None) -> list[str]:
+def record_order_problems(
+    at: str, data: Any, composed: tuple[list[str], int] | None
+) -> list[str]:
     """Spec §10: the populated `steps` list follows the composed stages'
     sequences, which is what makes §8.5's resume — the first record neither
     done nor skipped — mean what the stages declared. The schema cannot
     constrain id order, so swapping two records would silently change where
     a resume lands; only this check stands between that and a green run.
 
-    How much of the composition a document owes depends on where it is.
-    Before the intake gate accepts a class the list holds the entry stage's
-    records alone, so the rule there is subsequence: every id declared, in
-    the declared order. From that acceptance onward §10 makes the list
-    complete, and `run.risk` is what says the acceptance happened — the
-    class the gate accepted, absent before and present after — so a
-    populated state owes every member as well as the order.
+    Which part of the composition a document owes depends on where it is,
+    and `run.risk` is what says which — the class the intake gate accepted,
+    absent before and present after. Before that acceptance §10's list is
+    the entry stage's members alone, so ids are bounded to that stage and
+    read as a subsequence of it: a later stage's member has no record yet,
+    the acceptance being the write that creates them. From the acceptance
+    onward the list is complete, so a populated state owes every member of
+    every composed stage, in the declared order.
     """
-    if order is None or not isinstance(data, dict):
+    if composed is None or not isinstance(data, dict):
         return []
+    order, entry_count = composed
+    run = data.get("run") if isinstance(data, dict) else None
+    accepted = isinstance(run, dict) and run.get("risk") is not None
+    if not accepted:
+        # §10: until the intake gate accepts, the list holds the entry
+        # stage's records alone — the acceptance is the write that creates
+        # the rest, so a later stage's member here is a record nothing wrote.
+        order = order[:entry_count]
     recorded = [
         step["id"]
         for step in items_of(data.get("steps"))
@@ -1294,8 +1310,14 @@ def record_order_problems(at: str, data: Any, order: list[str] | None) -> list[s
     for step_id in recorded:
         if step_id not in order:
             problems.append(
-                f"{at}: step `{step_id}` is not a member any composed stage "
-                f"declares — §10's list is the sequences' (spec §9.4)"
+                f"{at}: step `{step_id}` is not a member "
+                + (
+                    "any composed stage declares"
+                    if accepted
+                    else "the entry stage declares, and no class is accepted "
+                    "yet — §10's pre-acceptance list is that stage's alone"
+                )
+                + " (spec §9.4)"
             )
             continue
         index = order.index(step_id)
@@ -1307,8 +1329,6 @@ def record_order_problems(at: str, data: Any, order: list[str] | None) -> list[s
             )
             continue
         position = index + 1
-    run = data.get("run") if isinstance(data, dict) else None
-    accepted = isinstance(run, dict) and run.get("risk") is not None
     if accepted:
         missing = [member for member in order if member not in set(recorded)]
         if missing:

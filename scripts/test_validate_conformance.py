@@ -140,6 +140,7 @@ RUN_STATE_SCHEMA = {
                 "id": {"type": "string"},
                 "workflow": {"type": "string"},
                 "phase": {"type": "integer"},
+                "risk": {"type": "string"},
             },
         },
         # Enough of the real shape for the manifest check to have something to
@@ -1247,12 +1248,44 @@ metadata:
 
     ORDERED_WORKFLOW = """---
 name: ordered
-description: A workflow composing one stage.
+description: A workflow composing two stages.
 ---
 
 # Workflow: ordered
 
 1. [stages/planlike.md](stages/planlike.md)
+2. [stages/laterlike.md](stages/laterlike.md)
+"""
+
+    LATERLIKE_STAGE = """---
+name: laterlike
+description: A later stage, whose members no pre-acceptance list may carry.
+---
+
+# Stage: laterlike
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    stage:
+      sequence:
+        - step: assemble
+```
+
+### assemble (implementer)
+
+Prose.
+
+```yaml
+metadata:
+  workflow:
+    protocol: "0.2"
+    step:
+      role: implementer
+      output:
+        artifact: "{run}/log.md"
+```
 """
 
     PLANLIKE_STAGE = """---
@@ -1317,13 +1350,16 @@ metadata:
 ```
 """
 
-    def write_ordered(self, steps: str, run_extra: str = "") -> None:
+    def write_ordered(
+        self, steps: str, run_extra: str = "", artifacts: str = " []"
+    ) -> None:
         self.write("workflows/ordered.md", self.ORDERED_WORKFLOW)
         self.write("workflows/stages/planlike.md", self.PLANLIKE_STAGE)
+        self.write("workflows/stages/laterlike.md", self.LATERLIKE_STAGE)
         self.write(
             "protocol/schemas/examples/run-state.valid.yaml",
             f"run:\n  id: demo\n  workflow: ordered\n{run_extra}"
-            f"steps:\n{steps}gates: []\nartifacts: []\n",
+            f"steps:\n{steps}gates: []\nartifacts:{artifacts}\n",
         )
 
     def test_records_following_the_declared_order_pass(self) -> None:
@@ -1360,6 +1396,7 @@ metadata:
         self.write_ordered(
             "  - id: make\n    status: done\n  - id: revise\n    status: skipped\n",
             run_extra="  risk: R2\n",
+            artifacts='\n  - "{run}/plan.md"',
         )
         self.assert_problem("these members have no record: validate")
 
@@ -1368,6 +1405,25 @@ metadata:
         state §10 describes, and its short list is legitimate."""
         self.write_ordered(
             "  - id: make\n    status: active\n  - id: revise\n    status: skipped\n"
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_pre_acceptance_state_may_not_carry_a_later_stage_member(self) -> None:
+        """§10's pre-acceptance list is the entry stage's records alone: the
+        acceptance is the write that creates the rest, so a later stage's
+        member here is a record nothing wrote."""
+        self.write_ordered(
+            "  - id: make\n    status: active\n  - id: assemble\n    status: pending\n"
+        )
+        self.assert_problem("`assemble` is not a member the entry stage declares")
+
+    def test_an_accepted_state_may_carry_later_stage_members(self) -> None:
+        self.write_ordered(
+            "  - id: make\n    status: done\n  - id: revise\n    status: skipped\n"
+            "  - id: validate\n    status: done\n  - id: assemble\n    status: pending\n",
+            run_extra="  risk: R2\n",
+            artifacts='\n  - "{run}/plan.md"\n  - "{run}/plan-validation.md"',
         )
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
@@ -1419,7 +1475,7 @@ metadata:
             "  - id: make\n    status: pending\n"
             "  - id: phantom\n    status: pending\n"
         )
-        self.assert_problem("step `phantom` is not a member any composed stage declares")
+        self.assert_problem("step `phantom` is not a member the entry stage declares")
 
     # ---- run-state documents (spec §8.2, §7, §10) ----
 
