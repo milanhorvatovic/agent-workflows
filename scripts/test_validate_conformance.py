@@ -847,6 +847,21 @@ metadata:
         )
         self.assert_problem("0 stage sequence blocks")
 
+    def test_a_malformed_gate_bullet_is_reported_not_silenced(self) -> None:
+        """A gate-shaped bullet whose id fails the strict form — a
+        capitalized `**Demo-approval**` — must not make a gate-only file
+        read as declaring nothing and bypass both reports."""
+        self.write(
+            "workflows/stages/gated.md",
+            "---\nname: gated\ndescription: A stage.\n---\n\n"
+            "# Stage: gated\n\n## Gates\n\n"
+            "- **Demo-approval** — capitalized by mistake.\n",
+        )
+        output = self.assert_problem("gate bullet `Demo-approval` does not match")
+        # The typo also makes the file a stage contract, so the missing
+        # sequence is reported alongside rather than silenced with it.
+        self.assertIn("0 stage sequence blocks", output)
+
     def test_a_sequence_missing_a_declared_member_is_reported(self) -> None:
         self.write(
             "workflows/stages/gated.md",

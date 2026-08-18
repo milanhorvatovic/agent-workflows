@@ -653,6 +653,9 @@ def manifest_problems(at: str, data: Any, outputs: dict[str, str]) -> list[str]:
 
 
 GATE_HEADING = re.compile(r"^- \*\*(?P<id>[a-z][a-z0-9-]*)\*\*", re.MULTILINE)
+# Anything bullet-and-bold in a Gates section is gate-shaped; one that then
+# fails GATE_HEADING's id form is a malformed gate to report, never silence.
+GATE_SHAPED = re.compile(r"^- \*\*(?P<raw>[^*\n]+)\*\*", re.MULTILINE)
 
 
 # The closing run must be at least as long as the opener (CommonMark): a
@@ -1018,7 +1021,20 @@ def check_stage_sequences(root: Path) -> tuple[int, list[str]]:
         # identical headings, two identical gate bullets — must surface as
         # the duplicate it is, not be erased before the comparison.
         step_list = [m.group("id") for m in STAGE_STEP_HEADING.finditer(masked)]
-        gate_list = [m.group("id") for m in GATE_HEADING.finditer(gates_section(text))]
+        section = gates_section(text)
+        gate_list = [m.group("id") for m in GATE_HEADING.finditer(section)]
+        # A gate-shaped bullet whose id fails the strict form must not make
+        # the file read as declaring nothing: `**Demo-approval**` is a typo
+        # to report, and it still marks the file as a stage contract.
+        malformed_gates = 0
+        for match in GATE_SHAPED.finditer(section):
+            if not GATE_HEADING.match(section, match.start()):
+                malformed_gates += 1
+                problems.append(
+                    f"{rel}: gate bullet `{match.group('raw')}` does not match "
+                    f"the `- **<id>**` form — ids are lowercase kebab-case "
+                    f"(spec §9.4)"
+                )
         # A step-contract block owes the well-formed heading nearest above it:
         # with none at all it has no id a sequence could name, and under a
         # malformed one — `### second` without the role — it would silently
@@ -1088,7 +1104,13 @@ def check_stage_sequences(root: Path) -> tuple[int, list[str]]:
         declared_steps = set(step_list)
         declared_gates = set(gate_list)
         blocks = sequence_blocks
-        if not declared_steps and not declared_gates and not blocks and not step_blocks:
+        if (
+            not declared_steps
+            and not declared_gates
+            and not blocks
+            and not step_blocks
+            and not malformed_gates
+        ):
             continue  # nothing declared any way; not a stage contract yet
         checked += 1
         if len(blocks) != 1:
