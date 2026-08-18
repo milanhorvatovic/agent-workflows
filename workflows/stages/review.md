@@ -9,7 +9,7 @@ Independent scrutiny of the implemented change. Reviewer and validator always ru
 
 This stage runs **once, after the final phase** ([feature](../feature.md)), so it has no current phase to name. Its step blocks read the phases behind it with `{P}` (spec §8.1), which resolves to one artifact per completed phase: a multi-phase run has a plan and a log per phase, the change under review is their sum, and every one is read — the same token the other after-the-last-phase stage uses. The loop's declared scope is the union of what those plans declare. For the same reason nothing this stage writes is phase-indexed: `review-fix` records its iterations in the run-scoped `{run}/review-fixes.md`, alongside the four stage outputs that were already run-scoped.
 
-The sequence (spec §9.4) declares the members in record order — the conditional members sit where composition reads them, only the loop and the disagreement condition routing to them; what the overlays make mandatory at R3 they make mandatory at population, never here:
+The sequence (spec §9.4) declares the members in record order — the conditional members sit where composition reads them, their conditions being the loop, the disagreement between reviewer and validator, and the security reading the brief records; what the overlays make mandatory at R3 they make mandatory at population, never here:
 
 ```yaml
 metadata:
@@ -19,6 +19,7 @@ metadata:
       sequence:
         - step: review-code
         - step: review-security
+          conditional: true
         - step: review-validate
         - step: review-arbitrate
           conditional: true

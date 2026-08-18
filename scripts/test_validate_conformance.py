@@ -895,6 +895,21 @@ metadata:
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
 
+    def test_an_unclosed_wrapper_masks_to_end_of_file(self) -> None:
+        """CommonMark extends an unclosed fence to EOF: an unclosed
+        four-backtick wrapper must consume its complete inner yaml snippet
+        rather than fail to match and let the snippet extract as a real
+        declaration."""
+        self.write(
+            "workflows/stages/gated.md",
+            self.GATED_STAGE + "\n## Notes\n\nAn unclosed example:\n\n"
+            "````markdown\n```yaml\nmetadata:\n  workflow:\n"
+            "    protocol: \"0.2\"\n    stage:\n      sequence:\n"
+            "        - step: phantom\n```\n## Gates\n\n- **fake-gate** — x.\n",
+        )
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
     def test_a_tilde_fenced_declaration_is_discovered(self) -> None:
         """Extraction reads the same CommonMark the mask does: a stage whose
         sequence block uses `~~~yaml` is a declaration, not code to hide —

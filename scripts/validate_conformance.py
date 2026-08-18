@@ -94,13 +94,13 @@ PLACEHOLDER = re.compile(r"(?<!\$)\{([^{}]*)\}")
 
 # One fence model for masking and extraction alike (CommonMark): backticks
 # or tildes, both fence lines up to three spaces in, the closer at least the
-# opener's length. finditer consumes each outermost fence whole, so a block
+# opener's length — or absent, an unclosed fence extending to end of file. finditer consumes each outermost fence whole, so a block
 # nested inside a longer wrapper is never discovered as a declaration — the
 # same fact that lets mask_fences blank examples out of the text scans.
 FENCE = re.compile(
     r"^(?P<indent> {0,3})"
-    r"(?:(?P<bt>```+)(?P<bti>[^`\n]*)\n(?P<btb>.*?)^ {0,3}(?P=bt)`*"
-    r"|(?P<td>~~~+)(?P<tdi>[^\n]*)\n(?P<tdb>.*?)^ {0,3}(?P=td)~*)[ \t]*$",
+    r"(?:(?P<bt>```+)(?P<bti>[^`\n]*)\n(?P<btb>.*?)(?:^ {0,3}(?P=bt)`*[ \t]*$|\Z)"
+    r"|(?P<td>~~~+)(?P<tdi>[^\n]*)\n(?P<tdb>.*?)(?:^ {0,3}(?P=td)~*[ \t]*$|\Z))",
     re.DOTALL | re.MULTILINE,
 )
 
