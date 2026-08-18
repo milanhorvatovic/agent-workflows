@@ -395,7 +395,21 @@ def check_workflow_blocks(
             continue
         rel = path.relative_to(root).as_posix()
         text = path.read_text(encoding="utf-8")
+        # §9's carriers are per file: a workflow or stage file declares in
+        # its body, a skill in its frontmatter. A body declaration anywhere
+        # else is misplaced — reported rather than validated as live, since
+        # a declaration nothing composes is one nothing executes.
+        declares_in_body = rel.startswith("workflows/") and rel.count("/") <= 2
         blocks = yaml_blocks(text, rel, problems)
+        if not declares_in_body:
+            for block in blocks:
+                if workflow_value(block.data) is not None:
+                    problems.append(
+                        f"{block.at}: `metadata.workflow` in the body of a file "
+                        f"that is not a workflow or stage — §9's body carrier is "
+                        f"theirs, a skill declaring in frontmatter instead"
+                    )
+            blocks = []
         front = frontmatter_block(text, rel)
         if front is not None:
             blocks.append(front)
@@ -687,6 +701,7 @@ GATE_SHAPED = re.compile(r"^- \*\*(?P<raw>[^*\n]+)\*\*", re.MULTILINE)
 # unmasked.
 
 GENERIC_H3 = re.compile(r"^### ", re.MULTILINE)
+GENERIC_H2 = re.compile(r"^## ", re.MULTILINE)
 GATES_HEADING = re.compile(r"^## Gates[ \t]*$", re.MULTILINE)
 
 
@@ -1078,6 +1093,7 @@ def check_stage_sequences(root: Path) -> tuple[int, list[str]]:
         heading_offsets = [start for start, _, _ in headings]
         roles_at = {start: role for start, _, role in headings}
         h3_offsets = [m.start() for m in GENERIC_H3.finditer(masked)]
+        h2_offsets = [m.start() for m in GENERIC_H2.finditer(masked)]
         contracts_under: dict[int, int] = {start: 0 for start in heading_offsets}
         step_blocks = 0
         sequence_blocks = []
@@ -1092,7 +1108,17 @@ def check_stage_sequences(root: Path) -> tuple[int, list[str]]:
             step_blocks += 1
             nearest_h3 = max((s for s in h3_offsets if s < offset), default=None)
             nearest_valid = max((s for s in heading_offsets if s < offset), default=None)
-            if nearest_h3 is None:
+            nearest_h2 = max((s for s in h2_offsets if s < offset), default=None)
+            if nearest_h3 is not None and nearest_h2 is not None and nearest_h2 > nearest_h3:
+                # An H2 closes the step section above it — `## Gates`, `## Notes` —
+                # so this block sits under no step heading at all, however
+                # many valid ones precede it.
+                problems.append(
+                    f"{block.at}: step block below a `## ` heading that closed "
+                    f"the step section above it — it belongs to no step, and no "
+                    f"sequence can name it (spec §9.4)"
+                )
+            elif nearest_h3 is None:
                 problems.append(
                     f"{block.at}: step block without a `### <id> (<role>)` heading "
                     f"above it — no sequence can name what has no id (spec §9.4)"
@@ -1350,6 +1376,24 @@ def check_manifests(root: Path) -> tuple[int, list[str]]:
     problems: list[str] = []
     checked = 0
 
+    def order_problems(at: str, data: Any) -> list[str]:
+        """The record-order check, plus the diagnostic that keeps it from
+        disabling itself: `run.workflow` is only schema-checked as a
+        non-empty string, so a typo would resolve to no composition and
+        every membership, completeness, and order rule would pass by
+        vacuously. An unresolvable name is the finding instead."""
+        workflow = run_workflow(data)
+        if workflow is None:
+            return []  # not a run state's shape; the schema check reports it
+        composed_order = composed_member_order(root, workflow)
+        if composed_order is None:
+            return [
+                f"{at}: run.workflow `{workflow}` names no workflow whose stages "
+                f"declare their sequences — §10's order cannot be checked against "
+                f"a composition that cannot be read (spec §9.4)"
+            ]
+        return record_order_problems(at, data, composed_order)
+
     def composed(at: str, data: Any) -> tuple[dict[str, tuple[str, Any]], list[str]]:
         """The contracts scoped to the document's own workflow: §8.6 bounds
         imports to step outputs of the composed workflow, so a `plan` state
@@ -1387,9 +1431,7 @@ def check_manifests(root: Path) -> tuple[int, list[str]]:
         problems += manifest_problems(rel, data, outputs)
         problems += gate_record_problems(rel, data, gates)
         problems += duplicate_record_problems(rel, data)
-        problems += record_order_problems(
-            rel, data, composed_member_order(root, run_workflow(data))
-        )
+        problems += order_problems(rel, data)
         if isinstance(data, dict) and data.get("imports"):
             scoped, scope_problems = composed(rel, data)
             problems += scope_problems
@@ -1403,11 +1445,7 @@ def check_manifests(root: Path) -> tuple[int, list[str]]:
                 problems += manifest_problems(block.at, block.data, outputs)
                 problems += gate_record_problems(block.at, block.data, gates)
                 problems += duplicate_record_problems(block.at, block.data)
-                problems += record_order_problems(
-                    block.at,
-                    block.data,
-                    composed_member_order(root, run_workflow(block.data)),
-                )
+                problems += order_problems(block.at, block.data)
                 if isinstance(block.data, dict) and block.data.get("imports"):
                     scoped, scope_problems = composed(block.at, block.data)
                     problems += scope_problems

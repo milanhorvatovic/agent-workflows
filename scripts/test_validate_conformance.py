@@ -1138,6 +1138,29 @@ metadata:
         )
         self.assert_problem("contract declares role `analyst` under a heading that says `validator`")
 
+    def test_a_step_block_below_a_section_heading_is_reported(self) -> None:
+        """An H2 closes the step section above it: a contract moved under
+        `## Gates` or `## Notes` belongs to no step, however many valid step
+        headings precede it."""
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE + "\n## Notes\n\nProse.\n\n"
+            "```yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n"
+            "    step:\n      role: analyst\n      output:\n"
+            '        artifact: "{run}/stray.md"\n```\n',
+        )
+        self.assert_problem("step block below a `## ` heading that closed")
+
+    def test_a_body_declaration_outside_a_workflow_file_is_reported(self) -> None:
+        """§9's body carrier belongs to workflow and stage files; a skill
+        declares in frontmatter. A body block anywhere else is a declaration
+        nothing composes."""
+        self.write(
+            "roles/analyst.md",
+            frontmatter("analyst") + "\n" + STEP_BLOCK,
+        )
+        self.assert_problem("`metadata.workflow` in the body of a file that is not")
+
     def test_a_truncated_heading_is_not_a_valid_declaration(self) -> None:
         """`### thing (` is a malformed heading, not a prefix-match: its
         contract must not associate, and the sequence entry naming `thing`
@@ -1408,6 +1431,18 @@ metadata:
         )
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
+
+    def test_an_unresolvable_workflow_is_reported_for_any_run_state(self) -> None:
+        """A typo'd `run.workflow` resolves to no composition, and every
+        membership, completeness, and order rule would then pass vacuously —
+        the name is the finding instead, imports or no imports."""
+        self.write_ordered("  - id: make\n    status: pending\n")
+        state = self.root / "protocol/schemas/examples/run-state.valid.yaml"
+        state.write_text(
+            state.read_text(encoding="utf-8").replace("ordered", "ordere"),
+            encoding="utf-8",
+        )
+        self.assert_problem("run.workflow `ordere` names no workflow whose stages")
 
     def test_a_pre_acceptance_state_may_not_carry_a_later_stage_member(self) -> None:
         """§10's pre-acceptance list is the entry stage's records alone: the
