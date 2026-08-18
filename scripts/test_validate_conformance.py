@@ -847,6 +847,32 @@ metadata:
         )
         self.assert_problem("0 stage sequence blocks")
 
+    def test_a_fenced_fake_heading_does_not_rekey_a_contract(self) -> None:
+        """stage_steps reads headings from the masked text: a `### fake
+        (role)` inside a fenced example between the real heading and its
+        contract must not key the contract as `fake` and break parity."""
+        self.write_pair()
+        stage = Path(self.root / "workflows/stages/demo.md").read_text(encoding="utf-8")
+        stage = stage.replace(
+            "Prose.",
+            "Prose with an example:\n\n```markdown\n### fake (analyst)\n```",
+            1,
+        )
+        self.write("workflows/stages/demo.md", stage)
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+
+    def test_a_member_wearing_a_stage_id_is_reported(self) -> None:
+        """§9.1 targets are untyped strings — a member named like a stage
+        makes every edge naming it ambiguous between the member and the
+        stage's first runnable record."""
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE.replace("thing", "gated"),
+        )
+        self.write("workflows/stages/gated.md", self.GATED_STAGE)
+        self.assert_problem("member `gated` carries a stage's id")
+
     def test_a_malformed_gate_bullet_is_reported_not_silenced(self) -> None:
         """A gate-shaped bullet whose id fails the strict form — a
         capitalized `**Demo-approval**` — must not make a gate-only file
@@ -1145,7 +1171,7 @@ description: A stage whose step output carries the phase placeholder.
 
 # Stage: phased
 
-### phased (planner)
+### phasedstep (planner)
 
 Prose.
 
@@ -1168,7 +1194,7 @@ metadata:
     protocol: "0.2"
     stage:
       sequence:
-        - step: phased
+        - step: phasedstep
 ```
 """
 
@@ -1217,7 +1243,7 @@ metadata:
         run wants phase 2's artifact and phase 1's does not stand in for it."""
         self.write("workflows/stages/phased.md", self.PHASED_STAGE)
         self.write_run_state(
-            "  - id: phased\n    status: done\n",
+            "  - id: phasedstep\n    status: done\n",
             '\n  - "{run}/phase-1-plan.md"',
             run="  phase: 2\n",
         )
@@ -1464,7 +1490,7 @@ description: A stage whose step output names the phase twice.
 
 # Stage: twicephased
 
-### twicephased (planner)
+### twicestep (planner)
 
 Prose.
 
@@ -1487,7 +1513,7 @@ metadata:
     protocol: "0.2"
     stage:
       sequence:
-        - step: twicephased
+        - step: twicestep
 ```
 """
 
@@ -1504,7 +1530,7 @@ metadata:
             ),
         )
         self.write_run_state(
-            "  - id: twicephased\n    status: skipped\n",
+            "  - id: twicestep\n    status: skipped\n",
             '\n  - "{run}/phase-1-of-20.md"',
             extra="imports:\n  - artifact: \"{run}/phase-1-of-20.md\"\n"
             "    from: earlier-run\n    at: '2026-08-16T09:00:00Z'\n",
@@ -1518,7 +1544,7 @@ metadata:
         self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
         self.write("workflows/stages/twicephased.md", self.TWICE_PHASED_STAGE)
         self.write_run_state(
-            "  - id: twicephased\n    status: skipped\n",
+            "  - id: twicestep\n    status: skipped\n",
             '\n  - "{run}/phase-1-of-2.md"',
             extra="imports:\n  - artifact: \"{run}/phase-1-of-2.md\"\n"
             "    from: earlier-run\n    at: '2026-08-16T09:00:00Z'\n",
@@ -1529,7 +1555,7 @@ metadata:
         self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
         self.write("workflows/stages/twicephased.md", self.TWICE_PHASED_STAGE)
         self.write_run_state(
-            "  - id: twicephased\n    status: skipped\n",
+            "  - id: twicestep\n    status: skipped\n",
             '\n  - "{run}/a.md"\n  - "{run}/phase-2-of-2.md"',
             extra="imports:\n  - artifact: \"{run}/a.md\"\n"
             "    from: earlier-run\n    at: '2026-08-16T09:00:00Z'\n"
@@ -1547,7 +1573,7 @@ metadata:
         self.write("workflows/stages/chained.md", self.CHAINED_STAGE)
         self.write("workflows/stages/phased.md", self.PHASED_STAGE)
         self.write_run_state(
-            "  - id: maker\n    status: pending\n  - id: phased\n    status: pending\n",
+            "  - id: maker\n    status: pending\n  - id: phasedstep\n    status: pending\n",
             '\n  - "{run}/phase-1-plan.md"',
             run="  phase: 2\n",
             extra="imports:\n  - artifact: \"{run}/phase-1-plan.md\"\n"
@@ -1755,7 +1781,7 @@ description: A stage a phase repeats, declaring a gate.
 
 # Stage: phasedgate
 
-### phasedgate (planner)
+### phasedplanner (planner)
 
 Prose.
 
@@ -1782,7 +1808,7 @@ metadata:
     protocol: "0.2"
     stage:
       sequence:
-        - step: phasedgate
+        - step: phasedplanner
         - gate: demo-approval
 ```
 """
@@ -1820,7 +1846,7 @@ metadata:
         """
         self.write("workflows/stages/phased.md", self.PHASED_STAGE)
         self.write_run_state(
-            "  - id: phased\n    status: done\n",
+            "  - id: phasedstep\n    status: done\n",
             '\n  - "{run}/phase-2-plan.md"',  # phase 1's is absent and stays legal
             run="  phase: 2\n",
         )
@@ -1830,7 +1856,7 @@ metadata:
     def test_the_phase_placeholder_defaults_to_phase_one(self) -> None:
         self.write("workflows/stages/phased.md", self.PHASED_STAGE)
         self.write_run_state(
-            "  - id: phased\n    status: done\n", '\n  - "{run}/phase-1-plan.md"'
+            "  - id: phasedstep\n    status: done\n", '\n  - "{run}/phase-1-plan.md"'
         )
         code, output = self.run_main()
         self.assertEqual(code, 0, output)

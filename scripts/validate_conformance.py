@@ -536,7 +536,14 @@ def stage_steps(root: Path, problems: list[str]) -> dict[str, tuple[str, Any]]:
     for path in sorted(root.glob("workflows/stages/*.md")):
         rel = path.relative_to(root).as_posix()
         text = path.read_text(encoding="utf-8")
-        headings = [(m.start(), m.group("id")) for m in STAGE_STEP_HEADING.finditer(text)]
+        # Headings come from the masked text: a `### fake (role)` inside a
+        # fenced example between a real heading and its contract would
+        # otherwise key the contract as `fake`, corrupting parity and the
+        # output maps. The mask keeps offsets, so block association holds.
+        headings = [
+            (m.start(), m.group("id"))
+            for m in STAGE_STEP_HEADING.finditer(mask_fences(text))
+        ]
         for block in yaml_blocks(text, rel, problems):
             step = step_of(block)
             if step is None:
@@ -1001,6 +1008,11 @@ def check_stage_sequences(root: Path) -> tuple[int, list[str]]:
     # there — an id two stages share duplicates the moment they compose,
     # whichever kinds it wears in each.
     owners: dict[str, str] = {}
+    stage_slugs = {
+        path.stem
+        for path in root.glob("workflows/stages/*.md")
+        if path.name != "README.md"
+    }
     for path in sorted(root.glob("workflows/stages/*.md")):
         if path.name == "README.md":
             continue
@@ -1092,6 +1104,15 @@ def check_stage_sequences(root: Path) -> tuple[int, list[str]]:
                     f"population can carry only one record (spec §10)"
                 )
         for name in step_list + gate_list:
+            # A member wearing a stage's id would make every §9.1 edge naming
+            # it ambiguous: a target is an untyped string that may resolve to
+            # a member or to a stage's first runnable record.
+            if name in stage_slugs:
+                problems.append(
+                    f"{rel}: member `{name}` carries a stage's id — a §9.1 "
+                    f"target naming it could mean the member or the stage "
+                    f"(spec §9.4)"
+                )
             owner = owners.get(name)
             if owner is not None and owner != rel:
                 problems.append(
