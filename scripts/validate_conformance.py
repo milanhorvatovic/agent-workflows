@@ -1065,8 +1065,12 @@ def check_stage_sequences(root: Path) -> tuple[int, list[str]]:
         # one-to-one both ways: a heading with no contract is a record the
         # driver has no role or handoff for, and one with two has no single
         # contract to execute.
-        headings = [(m.start(), m.group("id")) for m in STAGE_STEP_HEADING.finditer(masked)]
-        heading_offsets = [start for start, _ in headings]
+        headings = [
+            (m.start(), m.group("id"), m.group("role"))
+            for m in STAGE_STEP_HEADING.finditer(masked)
+        ]
+        heading_offsets = [start for start, _, _ in headings]
+        roles_at = {start: role for start, _, role in headings}
         h3_offsets = [m.start() for m in GENERIC_H3.finditer(masked)]
         contracts_under: dict[int, int] = {start: 0 for start in heading_offsets}
         step_blocks = 0
@@ -1095,7 +1099,21 @@ def check_stage_sequences(root: Path) -> tuple[int, list[str]]:
                 )
             else:
                 contracts_under[nearest_valid] += 1
-        for start, step_id in headings:
+                # The heading is what a human executing the prose reads, the
+                # contract what a driver executes: a disagreement about the
+                # role hands the same step to two different roles.
+                declared_role = workflow["step"].get("role")
+                if (
+                    isinstance(declared_role, str)
+                    and declared_role != roles_at[nearest_valid]
+                ):
+                    problems.append(
+                        f"{block.at}: contract declares role `{declared_role}` "
+                        f"under a heading that says `{roles_at[nearest_valid]}` — "
+                        f"prose and driver would execute it as different roles "
+                        f"(spec §9.1)"
+                    )
+        for start, step_id, _ in headings:
             if contracts_under[start] == 0:
                 problems.append(
                     f"{rel}: step `{step_id}` declares no contract block — a "
