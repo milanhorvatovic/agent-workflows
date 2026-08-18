@@ -22,7 +22,12 @@ from pathlib import Path
 from .protocol_yaml import ProtocolYamlError, loads
 
 STAGE_REFERENCE = re.compile(r"\(stages/([a-z][a-z0-9-]*)\.md\)")
-STEP_HEADING = re.compile(r"^### (?P<id>[a-z][a-z0-9-]*) \(", re.MULTILINE)
+# The complete form, anchored to line end — a truncated `### thing (`
+# must not declare a step whose contract then associates (the
+# conformance suite holds the same rule).
+STEP_HEADING = re.compile(
+    r"^### (?P<id>[a-z][a-z0-9-]*) \((?P<role>[a-z]+)\)[ \t]*$", re.MULTILINE
+)
 YAML_BLOCK = re.compile(r"^```yaml[ \t]*\n(.*?)^```", re.DOTALL | re.MULTILINE)
 
 VERDICTS = ("PASS", "PASS_WITH_CONDITIONS", "FAIL")

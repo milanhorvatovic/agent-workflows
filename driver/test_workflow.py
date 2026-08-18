@@ -117,6 +117,16 @@ class SyntheticTreeTest(unittest.TestCase):
             load_workflow(self.framework, "empty")
         self.assertIn("composes no stages", str(caught.exception))
 
+    def test_a_truncated_heading_declares_no_step(self) -> None:
+        """`### make (` is malformed, not a prefix-match: the contract under
+        it must not associate, so the sequence step has no block."""
+        self.write(
+            "workflows/stages/demo.md", STAGE.replace("### make (analyst)", "### make (")
+        )
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "demo")
+        self.assertIn("step block above the first step heading", str(caught.exception))
+
     def test_a_sequence_step_without_a_block_is_an_error(self) -> None:
         self.write(
             "workflows/stages/demo.md",
