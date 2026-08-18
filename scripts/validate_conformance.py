@@ -92,14 +92,15 @@ PLACEHOLDERS = {"run", "N", "P", "machine-checks"}  # spec §8.1 and §9.2
 # {token} occurrences; the lookbehind skips ${...} shell expansions in commands.
 PLACEHOLDER = re.compile(r"(?<!\$)\{([^{}]*)\}")
 
-# One fence model for masking and extraction alike, scoped to the protocol's
-# declaration surface: TOP-LEVEL fences only, which is §9's own rule for
-# where a declaration may live — backticks or tildes, both fence lines up to
-# three spaces in, the closer at least the opener's length or absent (an
-# unclosed fence extends to end of file). Container-nested fences (block
-# quotes, list items) are deliberately outside the model on both sides: a
-# declaration there is nonconforming by §9, and an example there carries its
-# container's marker or indent on every line, which already keeps its
+# One fence model, two scopes. Masking tolerates what CommonMark writes —
+# backticks or tildes, both fence lines up to three spaces in, the closer at
+# least the opener's length or absent (an unclosed fence extends to end of
+# file) — while extraction takes first-column fences only, §9's own rule for
+# where a declaration may live. Container-nested fences (block quotes, list
+# items) are outside both scopes deliberately: a declaration there is
+# nonconforming by §9, an indented fence is indistinguishable from a list
+# item's content without parsing containers, and a container's example
+# carries its marker or indent on every line, which already keeps its
 # headings and bullets out of the line-anchored structure scans. finditer consumes each outermost fence whole, so a block
 # nested inside a longer wrapper is never discovered as a declaration — the
 # same fact that lets mask_fences blank examples out of the text scans.
@@ -191,15 +192,13 @@ def yaml_blocks(text: str, rel: str, problems: list[str]) -> list[Block]:
         info = (match.group("bti") or match.group("tdi") or "").strip()
         if info != "yaml":
             continue
+        # Declarations begin at the first column (spec §9): a 1-3-space
+        # indent is legal CommonMark at top level, but so is a list item's
+        # content indent, and no line-anchored rule can tell the two apart —
+        # so an indented fence is masked as an example, never extracted.
+        if match.group("indent"):
+            continue
         body = match.group("btb") if match.group("bt") else match.group("tdb")
-        indent = len(match.group("indent"))
-        if indent:
-            # CommonMark removes up to the opener's indent from each content
-            # line — fewer where the line has fewer leading spaces.
-            body = "\n".join(
-                line[min(indent, len(line) - len(line.lstrip(" "))):]
-                for line in body.split("\n")
-            )
         line = text.count("\n", 0, match.start()) + 1
         at = f"{rel}:{line}"
         try:

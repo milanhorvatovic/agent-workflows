@@ -1003,9 +1003,12 @@ metadata:
         code, output = self.run_main()
         self.assertEqual(code, 0, output)
 
-    def test_an_indented_declaration_is_discovered_and_dedented(self) -> None:
-        """An indented fence's body reads with the opener's indent removed —
-        without the dedent the YAML would parse wrong or not at all."""
+    def test_an_indented_fence_is_not_a_declaration(self) -> None:
+        """Declarations begin at the first column (spec §9): a 1-3-space
+        indent is legal CommonMark at top level but indistinguishable from a
+        list item's content indent, so an indented sequence fence is an
+        example — masked, never extracted — and the stage reads as missing
+        its sequence."""
         block = (
             "  ```yaml\n"
             "  metadata:\n"
@@ -1025,8 +1028,32 @@ metadata:
             "workflows/stages/demo.md",
             self.STAGE.replace(plain_sequence, "\n" + block),
         )
-        code, output = self.run_main()
-        self.assertEqual(code, 0, output)
+        self.assert_problem("0 stage sequence blocks")
+
+    def test_a_list_contained_fence_is_not_a_declaration(self) -> None:
+        """The round's own reproducer: a two-space-indented fence under a
+        list item matches the masking tolerance yet must not extract."""
+        block = (
+            "- an item introducing an example:\n\n"
+            "  ```yaml\n"
+            "  metadata:\n"
+            "    workflow:\n"
+            '      protocol: "0.2"\n'
+            "      stage:\n"
+            "        sequence:\n"
+            "          - step: thing\n"
+            "  ```\n"
+        )
+        plain_sequence = (
+            "\n```yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n    stage:\n"
+            "      sequence:\n        - step: thing\n```\n"
+        )
+        assert plain_sequence in self.STAGE
+        self.write(
+            "workflows/stages/demo.md",
+            self.STAGE.replace(plain_sequence, "\n" + block),
+        )
+        self.assert_problem("0 stage sequence blocks")
 
     def test_a_tilde_fence_masks_its_example(self) -> None:
         """CommonMark fences come in tildes as well as backticks — an example
