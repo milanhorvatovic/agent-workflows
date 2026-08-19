@@ -381,6 +381,17 @@ def _resolve_target(state: RunState, workflow: Workflow, target: str) -> str:
             # sequence and are not what a stage target names — routing to one
             # would stop the run at a decision nothing has yet produced work
             # for, where the rule sends it to the work itself.
+            #
+            # Every `skipped` record is passed over, which is wider than the
+            # rule's words: a class exclusion, a conditional whose route has
+            # not fired, and a step whose output the run imported (§8.6) all
+            # wear that one status, and run state records no reason to tell
+            # them apart. Nothing shipped reaches the difference — the only
+            # stage-id targets declared today enter `planning`, whose first
+            # member is unconditional — but a stage whose first step is
+            # conditional would be entered past it. Narrowing this needs the
+            # protocol to carry why a record was skipped; until it does,
+            # reading all three alike is the only reading available.
             for member in stage.members:
                 if member.kind != "step":
                     continue
