@@ -185,8 +185,18 @@ def _members(text: str, rel: str) -> tuple[Member, ...]:
             raise WorkflowError(f"{rel}: sequence entry is not one member: {entry!r}")
         if any(member.id == member_id for member in members):
             raise WorkflowError(f"{rel}: sequence names {member_id!r} twice")
+        # §9.4 admits `conditional: true` and absence, nothing else — the
+        # schema declares the field `const: true`. Reading any other value as
+        # unconditional would populate a revising member or a conditional
+        # gate `pending` rather than `skipped`, and a resume would reach it
+        # before the route that is supposed to fire it ever did.
+        if "conditional" in entry and entry["conditional"] is not True:
+            raise WorkflowError(
+                f"{rel}: member {member_id!r} declares conditional "
+                f"{entry['conditional']!r} — the form is `true` or absent"
+            )
         members.append(
-            Member(kind=kind, id=member_id, conditional=entry.get("conditional") is True)
+            Member(kind=kind, id=member_id, conditional="conditional" in entry)
         )
     return tuple(members)
 

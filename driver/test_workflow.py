@@ -186,6 +186,20 @@ class SyntheticTreeTest(unittest.TestCase):
             load_workflow(self.framework, "demo")
         self.assertIn("names 'make' twice", str(caught.exception))
 
+    def test_a_conditional_that_is_not_true_is_an_error(self) -> None:
+        """`conditional` is `const: true` in the schema: read as merely
+        falsey, `conditional: false` would populate the member `pending` and
+        let a resume reach it before its route fired."""
+        for value in ("false", "null", '"true"'):
+            with self.subTest(value=value):
+                self.write(
+                    "workflows/stages/demo.md",
+                    STAGE.replace("conditional: true", f"conditional: {value}"),
+                )
+                with self.assertRaises(WorkflowError) as caught:
+                    load_workflow(self.framework, "demo")
+                self.assertIn("`true` or absent", str(caught.exception))
+
     def test_an_edge_set_without_fail_is_an_error(self) -> None:
         self.write(
             "workflows/stages/demo.md",
