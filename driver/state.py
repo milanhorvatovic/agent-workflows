@@ -25,6 +25,7 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import PROTOCOL, PROTOCOL_VERSION, implements
 from .protocol_yaml import ProtocolYamlError, dumps, loads
 from .workflow import Workflow
 
@@ -44,7 +45,6 @@ RISKS = ("R0", "R1", "R2", "R3")
 # not at the next path join. The literal is the schema's own pattern;
 # test_state pins the two byte-for-byte so they cannot drift.
 PLAIN_NAME = re.compile('^(?![A-Za-z]:)(?!\\.{1,2}$)(?!\\s+$)(?!(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Mm][1-9¹²³]|[Ll][Pp][Tt][1-9¹²³])(?:[.:]|$))[^/\\\\:?*"<>|\x00-\x1f\x7f-\x9f\u2028\u2029]+(?<![. ])(?![\\s\\S])')
-PROTOCOL_VERSION = re.compile(r"^[0-9]+\.[0-9]+$")
 # The run-state schema's `{run}`-relative import path (§8.6): anchored
 # at `{run}/`, no dot or empty segments, backslashes, control characters
 # or Unicode line separators, colons, Windows-forbidden characters,
@@ -391,6 +391,15 @@ def _validate(data: object, path: Path) -> RunState:
     protocol = run.get("protocol")
     if not isinstance(protocol, str) or not PROTOCOL_VERSION.match(protocol):
         raise bad(f"run.protocol is not <major>.<minor>: {protocol!r}")
+    # The same §11 rule the declarations are held to: a run recorded under a
+    # version this driver does not implement is state whose statuses, edges,
+    # and record order it would be guessing at, and resuming such a run is
+    # the silent interpretation §11 forbids.
+    if not implements(protocol):
+        raise bad(
+            f"run.protocol is {protocol}, and this driver implements {PROTOCOL} "
+            f"(spec §11)"
+        )
     phase = run.get("phase")
     if phase is not None and not _is_count(phase, 1):
         raise bad(f"run.phase is not a positive integer: {phase!r}")

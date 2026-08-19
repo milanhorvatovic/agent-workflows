@@ -315,6 +315,15 @@ class LoadValidationTest(StateTestCase):
                 "steps:\n  - id: make\n    status: active\n  - id: also\n    status: active\n",
             ),
             "drive-relative id": self.BASE.replace("id: demo-run", 'id: "C:demo"'),
+            # §11 again, on the run's own record of what it executes under:
+            # resuming state from a version this driver does not implement
+            # is guessing at statuses, edges, and record order.
+            "newer minor protocol": self.BASE.replace(
+                'protocol: "0.2"', 'protocol: "0.9"'
+            ),
+            "other major protocol": self.BASE.replace(
+                'protocol: "0.2"', 'protocol: "1.0"'
+            ),
             # A bool is an int in Python and is not one in the schema; left
             # accepted, `phase: true` would resolve a `{N}` path to `True`.
             "boolean run phase": self.BASE.replace(
@@ -382,6 +391,15 @@ class LoadValidationTest(StateTestCase):
         run_dir, loaded = state.open_run(self.runs, "demo-run")
         self.assertEqual(run_dir, self.runs / "demo-run")
         self.assertEqual(loaded.run_id, "demo-run")
+
+    def test_state_from_an_earlier_minor_still_loads(self) -> None:
+        """The refusal is for versions the driver does not implement; an
+        earlier minor is readable, and where its shapes differ the load
+        fails on the field it is missing rather than on its version."""
+        loaded = state.load(
+            self.write_state(self.BASE.replace('protocol: "0.2"', 'protocol: "0.1"'))
+        )
+        self.assertEqual(loaded.protocol, "0.1")
 
     def test_an_undecodable_state_file_is_a_state_error(self) -> None:
         """Not UTF-8 is a defect in the document: it must be reported like
