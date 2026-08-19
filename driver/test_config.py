@@ -85,6 +85,21 @@ class ConfigTest(unittest.TestCase):
         loaded = self.load(self.variant(artifacts_dir="~/awf-artifacts"))
         self.assertEqual(loaded.artifacts_dir, Path.home() / "awf-artifacts")
 
+    def test_framework_dir_defaults_to_the_config_directory(self) -> None:
+        loaded = self.load(VALID)
+        self.assertEqual(loaded.framework_dir, self.base.resolve())
+
+    def test_relative_framework_dir_anchors_at_the_config_directory(self) -> None:
+        """The same rules as artifacts_dir, by the same code — one anchoring
+        rule for both configured roots."""
+        loaded = self.load(self.variant(framework_dir="agent-workflows"))
+        self.assertEqual(loaded.framework_dir, self.base.resolve() / "agent-workflows")
+
+    def test_partially_anchored_windows_framework_dir_is_rejected(self) -> None:
+        with self.assertRaises(config_module.ConfigError) as caught:
+            self.load(self.variant(framework_dir="D:framework"))
+        self.assertIn("framework_dir", str(caught.exception))
+
     def test_runs_dir_derives_the_spec_runs_segment(self) -> None:
         loaded = self.load(self.variant(artifacts_dir="artifacts"))
         self.assertEqual(loaded.runs_dir, self.base.resolve() / "artifacts" / "runs")

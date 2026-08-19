@@ -19,6 +19,7 @@ from pathlib import Path
 
 from driver import cli
 from driver.test_config import VALID
+from driver.test_workflow import STAGE, WORKFLOW
 
 
 class CliTest(unittest.TestCase):
@@ -57,18 +58,123 @@ class CliTest(unittest.TestCase):
         self.assertEqual(out, "")
         self.assertIn("is not a directory", err)
 
-    def test_run_fails_loudly_until_the_state_machine_lands(self) -> None:
-        code, out, err = self.invoke("run", "--config", str(self.config_path))
-        self.assertEqual(code, 1)
-        self.assertEqual(out, "")
-        self.assertIn("run is not implemented yet", err)
+    def write_framework(self) -> None:
+        stages = self.base / "workflows" / "stages"
+        stages.mkdir(parents=True)
+        (self.base / "workflows" / "demo.md").write_text(WORKFLOW, encoding="utf-8")
+        (stages / "demo.md").write_text(STAGE, encoding="utf-8")
 
-    def test_resume_fails_loudly_until_the_state_machine_lands(self) -> None:
+    def test_run_creates_the_run_and_stops_at_execution(self) -> None:
+        self.write_framework()
+        code, out, err = self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("created", out)
+        self.assertIn("next is make (pending)", out)
+        self.assertIn("have not landed", err)
+        self.assertTrue(
+            (self.base / "runs" / "2026-08-17-x" / "workflow-state.yaml").is_file()
+        )
+
+    def test_run_without_a_workflow_is_a_usage_error(self) -> None:
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as caught:
+                cli.main(["run", "2026-08-17-x", "--config", str(self.config_path)])
+        self.assertEqual(caught.exception.code, 2)
+
+    def test_run_on_a_missing_workflow_is_a_config_defect(self) -> None:
+        code, _, err = self.invoke(
+            "run", "--workflow", "absent", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("cannot read workflow", err)
+
+    def test_run_refuses_an_existing_run_id(self) -> None:
+        self.write_framework()
+        self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        code, _, err = self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("already exists", err)
+
+    def test_resume_resolves_the_position_of_a_created_run(self) -> None:
+        self.write_framework()
+        self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        code, out, err = self.invoke(
+            "resume", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("next is make (pending)", out)
+        self.assertIn("have not landed", err)
+
+    def test_resume_on_a_missing_run_is_a_defect(self) -> None:
         code, _, err = self.invoke(
             "resume", "2026-08-12-bugfix-one", "--config", str(self.config_path)
         )
-        self.assertEqual(code, 1)
-        self.assertIn("resume is not implemented yet", err)
+        self.assertEqual(code, 2)
+        self.assertIn("cannot read", err)
+
+    def test_resume_reports_a_finished_run_as_success(self) -> None:
+        self.write_framework()
+        self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        state_path = self.base / "runs" / "2026-08-17-x" / "workflow-state.yaml"
+        state_path.write_text(
+            state_path.read_text(encoding="utf-8").replace(
+                "status: pending", "status: done"
+            ),
+            encoding="utf-8",
+        )
+        code, out, err = self.invoke(
+            "resume", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("nothing left to run", out)
+        self.assertEqual(err, "")
+
+    def test_resume_never_follows_a_linked_run_directory(self) -> None:
+        """`status` excludes links for this reason; resume has to refuse the
+        same escape, or a link under runs/ reads state outside the root."""
+        self.write_framework()
+        self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        outside = self.base / "elsewhere"
+        outside.mkdir()
+        try:
+            (self.base / "runs" / "linked").symlink_to(outside, target_is_directory=True)
+        except (OSError, NotImplementedError) as error:  # pragma: no cover
+            self.skipTest(f"symlinks unavailable: {error}")
+        code, _, err = self.invoke("resume", "linked", "--config", str(self.config_path))
+        self.assertEqual(code, 2)
+        self.assertIn("is a link", err)
+
+    def test_resume_refuses_state_that_names_another_run(self) -> None:
+        self.write_framework()
+        self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        copied = self.base / "runs" / "2026-08-18-copy"
+        copied.mkdir()
+        (copied / "workflow-state.yaml").write_text(
+            (self.base / "runs" / "2026-08-17-x" / "workflow-state.yaml").read_text(
+                encoding="utf-8"
+            ),
+            encoding="utf-8",
+        )
+        code, out, err = self.invoke(
+            "resume", "2026-08-18-copy", "--config", str(self.config_path)
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("names run '2026-08-17-x'", err)
+        self.assertEqual(out, "")
 
     def test_resume_without_a_run_id_is_a_usage_error(self) -> None:
         with contextlib.redirect_stderr(io.StringIO()):
@@ -223,7 +329,9 @@ class CliTest(unittest.TestCase):
 
     def test_run_with_a_broken_config_fails_on_the_config(self) -> None:
         self.config_path.write_text("{}", encoding="utf-8")
-        code, _, err = self.invoke("run", "--config", str(self.config_path))
+        code, _, err = self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+        )
         self.assertEqual(code, 2)
         self.assertIn("backends must be a non-empty object", err)
 
