@@ -132,7 +132,7 @@ class TransitionTest(StateTestCase):
             state.route_verdict(self.state, self.workflow, "make", "PASS_WITH_CONDITIONS")
         self.assertIn("escalate", str(caught.exception))
 
-    def test_route_to_a_stage_id_resolves_to_its_first_runnable_record(self) -> None:
+    def test_route_to_a_stage_id_resolves_to_its_first_runnable_step(self) -> None:
         stage_edge = STAGE.replace("        PASS: check\n", "        PASS: demo\n")
         (self.base / "workflows" / "stages" / "demo.md").write_text(
             stage_edge, encoding="utf-8"
@@ -140,6 +140,33 @@ class TransitionTest(StateTestCase):
         workflow = load_workflow(self.base, "demo")
         target = state.route_verdict(self.state, workflow, "make", "PASS")
         self.assertEqual(target, "make")
+
+    def test_a_stage_target_passes_over_a_gate_to_reach_the_step(self) -> None:
+        """§9.1 makes a stage id stand for the stage's first step; a gate
+        ahead of it in the sequence is a member, not that step."""
+        gate_first = STAGE.replace(
+            "        - step: make\n        - gate: check\n          conditional: true\n",
+            "        - gate: check\n        - step: make\n",
+        ).replace("        PASS: check\n", "        PASS: demo\n")
+        (self.base / "workflows" / "stages" / "demo.md").write_text(
+            gate_first, encoding="utf-8"
+        )
+        workflow = load_workflow(self.base, "demo")
+        _, created = state.create_run(self.runs, "gate-first", workflow, "0.2")
+        self.assertEqual([s.id for s in created.steps], ["check", "make"])
+        target = state.route_verdict(created, workflow, "make", "PASS")
+        self.assertEqual(target, "make")
+
+    def test_a_stage_target_with_no_runnable_step_escalates(self) -> None:
+        stage_edge = STAGE.replace("        PASS: check\n", "        PASS: demo\n")
+        (self.base / "workflows" / "stages" / "demo.md").write_text(
+            stage_edge, encoding="utf-8"
+        )
+        workflow = load_workflow(self.base, "demo")
+        self.state.record("make").status = "skipped"
+        with self.assertRaises(state.StateError) as caught:
+            state.route_verdict(self.state, workflow, "make", "PASS")
+        self.assertIn("no runnable step", str(caught.exception))
 
 
 class LoadValidationTest(StateTestCase):

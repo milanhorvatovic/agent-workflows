@@ -215,8 +215,8 @@ def complete_step(state: RunState, workflow: Workflow, step_id: str) -> None:
 
 def route_verdict(state: RunState, workflow: Workflow, step_id: str, verdict: str) -> str:
     """The target the producing step's `on` declares for `verdict` (§9.1),
-    resolved to a step id: a stage id stands for that stage's first
-    non-`skipped` record. No edge means escalate — never guess. Routing to a
+    resolved to a member id: a stage id stands for that stage's first
+    non-`skipped` step. No edge means escalate — never guess. Routing to a
     record re-enters it: the destination returns to `pending` (a `skipped`
     conditional included, §10) for the resume to find."""
     declaration = workflow.step(step_id)
@@ -238,14 +238,21 @@ def route_verdict(state: RunState, workflow: Workflow, step_id: str, verdict: st
 def _resolve_target(state: RunState, workflow: Workflow, target: str) -> str:
     for stage in workflow.stages:
         if stage.name == target:
+            # §9.1: a stage id stands for that stage's first *step*, past the
+            # content the run's class skips. Gates are members of the same
+            # sequence and are not what a stage target names — routing to one
+            # would stop the run at a decision nothing has yet produced work
+            # for, where the rule sends it to the work itself.
             for member in stage.members:
+                if member.kind != "step":
+                    continue
                 record = next(
                     (step for step in state.steps if step.id == member.id), None
                 )
                 if record is not None and record.status != "skipped":
                     return member.id
             raise StateError(
-                f"stage {target!r} resolves to no runnable record (spec §9.1)"
+                f"stage {target!r} resolves to no runnable step (spec §9.1)"
             )
     state.record(target)  # raises if the id names nothing
     return target
