@@ -262,7 +262,17 @@ def _unquote(token: str, number: int) -> str:
         digits = body[index + 1 : index + 1 + width]
         if len(digits) != width or any(d not in "0123456789abcdefABCDEF" for d in digits):
             raise ProtocolYamlError(number, f"malformed \\{escape} escape")
-        out.append(chr(int(digits, 16)))
+        codepoint = int(digits, 16)
+        # A lone surrogate is not a character UTF-8 can carry, and this
+        # module's documents are read and written as UTF-8: accepted here,
+        # it would load, pass validation, and then break the next save with
+        # an encoding error — a state file the driver could no longer
+        # persist. The subset ends where the encoding does.
+        if 0xD800 <= codepoint <= 0xDFFF:
+            raise ProtocolYamlError(
+                number, f"\\{escape}{digits} is a surrogate, which UTF-8 cannot carry"
+            )
+        out.append(chr(codepoint))
         index += 1 + width
     return "".join(out)
 

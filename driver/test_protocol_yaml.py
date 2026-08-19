@@ -131,6 +131,15 @@ class LoadsTest(unittest.TestCase):
                 with self.assertRaises(ProtocolYamlError):
                     loads(text)
 
+    def test_rejects_a_surrogate_escape(self) -> None:
+        """Accepted, it would load and validate and then break the next
+        save: UTF-8 cannot carry a lone surrogate."""
+        for text in ('a: "\\ud800"\n', 'a: "\\udfff"\n'):
+            with self.subTest(text=text):
+                with self.assertRaises(ProtocolYamlError) as caught:
+                    loads(text)
+                self.assertIn("surrogate", str(caught.exception))
+
     def test_error_carries_the_line_number(self) -> None:
         with self.assertRaises(ProtocolYamlError) as caught:
             loads("a: 1\nb: 2\nc: 'bad'\n")
