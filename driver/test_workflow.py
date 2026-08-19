@@ -186,6 +186,32 @@ class SyntheticTreeTest(unittest.TestCase):
             load_workflow(self.framework, "demo")
         self.assertIn("names 'make' twice", str(caught.exception))
 
+    def test_a_declaration_states_the_protocol_version_it_carries(self) -> None:
+        """§11: a client must not silently interpret structures from a
+        version it does not implement, and during 0.x any minor may break."""
+        for name, replacement in {
+            "missing": "    stage:",
+            "newer minor": '    protocol: "0.9"\n    stage:',
+            "other major": '    protocol: "1.0"\n    stage:',
+            "not a version": '    protocol: "0.2.0"\n    stage:',
+        }.items():
+            with self.subTest(case=name):
+                self.write(
+                    "workflows/stages/demo.md",
+                    STAGE.replace('    protocol: "0.2"\n    stage:', replacement, 1),
+                )
+                with self.assertRaises(WorkflowError):
+                    load_workflow(self.framework, "demo")
+
+    def test_an_older_minor_still_loads(self) -> None:
+        """Refusing what the driver does not implement is the rule; an
+        earlier minor is not that, and where its shapes differ the load
+        fails on the declaration it is missing rather than on its version."""
+        self.write(
+            "workflows/stages/demo.md", STAGE.replace('protocol: "0.2"', 'protocol: "0.1"')
+        )
+        self.assertEqual(load_workflow(self.framework, "demo").stages[0].name, "demo")
+
     def test_a_conditional_that_is_not_true_is_an_error(self) -> None:
         """`conditional` is `const: true` in the schema: read as merely
         falsey, `conditional: false` would populate the member `pending` and

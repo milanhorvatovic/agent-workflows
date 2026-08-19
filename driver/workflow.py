@@ -19,9 +19,11 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import PROTOCOL
 from .protocol_yaml import ProtocolYamlError, loads
 
 STAGE_REFERENCE = re.compile(r"\(stages/([a-z][a-z0-9-]*)\.md\)")
+PROTOCOL_VERSION = re.compile(r"^([0-9]+)\.([0-9]+)$")
 # The complete form, anchored to line end — a truncated `### thing (`
 # must not declare a step whose contract then associates (the
 # conformance suite holds the same rule).
@@ -156,8 +158,31 @@ def _blocks(text: str, rel: str) -> list[tuple[int, dict]]:
         metadata = data.get("metadata")
         workflow = metadata.get("workflow") if isinstance(metadata, dict) else None
         if isinstance(workflow, dict):
+            _check_protocol(workflow, rel, line)
             found.append((match.start(), workflow))
     return found
+
+
+def _check_protocol(block: dict, rel: str, line: int) -> None:
+    """§9: every `metadata.workflow` block declares the protocol version it
+    was authored against, and §11 forbids a client silently interpreting
+    structures from a version it does not implement. A different major is
+    that case outright; a newer minor is it during `0.x` too, where any
+    minor MAY carry breaking changes — the driver and the protocol content
+    it reads ship as one release, so a version it does not implement is a
+    mismatched installation to report, not a document to guess at."""
+    version = block.get("protocol")
+    if not isinstance(version, str) or not PROTOCOL_VERSION.match(version):
+        raise WorkflowError(
+            f"{rel}:{line}: declaration without a protocol version: {version!r}"
+        )
+    declared = tuple(int(part) for part in version.split("."))
+    implemented = tuple(int(part) for part in PROTOCOL.split("."))
+    if declared[0] != implemented[0] or declared[1] > implemented[1]:
+        raise WorkflowError(
+            f"{rel}:{line}: declaration is protocol {version}, and this driver "
+            f"implements {PROTOCOL} (spec §11)"
+        )
 
 
 def _members(text: str, rel: str) -> tuple[Member, ...]:

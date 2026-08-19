@@ -21,13 +21,10 @@ import stat
 import sys
 from pathlib import Path
 
+from . import PROTOCOL
 from . import state as run_state
 from .config import Config, ConfigError, load_config
 from .workflow import WorkflowError, load_workflow
-
-# The protocol version new runs execute under — the version of the protocol
-# content this driver ships beside (spec §11).
-PROTOCOL = "0.2"
 
 
 def _has_control_characters(value: str) -> bool:
