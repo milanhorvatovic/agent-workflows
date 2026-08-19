@@ -199,10 +199,10 @@ class LoadValidationTest(StateTestCase):
         self.assertEqual(loaded.run_id, "demo-run")
         self.assertFalse(loaded.has_instrumentation)
 
-    def test_plain_name_is_the_schema_pattern(self) -> None:
-        """The literal mirrors the run-state schema's id pattern — the schema
-        is the source of truth, and this pin is what keeps the two from
-        drifting apart silently."""
+    def test_the_patterns_are_the_schema_patterns(self) -> None:
+        """The literals mirror the run-state schema's own — the schema is the
+        source of truth, and these pins are what keep the two from drifting
+        apart silently."""
         import json
 
         schema = json.loads(
@@ -213,6 +213,10 @@ class LoadValidationTest(StateTestCase):
         self.assertEqual(
             state.PLAIN_NAME.pattern,
             schema["properties"]["run"]["properties"]["id"]["pattern"],
+        )
+        self.assertEqual(
+            state.IMPORT_PATH.pattern,
+            schema["$defs"]["importRecord"]["properties"]["artifact"]["pattern"],
         )
 
     def test_imports_load_validate_and_round_trip(self) -> None:
@@ -249,6 +253,25 @@ class LoadValidationTest(StateTestCase):
             ),
             "empty imports": ('artifacts: []\nimports: []\n'),
         }
+        # Paths the schema's pattern refuses, each manifested so that the
+        # path itself is what the load rejects: an unsafe destination
+        # presented as validated lineage is what a later materialization
+        # would copy to.
+        for unsafe in (
+            "{run}/../outside.md",
+            "{run}//brief.md",
+            "{run}/./brief.md",
+            "{run}/sub\\brief.md",
+            "{run}/brief.md:stream",
+            "{run}/NUL",
+            "{run}/brief.md ",
+            "{run}",
+        ):
+            cases[f"unsafe path {unsafe}"] = (
+                f'artifacts:\n  - "{unsafe}"\n'
+                f'imports:\n  - artifact: "{unsafe}"\n'
+                '    from: earlier-run\n    at: "2026-08-16T09:00:00Z"\n'
+            )
         for name, tail in cases.items():
             run_dir = self.runs / f"imp-{abs(hash(name))}"
             run_dir.mkdir(parents=True)

@@ -43,6 +43,14 @@ RISKS = ("R0", "R1", "R2", "R3")
 # test_state pins the two byte-for-byte so they cannot drift.
 PLAIN_NAME = re.compile('^(?![A-Za-z]:)(?!\\.{1,2}$)(?!\\s+$)(?!(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Mm][1-9¹²³]|[Ll][Pp][Tt][1-9¹²³])(?:[.:]|$))[^/\\\\:?*"<>|\x00-\x1f\x7f-\x9f\u2028\u2029]+(?<![. ])(?![\\s\\S])')
 PROTOCOL_VERSION = re.compile(r"^[0-9]+\.[0-9]+$")
+# The run-state schema's `{run}`-relative import path (§8.6): anchored
+# at `{run}/`, no dot or empty segments, backslashes, control characters
+# or Unicode line separators, colons, Windows-forbidden characters,
+# reserved device basenames, or trailing dots and spaces. A loader that
+# checked the prefix alone would present `{run}/../outside` as validated
+# lineage to the materialization that later copies it. The literal is the
+# schema's own pattern; test_state pins the two byte-for-byte.
+IMPORT_PATH = re.compile('^\\{run\\}(?:/(?!\\.{1,2}(?:/|$))(?!(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Mm][1-9¹²³]|[Ll][Pp][Tt][1-9¹²³])(?:\\.|/|$))[^/\\\\:?*"<>|\x00-\x1f\x7f-\x9f\u2028\u2029]+(?<![. ]))+(?![\\s\\S])')
 
 
 class StateError(Exception):
@@ -411,7 +419,7 @@ def _validate_imports(
         if not isinstance(entry, dict) or sorted(entry) != ["artifact", "at", "from"]:
             raise bad(f"import record must carry artifact, from, at: {entry!r}")
         artifact, source, at = entry["artifact"], entry["from"], entry["at"]
-        if not isinstance(artifact, str) or not artifact.startswith("{run}/"):
+        if not isinstance(artifact, str) or not IMPORT_PATH.match(artifact):
             raise bad(f"import artifact is not a {{run}}-relative path: {artifact!r}")
         if artifact not in manifest:
             raise bad(f"import {artifact!r} is not in the manifest (spec §8.6)")
