@@ -274,6 +274,36 @@ class SyntheticTreeTest(unittest.TestCase):
         workflow = load_workflow(self.framework, "demo")
         self.assertTrue(workflow.step("make").inputs[0].required)
 
+    def test_a_required_that_is_not_a_boolean_is_an_error(self) -> None:
+        """Absence is the default; a present value that is not a boolean
+        would be coerced to required and change what blocks the step."""
+        for value in ('"false"', "0", "null"):
+            with self.subTest(value=value):
+                self.write(
+                    "workflows/stages/demo.md",
+                    STAGE.replace("required: false", f"required: {value}"),
+                )
+                with self.assertRaises(WorkflowError) as caught:
+                    load_workflow(self.framework, "demo")
+                self.assertIn("not a boolean", str(caught.exception))
+
+    def test_an_inputs_value_that_is_not_a_list_is_an_error(self) -> None:
+        """Read as absence, a malformed `inputs` drops the step's whole
+        handoff contract instead of reporting the line that broke."""
+        for value in ("false", "null", "{}"):
+            with self.subTest(value=value):
+                self.write(
+                    "workflows/stages/demo.md",
+                    STAGE.replace(
+                        '      inputs:\n        - artifact: "{run}/in.md"\n'
+                        "          required: false\n",
+                        f"      inputs: {value}\n",
+                    ),
+                )
+                with self.assertRaises(WorkflowError) as caught:
+                    load_workflow(self.framework, "demo")
+                self.assertIn("`inputs` is not a list", str(caught.exception))
+
 
 class RepositoryTreeTest(unittest.TestCase):
     """The three shipped workflows are the canonical declarations this module

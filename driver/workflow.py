@@ -293,20 +293,30 @@ def _step_declaration(declaration: dict, step_id: str, rel: str) -> StepDeclarat
     if template is not None and not isinstance(template, str):
         raise WorkflowError(f"{at}: template is not a string")
     inputs: list[InputDeclaration] = []
-    for entry in declaration.get("inputs") or []:
+    # Absence is the only thing that means "no declared inputs". A present
+    # `inputs` that is not a list — `false`, `null`, a mapping — is an
+    # authoring error, and reading it as absence would drop the step's whole
+    # handoff contract rather than report the one line that broke it.
+    declared_inputs = declaration.get("inputs", [])
+    if not isinstance(declared_inputs, list):
+        raise WorkflowError(f"{at}: `inputs` is not a list: {declared_inputs!r}")
+    for entry in declared_inputs:
         input_artifact = entry.get("artifact") if isinstance(entry, dict) else None
         if not isinstance(input_artifact, str) or not input_artifact:
             raise WorkflowError(f"{at}: input without an artifact")
-        inputs.append(
-            InputDeclaration(
-                artifact=input_artifact,
-                # §9.1 has no default in prose; the schemas require the field
-                # only when false matters, and every shipped block states it.
-                # Reading absence as required errs toward blocking, never
-                # toward silently running without a declared dependency.
-                required=entry.get("required") is not False,
+        # §9.1 has no default in prose; the schemas require the field only
+        # when false matters, and every shipped block states it. Reading
+        # absence as required errs toward blocking, never toward silently
+        # running without a declared dependency — but only absence: a
+        # present non-boolean would otherwise be coerced to required and
+        # change what blocks the step without saying so.
+        required = entry.get("required", True)
+        if not isinstance(required, bool):
+            raise WorkflowError(
+                f"{at}: input {input_artifact!r} declares required {required!r}, "
+                f"which is not a boolean"
             )
-        )
+        inputs.append(InputDeclaration(artifact=input_artifact, required=required))
     edges: dict[str, str] = {}
     on = declaration.get("on")
     if on is not None:
