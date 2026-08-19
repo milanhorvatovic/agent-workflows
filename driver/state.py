@@ -6,13 +6,14 @@ the file, and every mutation lands through `save`, which writes a sibling
 temp file and replaces atomically, so a crash leaves the previous state
 rather than half of the next one.
 
-What lands here is WP-scoped deliberately. Creation bootstraps the intake
-records alone — §10 has the list complete only from the intake gate's
-acceptance, and §7 makes that acceptance the write that populates the rest,
-which is the gate handler's to perform when it lands. Loops (§9.2) and the
-import lineage (§8.6, in review) are later modules' too; this one resolves
-position (§8.5), enforces verdict edges (§9.1), and keeps the manifest
-current as outputs land (§8.2).
+What lands here stops deliberately short of the rest. Creation bootstraps
+the intake records alone — §10 has the list complete only from the intake
+gate's acceptance, and §7 makes that acceptance the write that populates
+the rest, which is the gate handler's to perform when it lands. Loops
+(§9.2) are a later module's, and so is materializing an import (§8.6);
+this one loads the lineage that records it, resolves position (§8.5),
+enforces verdict edges (§9.1), and keeps the manifest current as outputs
+land (§8.2).
 """
 
 from __future__ import annotations
