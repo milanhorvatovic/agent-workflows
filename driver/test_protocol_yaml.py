@@ -175,6 +175,25 @@ class DumpsTest(unittest.TestCase):
         text = dumps({"id": "2026-08-03-x", "artifact": "{run}/brief.md"})
         self.assertEqual(text, 'id: 2026-08-03-x\nartifact: "{run}/brief.md"\n')
 
+    def test_round_trips_every_character_the_reader_splits_on(self) -> None:
+        """`str.splitlines` breaks on more than \\n: an unescaped one would
+        leave a document the reader sees as two lines."""
+        for name, character in {
+            "vertical tab": "\v",
+            "form feed": "\f",
+            "file separator": "\x1c",
+            "group separator": "\x1d",
+            "record separator": "\x1e",
+            "next line": "\x85",
+            "line separator": "\u2028",
+            "paragraph separator": "\u2029",
+        }.items():
+            value = f"before{character}after"
+            with self.subTest(character=name):
+                text = dumps({"a": value})
+                self.assertNotIn(character, text)
+                self.assertEqual(loads(text), {"a": value})
+
     def test_round_trips_every_valid_run_state_fixture(self) -> None:
         fixtures = sorted(
             (REPO / "protocol" / "schemas" / "examples").glob("run-state.valid*.yaml")

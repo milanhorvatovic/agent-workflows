@@ -344,7 +344,15 @@ def _quote(value: str) -> str:
             out.append("\\t")
         elif character == "\r":
             out.append("\\r")
-        elif ord(character) < 0x20 or 0x7F <= ord(character) <= 0x9F:
+        elif (
+            ord(character) < 0x20
+            or 0x7F <= ord(character) <= 0x9F
+            or character in "\u2028\u2029"
+        ):
+            # Every character `str.splitlines` breaks on has to leave here as
+            # an escape, or the emitter writes a document the reader sees as
+            # two lines: C0 and C1 cover its \v, \f, \x1c-\x1e and NEL, and
+            # U+2028/U+2029 are the two it splits on beyond them.
             out.append(f"\\u{ord(character):04x}")
         else:
             out.append(character)
