@@ -107,6 +107,17 @@ class SyntheticTreeTest(unittest.TestCase):
             load_workflow(self.framework, "absent")
         self.assertIn("cannot read workflow", str(caught.exception))
 
+    def test_an_undecodable_file_is_an_error_not_a_traceback(self) -> None:
+        """A file that is not UTF-8 is malformed input, and malformed input
+        leaves this module as a WorkflowError like every other kind."""
+        for relative in ("workflows/demo.md", "workflows/stages/demo.md"):
+            with self.subTest(file=relative):
+                (self.framework / relative).write_bytes(b"# stage \xff\xfe\n")
+                with self.assertRaises(WorkflowError) as caught:
+                    load_workflow(self.framework, "demo")
+                self.assertIn("cannot read", str(caught.exception))
+                self.write(relative, WORKFLOW if relative.count("/") == 1 else STAGE)
+
     def test_a_traversal_shaped_name_is_refused(self) -> None:
         with self.assertRaises(WorkflowError):
             load_workflow(self.framework, "../demo")

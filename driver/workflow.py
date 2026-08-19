@@ -104,7 +104,10 @@ def load_workflow(framework: Path, name: str) -> Workflow:
     path = framework / "workflows" / f"{name}.md"
     try:
         text = path.read_text(encoding="utf-8")
-    except OSError as error:
+    # Undecodable is malformed, not a missing file: UnicodeDecodeError is a
+    # ValueError rather than an OSError, so without this it would leave the
+    # driver as a traceback instead of the exit code a defect is reported at.
+    except (OSError, UnicodeError) as error:
         raise WorkflowError(f"cannot read workflow {name!r}: {error}") from error
     # Composition order with the first mention winning: the numbered list at
     # the top composes; later prose may re-reference the same stages.
@@ -125,7 +128,7 @@ def _load_stage(framework: Path, slug: str) -> Stage:
     rel = f"workflows/stages/{slug}.md"
     try:
         text = path.read_text(encoding="utf-8")
-    except OSError as error:
+    except (OSError, UnicodeError) as error:
         raise WorkflowError(f"cannot read stage {rel}: {error}") from error
     members = _members(text, rel)
     steps = _steps(text, rel)

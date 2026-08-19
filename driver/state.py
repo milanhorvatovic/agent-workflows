@@ -142,7 +142,11 @@ def load(run_dir: Path) -> RunState:
     path = run_dir / STATE_FILE
     try:
         text = path.read_text(encoding="utf-8")
-    except OSError as error:
+    # An undecodable state file is a defect in the document, and its
+    # UnicodeDecodeError is a ValueError rather than an OSError — uncaught,
+    # it would escape the driver as a traceback rather than as the state
+    # error every other malformation is reported as.
+    except (OSError, UnicodeError) as error:
         raise StateError(f"cannot read {path}: {error}") from error
     try:
         data = loads(text)

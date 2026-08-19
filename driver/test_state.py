@@ -262,6 +262,16 @@ class LoadValidationTest(StateTestCase):
                 with self.assertRaises(state.StateError):
                     state.load(run_dir)
 
+    def test_an_undecodable_state_file_is_a_state_error(self) -> None:
+        """Not UTF-8 is a defect in the document: it must be reported like
+        every other malformation, never escape as a decoding traceback."""
+        run_dir = self.runs / "demo-run"
+        run_dir.mkdir(parents=True)
+        (run_dir / state.STATE_FILE).write_bytes(b"run:\n  id: \xff\xfe\n")
+        with self.assertRaises(state.StateError) as caught:
+            state.load(run_dir)
+        self.assertIn("cannot read", str(caught.exception))
+
     def test_missing_state_file_is_a_state_error(self) -> None:
         run_dir = self.runs / "empty-run"
         run_dir.mkdir(parents=True)
