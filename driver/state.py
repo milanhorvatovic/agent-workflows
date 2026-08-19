@@ -203,14 +203,21 @@ def complete_step(state: RunState, workflow: Workflow, step_id: str) -> None:
     record = state.record(step_id)
     if record.status != "active":
         raise StateError(f"step {step_id!r} is not active")
-    record.status = "done"
+    # The declaration is resolved before anything is written: completing is
+    # defined as manifesting the declared output, so an id the composition
+    # declares no step for — a gate's record, which its outcome closes (§7),
+    # or a record naming nothing at all — has no completion to perform, and
+    # marking it `done` regardless would retire it from resume while leaving
+    # the manifest silently short of what §8.2 says a finished step produced.
     declaration = workflow.step(step_id)
-    if declaration is not None:
-        artifact = declaration.output_artifact.replace(
-            "{N}", str(state.phase if state.phase is not None else 1)
-        )
-        if artifact not in state.artifacts:
-            state.artifacts.append(artifact)
+    if declaration is None:
+        raise StateError(f"{step_id!r} is not a declared step (spec §9.1)")
+    record.status = "done"
+    artifact = declaration.output_artifact.replace(
+        "{N}", str(state.phase if state.phase is not None else 1)
+    )
+    if artifact not in state.artifacts:
+        state.artifacts.append(artifact)
 
 
 def route_verdict(state: RunState, workflow: Workflow, step_id: str, verdict: str) -> str:

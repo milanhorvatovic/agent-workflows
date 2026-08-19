@@ -121,6 +121,18 @@ class TransitionTest(StateTestCase):
         with self.assertRaises(state.StateError):
             state.complete_step(self.state, self.workflow, "make")
 
+    def test_completing_a_record_the_composition_declares_no_step_for(self) -> None:
+        """A gate's record is closed by its outcome, not by completion: a
+        completion that manifests nothing must refuse rather than retire the
+        record from resume with the manifest left short."""
+        gate = self.state.record("check")
+        gate.status = "active"
+        with self.assertRaises(state.StateError) as caught:
+            state.complete_step(self.state, self.workflow, "check")
+        self.assertIn("not a declared step", str(caught.exception))
+        self.assertEqual(gate.status, "active")
+        self.assertEqual(self.state.artifacts, [])
+
     def test_route_follows_the_declared_edge(self) -> None:
         target = state.route_verdict(self.state, self.workflow, "make", "PASS")
         self.assertEqual(target, "check")
