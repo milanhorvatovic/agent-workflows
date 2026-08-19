@@ -18,6 +18,7 @@ land (§8.2).
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import stat
@@ -161,6 +162,41 @@ def create_run(
     return run_dir, state
 
 
+# Whether this platform can bind a file operation to a directory it already
+# holds open. POSIX can; Windows has no `dir_fd` at all, and there the link
+# checks below are the whole of what the driver can do.
+_BINDS_TO_DIRECTORY = (
+    {os.open, os.rename, os.unlink} <= os.supports_dir_fd
+    and hasattr(os, "O_DIRECTORY")
+    and hasattr(os, "O_NOFOLLOW")
+)
+_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
+
+
+@contextlib.contextmanager
+def _run_directory(run_dir: Path):
+    """Hold the run directory open and yield its descriptor, or `None` where
+    the platform cannot bind operations to one.
+
+    Checking that a path is not a link and then opening what is inside it
+    are two steps, and between them the directory can be replaced — after
+    which the read, and the next write, land wherever the replacement
+    points. Opening the directory once and naming the state file relative
+    to that descriptor collapses the two steps into one: `O_NOFOLLOW`
+    refuses a symlink at the open itself, and everything that follows is
+    bound to the directory that was opened, not to a path that can be
+    re-pointed underneath it.
+    """
+    if not _BINDS_TO_DIRECTORY:
+        yield None
+        return
+    descriptor = os.open(run_dir, os.O_RDONLY | os.O_DIRECTORY | _NOFOLLOW)
+    try:
+        yield descriptor
+    finally:
+        os.close(descriptor)
+
+
 def is_link(path: Path) -> bool:
     """Symlinks and NTFS junctions alike — anything that redirects the path
     elsewhere without being the content itself (setup/init.py applies the
@@ -203,13 +239,15 @@ def load(run_dir: Path) -> RunState:
     if is_link(path):
         raise StateError(f"{path} is a link, not this run's state file")
     try:
-        # O_NOFOLLOW closes the window the check above leaves open, on the
-        # platforms that have it: the state file is the one document the
-        # single writer owns, and a link in its place would hand that
-        # ownership to a file outside the run.
-        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
-        with os.fdopen(descriptor, "r", encoding="utf-8") as stream:
-            text = stream.read()
+        # Both components refuse a link: the directory at its own open, the
+        # state file at this one. The state file is the single document this
+        # module owns, and a link in either place would hand that ownership
+        # to a file outside the run.
+        with _run_directory(run_dir) as directory:
+            target = STATE_FILE if directory is not None else os.fspath(path)
+            descriptor = os.open(target, os.O_RDONLY | _NOFOLLOW, dir_fd=directory)
+            with os.fdopen(descriptor, "r", encoding="utf-8") as stream:
+                text = stream.read()
     # An undecodable state file is a defect in the document, and its
     # UnicodeDecodeError is a ValueError rather than an OSError — uncaught,
     # it would escape the driver as a traceback rather than as the state
@@ -238,16 +276,41 @@ def save(state: RunState, run_dir: Path) -> None:
             for record in state.imports
         ]
     text = dumps(document)
-    handle, temp_name = tempfile.mkstemp(
-        prefix=f".{STATE_FILE}.", dir=run_dir, text=False
-    )
-    try:
-        with os.fdopen(handle, "w", encoding="utf-8") as stream:
-            stream.write(text)
-        os.replace(temp_name, run_dir / STATE_FILE)
-    except BaseException:
-        os.unlink(temp_name)
-        raise
+    with _run_directory(run_dir) as directory:
+        if directory is None:
+            handle, temp_name = tempfile.mkstemp(
+                prefix=f".{STATE_FILE}.", dir=run_dir, text=False
+            )
+            try:
+                with os.fdopen(handle, "w", encoding="utf-8") as stream:
+                    stream.write(text)
+                os.replace(temp_name, run_dir / STATE_FILE)
+            except BaseException:
+                os.unlink(temp_name)
+                raise
+            return
+        # The same write, bound to the directory this run already holds
+        # open: the temp file is created in it, and the rename that
+        # publishes it names both sides relative to it, so no part of the
+        # write can be re-pointed by a swap of the path. On POSIX `rename`
+        # is the atomic overwrite `replace` exists to give Windows.
+        temp_name = f".{STATE_FILE}.{os.getpid()}.{os.urandom(4).hex()}"
+        handle = os.open(
+            temp_name,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | _NOFOLLOW,
+            0o600,
+            dir_fd=directory,
+        )
+        try:
+            with os.fdopen(handle, "w", encoding="utf-8") as stream:
+                stream.write(text)
+            os.rename(
+                temp_name, STATE_FILE, src_dir_fd=directory, dst_dir_fd=directory
+            )
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(temp_name, dir_fd=directory)
+            raise
 
 
 def start_step(state: RunState, step_id: str) -> StepRecord:

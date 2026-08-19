@@ -389,6 +389,34 @@ class LoadValidationTest(StateTestCase):
             state.load(run_dir)
         self.assertIn("is a link", str(caught.exception))
 
+    def test_reads_and_writes_are_bound_to_the_run_directory(self) -> None:
+        """Where the platform can bind them, the directory is opened once
+        and refuses a link at that open — so a swap between the check and
+        the read has nothing left to redirect."""
+        if not state._BINDS_TO_DIRECTORY:  # pragma: no cover
+            self.skipTest("platform has no dir_fd")
+        outside = self.base / "elsewhere"
+        outside.mkdir()
+        (outside / state.STATE_FILE).write_text(self.BASE, encoding="utf-8")
+        self.runs.mkdir(parents=True)
+        self.symlink(self.runs / "demo-run", outside)
+        loaded = state.RunState(
+            run_id="demo-run", workflow="demo", protocol="0.2",
+            steps=[state.StepRecord(id="make", status="pending")],
+            gates=[], artifacts=[],
+        )
+        with self.assertRaises(state.StateError) as caught:
+            state.load(self.runs / "demo-run")
+        self.assertIn("cannot read", str(caught.exception))
+        # `save` reports the refusal as what it is, the failure to open the
+        # directory it was asked to write into; the command surface turns
+        # that into the same exit code a state error takes.
+        with self.assertRaises(OSError):
+            state.save(loaded, self.runs / "demo-run")
+        self.assertEqual(
+            (outside / state.STATE_FILE).read_text(encoding="utf-8"), self.BASE
+        )
+
     def test_open_run_refuses_state_that_names_another_run(self) -> None:
         """The id is the run's identity (§8.1): a document naming another
         run would be reported as that run while every path it resolves stays
