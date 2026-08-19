@@ -253,6 +253,20 @@ class LoadValidationTest(StateTestCase):
                 "steps:\n  - id: make\n    status: active\n  - id: also\n    status: active\n",
             ),
             "drive-relative id": self.BASE.replace("id: demo-run", 'id: "C:demo"'),
+            # A bool is an int in Python and is not one in the schema; left
+            # accepted, `phase: true` would resolve a `{N}` path to `True`.
+            "boolean run phase": self.BASE.replace(
+                "  workflow: demo\n", "  workflow: demo\n  phase: true\n"
+            ),
+            "boolean iterations": self.BASE.replace(
+                "    status: pending\n", "    status: pending\n    iterations: true\n"
+            ),
+            "boolean gate phase": self.BASE.replace(
+                "gates: []\n",
+                "gates:\n  - gate: intake-approval\n    phase: true\n"
+                "    transport: blocking\n    outcome: accept\n"
+                '    at: "2026-08-16T09:00:00Z"\n',
+            ),
         }
         for name, text in cases.items():
             run_dir = self.runs / f"bad-{abs(hash(name))}"

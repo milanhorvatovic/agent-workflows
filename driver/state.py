@@ -282,6 +282,14 @@ def _gate_mapping(gate: GateRecord) -> dict[str, object]:
     return mapping
 
 
+def _is_count(value: object, minimum: int) -> bool:
+    """An integer the schema would accept. `bool` subclasses `int` in Python
+    and is a separate type in JSON Schema, so the exclusion is what keeps
+    `phase: true` from loading as phase 1 and resolving a `{N}` path to
+    `True` — a wrong artifact from a document the schema rejects."""
+    return isinstance(value, int) and not isinstance(value, bool) and value >= minimum
+
+
 def _validate(data: object, path: Path) -> RunState:
     def bad(message: str) -> StateError:
         return StateError(f"{path}: {message}")
@@ -315,7 +323,7 @@ def _validate(data: object, path: Path) -> RunState:
     if not isinstance(protocol, str) or not PROTOCOL_VERSION.match(protocol):
         raise bad(f"run.protocol is not <major>.<minor>: {protocol!r}")
     phase = run.get("phase")
-    if phase is not None and (not isinstance(phase, int) or phase < 1):
+    if phase is not None and not _is_count(phase, 1):
         raise bad(f"run.phase is not a positive integer: {phase!r}")
     risk = run.get("risk")
     rationale = run.get("risk_rationale")
@@ -416,7 +424,7 @@ def _validate_step(entry: object, bad) -> StepRecord:
     if status not in STATUSES:
         raise bad(f"step {step_id!r} status is not one of {'/'.join(STATUSES)}: {status!r}")
     iterations = entry.get("iterations")
-    if iterations is not None and (not isinstance(iterations, int) or iterations < 0):
+    if iterations is not None and not _is_count(iterations, 0):
         raise bad(f"step {step_id!r} iterations is not a count: {iterations!r}")
     stall_flags = entry.get("stall_flags")
     if stall_flags is not None and (
@@ -448,6 +456,6 @@ def _validate_gate(entry: object, bad) -> GateRecord:
     if not isinstance(at, str) or not at:
         raise bad(f"gate {gate!r} without a timestamp")
     phase = entry.get("phase")
-    if phase is not None and (not isinstance(phase, int) or phase < 1):
-        raise bad(f"gate {gate!r} phase is not a positive integer")
+    if phase is not None and not _is_count(phase, 1):
+        raise bad(f"gate {gate!r} phase is not a positive integer: {phase!r}")
     return GateRecord(gate=gate, transport=transport, outcome=outcome, at=at, phase=phase)
