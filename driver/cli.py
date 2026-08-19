@@ -39,23 +39,8 @@ def _has_control_characters(value: str) -> bool:
     )
 
 
-def _is_link(path: Path) -> bool:
-    """Symlinks and NTFS junctions alike — anything that redirects the path
-    elsewhere without being the content itself (setup/init.py applies the
-    same rule to managed directories)."""
-    if path.is_symlink():
-        return True
-    try:
-        attributes = path.lstat().st_file_attributes  # type: ignore[attr-defined]
-    except (OSError, AttributeError):
-        # No lstat means no path to redirect; no attribute means POSIX,
-        # which has no junctions.
-        return False
-    return bool(attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT)
-
-
 def _entry_is_link(entry: os.DirEntry) -> bool:
-    """The DirEntry twin of _is_link: is_dir(follow_symlinks=False) already
+    """The DirEntry twin of state.is_link: is_dir(follow_symlinks=False) already
     excludes symlinks, but an NTFS junction still classifies as a directory
     there, and following one would list an external tree as a run."""
     if entry.is_symlink():
@@ -181,7 +166,7 @@ def _resume(config: Config, run_id: str) -> int:
     """Resolve the resume position (spec §8.5) and stop where execution
     would continue."""
     try:
-        loaded = run_state.load(config.runs_dir / run_id)
+        _, loaded = run_state.open_run(config.runs_dir, run_id)
     except run_state.StateError as error:
         print(f"driver: {error}", file=sys.stderr)
         return 2
@@ -225,7 +210,7 @@ def _status(config: Config) -> int:
             (
                 path
                 for path in (config.runs_dir, *config.runs_dir.parents)
-                if _is_link(path) and not path.exists()
+                if run_state.is_link(path) and not path.exists()
             ),
             None,
         )

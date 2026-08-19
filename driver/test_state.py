@@ -338,6 +338,51 @@ class LoadValidationTest(StateTestCase):
                 with self.assertRaises(state.StateError):
                     state.load(run_dir)
 
+    def symlink(self, link: Path, target: Path) -> None:
+        try:
+            link.symlink_to(target, target_is_directory=target.is_dir())
+        except (OSError, NotImplementedError) as error:  # pragma: no cover
+            self.skipTest(f"symlinks unavailable: {error}")
+
+    def test_open_run_refuses_a_linked_run_directory(self) -> None:
+        """`status` never lists a link as a run for this reason: following
+        one reads, and would later write, state outside the artifact root."""
+        outside = self.base / "elsewhere"
+        outside.mkdir()
+        (outside / state.STATE_FILE).write_text(self.BASE, encoding="utf-8")
+        self.runs.mkdir(parents=True)
+        self.symlink(self.runs / "demo-run", outside)
+        with self.assertRaises(state.StateError) as caught:
+            state.open_run(self.runs, "demo-run")
+        self.assertIn("is a link", str(caught.exception))
+
+    def test_load_refuses_a_linked_state_file(self) -> None:
+        outside = self.base / "elsewhere.yaml"
+        outside.write_text(self.BASE, encoding="utf-8")
+        run_dir = self.runs / "demo-run"
+        run_dir.mkdir(parents=True)
+        self.symlink(run_dir / state.STATE_FILE, outside)
+        with self.assertRaises(state.StateError) as caught:
+            state.load(run_dir)
+        self.assertIn("is a link", str(caught.exception))
+
+    def test_open_run_refuses_state_that_names_another_run(self) -> None:
+        """The id is the run's identity (§8.1): a document naming another
+        run would be reported as that run while every path it resolves stays
+        under this directory."""
+        run_dir = self.runs / "other-run"
+        run_dir.mkdir(parents=True)
+        (run_dir / state.STATE_FILE).write_text(self.BASE, encoding="utf-8")
+        with self.assertRaises(state.StateError) as caught:
+            state.open_run(self.runs, "other-run")
+        self.assertIn("names run 'demo-run'", str(caught.exception))
+
+    def test_open_run_returns_the_directory_and_its_state(self) -> None:
+        self.write_state(self.BASE)
+        run_dir, loaded = state.open_run(self.runs, "demo-run")
+        self.assertEqual(run_dir, self.runs / "demo-run")
+        self.assertEqual(loaded.run_id, "demo-run")
+
     def test_an_undecodable_state_file_is_a_state_error(self) -> None:
         """Not UTF-8 is a defect in the document: it must be reported like
         every other malformation, never escape as a decoding traceback."""

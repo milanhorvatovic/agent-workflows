@@ -139,6 +139,43 @@ class CliTest(unittest.TestCase):
         self.assertIn("nothing left to run", out)
         self.assertEqual(err, "")
 
+    def test_resume_never_follows_a_linked_run_directory(self) -> None:
+        """`status` excludes links for this reason; resume has to refuse the
+        same escape, or a link under runs/ reads state outside the root."""
+        self.write_framework()
+        self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        outside = self.base / "elsewhere"
+        outside.mkdir()
+        try:
+            (self.base / "runs" / "linked").symlink_to(outside, target_is_directory=True)
+        except (OSError, NotImplementedError) as error:  # pragma: no cover
+            self.skipTest(f"symlinks unavailable: {error}")
+        code, _, err = self.invoke("resume", "linked", "--config", str(self.config_path))
+        self.assertEqual(code, 2)
+        self.assertIn("is a link", err)
+
+    def test_resume_refuses_state_that_names_another_run(self) -> None:
+        self.write_framework()
+        self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        copied = self.base / "runs" / "2026-08-18-copy"
+        copied.mkdir()
+        (copied / "workflow-state.yaml").write_text(
+            (self.base / "runs" / "2026-08-17-x" / "workflow-state.yaml").read_text(
+                encoding="utf-8"
+            ),
+            encoding="utf-8",
+        )
+        code, out, err = self.invoke(
+            "resume", "2026-08-18-copy", "--config", str(self.config_path)
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("names run '2026-08-17-x'", err)
+        self.assertEqual(out, "")
+
     def test_resume_without_a_run_id_is_a_usage_error(self) -> None:
         with contextlib.redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit) as caught:

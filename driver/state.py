@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import os
 import re
+import stat
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -146,10 +147,55 @@ def create_run(
     return run_dir, state
 
 
+def is_link(path: Path) -> bool:
+    """Symlinks and NTFS junctions alike — anything that redirects the path
+    elsewhere without being the content itself (setup/init.py applies the
+    same rule to managed directories)."""
+    if path.is_symlink():
+        return True
+    try:
+        attributes = path.lstat().st_file_attributes  # type: ignore[attr-defined]
+    except (OSError, AttributeError):
+        # No lstat means no path to redirect; no attribute means POSIX,
+        # which has no junctions.
+        return False
+    return bool(attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT)
+
+
+def open_run(runs_dir: Path, run_id: str) -> tuple[Path, RunState]:
+    """Resolve a run by id under `{artifacts}/runs/` and load its state.
+
+    Two things hold the run to the directory the caller named. The directory
+    itself must not be a link: `status` refuses to list one for the reason
+    that bites here — following it would read, and later write, a run
+    outside the artifact root the id was validated against. And the state
+    must name this run: a copied or corrupt document declaring another id
+    would be reported and resumed as that run while every path it resolves
+    stayed under this directory, which is the identity §8.1 gives each run.
+    """
+    run_dir = runs_dir / run_id
+    if is_link(run_dir):
+        raise StateError(f"{run_dir} is a link, not a run directory")
+    state = load(run_dir)
+    if state.run_id != run_id:
+        raise StateError(
+            f"{run_dir / STATE_FILE} names run {state.run_id!r}, not {run_id!r}"
+        )
+    return run_dir, state
+
+
 def load(run_dir: Path) -> RunState:
     path = run_dir / STATE_FILE
+    if is_link(path):
+        raise StateError(f"{path} is a link, not this run's state file")
     try:
-        text = path.read_text(encoding="utf-8")
+        # O_NOFOLLOW closes the window the check above leaves open, on the
+        # platforms that have it: the state file is the one document the
+        # single writer owns, and a link in its place would hand that
+        # ownership to a file outside the run.
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        with os.fdopen(descriptor, "r", encoding="utf-8") as stream:
+            text = stream.read()
     # An undecodable state file is a defect in the document, and its
     # UnicodeDecodeError is a ValueError rather than an OSError — uncaught,
     # it would escape the driver as a traceback rather than as the state
