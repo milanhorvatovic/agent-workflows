@@ -186,6 +186,37 @@ class SyntheticTreeTest(unittest.TestCase):
             load_workflow(self.framework, "demo")
         self.assertIn("names 'make' twice", str(caught.exception))
 
+    def compose_two_stages(self, second: str) -> None:
+        """A workflow over the demo stage and a second one, which is what
+        makes the cross-stage rules checkable at all."""
+        self.write("workflows/stages/other.md", second)
+        self.write(
+            "workflows/pair.md",
+            "---\nname: pair\ndescription: Two stages.\n---\n\n"
+            "1. [stages/demo.md](stages/demo.md)\n2. [stages/other.md](stages/other.md)\n",
+        )
+
+    def test_two_stages_sharing_a_member_id_is_an_error(self) -> None:
+        """The workflow concatenates its stages' sequences into one record
+        list, so a shared id is a duplicate record the moment both compose."""
+        self.compose_two_stages(STAGE.replace("name: demo", "name: other"))
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "pair")
+        self.assertIn("declared by stages 'demo' and 'other'", str(caught.exception))
+
+    def test_a_member_wearing_a_stage_id_is_an_error(self) -> None:
+        """§9.1's targets are untyped strings: a member named for a stage
+        makes every edge naming it ambiguous."""
+        self.compose_two_stages(
+            STAGE.replace("name: demo", "name: other")
+            .replace("- step: make", "- step: demo")
+            .replace("### make (analyst)", "### demo (analyst)")
+            .replace("FAIL: make", "FAIL: demo")
+        )
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "pair")
+        self.assertIn("which is a stage id", str(caught.exception))
+
     def test_a_declaration_states_the_protocol_version_it_carries(self) -> None:
         """§11: a client must not silently interpret structures from a
         version it does not implement, and during 0.x any minor may break."""

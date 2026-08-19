@@ -119,10 +119,35 @@ def load_workflow(framework: Path, name: str) -> Workflow:
             slugs.append(match.group(1))
     if not slugs:
         raise WorkflowError(f"workflow {name!r} composes no stages")
-    return Workflow(
-        name=name,
-        stages=tuple(_load_stage(framework, slug) for slug in slugs),
-    )
+    stages = tuple(_load_stage(framework, slug) for slug in slugs)
+    _check_member_ids(stages)
+    return Workflow(name=name, stages=stages)
+
+
+def _check_member_ids(stages: tuple[Stage, ...]) -> None:
+    """§9.4: member ids are unique across stages and distinct from every
+    stage id. Both are only checkable once composition is known, and both
+    bite here: the workflow concatenates these sequences into one record
+    list (§10), where an id two stages share is the duplicate record §10
+    forbids and `Workflow.step` would answer for with whichever declaration
+    came first — and §9.1's targets are untyped strings, so a member wearing
+    a stage's id makes every edge naming it ambiguous."""
+    stage_names = {stage.name for stage in stages}
+    declared_by: dict[str, str] = {}
+    for stage in stages:
+        for member in stage.members:
+            if member.id in stage_names:
+                raise WorkflowError(
+                    f"stage {stage.name!r} declares member {member.id!r}, "
+                    f"which is a stage id (spec §9.4)"
+                )
+            owner = declared_by.get(member.id)
+            if owner is not None:
+                raise WorkflowError(
+                    f"member {member.id!r} is declared by stages {owner!r} and "
+                    f"{stage.name!r} (spec §9.4)"
+                )
+            declared_by[member.id] = stage.name
 
 
 def _load_stage(framework: Path, slug: str) -> Stage:
