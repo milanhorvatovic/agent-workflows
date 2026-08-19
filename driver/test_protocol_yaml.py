@@ -175,6 +175,13 @@ class DumpsTest(unittest.TestCase):
         text = dumps({"id": "2026-08-03-x", "artifact": "{run}/brief.md"})
         self.assertEqual(text, 'id: 2026-08-03-x\nartifact: "{run}/brief.md"\n')
 
+    def test_round_trips_a_string_that_ends_in_a_colon(self) -> None:
+        """Left plain, `- note:` is a mapping to the reader — a manifest
+        path or a stall flag would load as something else entirely."""
+        for data in (["note:"], {"a": ["note:"]}, {"a": "note:"}):
+            with self.subTest(data=data):
+                self.assertEqual(loads(dumps(data)), data)
+
     def test_round_trips_every_character_the_reader_splits_on(self) -> None:
         """`str.splitlines` breaks on more than \\n: an unescaped one would
         leave a document the reader sees as two lines."""

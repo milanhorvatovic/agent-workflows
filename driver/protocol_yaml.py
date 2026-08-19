@@ -325,6 +325,11 @@ def _emit_scalar(value: object) -> str:
         and not INTEGER.match(value)
         and not value.endswith(" ")
         and ": " not in value
+        # A trailing colon opens a mapping wherever a value may start one:
+        # `- note:` is a sequence of one mapping to the reader, not the
+        # string it was given, so a manifest path or a stall flag ending in
+        # `:` would come back as a different document than it went in as.
+        and not value.endswith(":")
         and " #" not in value
     ):
         return value
