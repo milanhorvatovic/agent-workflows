@@ -50,6 +50,20 @@ class CreateRunTest(StateTestCase):
             state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2")
         self.assertIn("already exists", str(caught.exception))
 
+    def test_a_failed_first_save_leaves_the_id_usable(self) -> None:
+        """§8.1 refuses a pre-existing run directory, so an empty one left
+        behind by a failed first write would burn the id: the retry meets
+        "already exists" and the run it names has no state to resume."""
+        import unittest.mock
+
+        with unittest.mock.patch.object(state, "save", side_effect=OSError("no space")):
+            with self.assertRaises(OSError):
+                state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.2")
+        self.assertFalse((self.runs / "2026-08-19-x").exists())
+        run_dir, created = state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.2")
+        self.assertTrue((run_dir / state.STATE_FILE).is_file())
+        self.assertEqual(created.run_id, "2026-08-19-x")
+
     def test_refuses_an_id_that_is_not_a_plain_directory_name(self) -> None:
         for run_id in (
             "../x", "a/b", "C:run", "x.", "x ", "a\x85b", "..",

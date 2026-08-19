@@ -144,7 +144,20 @@ def create_run(
         gates=[],
         artifacts=[],
     )
-    save(state, run_dir)
+    try:
+        save(state, run_dir)
+    except BaseException:
+        # The directory exists only to hold this state, and §8.1 makes a
+        # pre-existing one a refusal — so leaving an empty one behind after
+        # the write that fills it failed would burn the id: the retry meets
+        # "already exists" and the run it names has no state to resume.
+        # Only an empty directory is removed, nothing else having written
+        # into it yet, and the failure itself is what propagates.
+        try:
+            run_dir.rmdir()
+        except OSError:
+            pass
+        raise
     return run_dir, state
 
 
