@@ -23,7 +23,15 @@ from . import PROTOCOL, PROTOCOL_VERSION, implements
 from .config import ROLES
 from .protocol_yaml import ProtocolYamlError, loads
 
-STAGE_REFERENCE = re.compile(r"\(stages/([a-z][a-z0-9-]*)\.md\)")
+# Composition is the numbered list of stage references, at the first column
+# (§6.1: workflows compose stages by reference). A link anywhere else is
+# prose about a stage rather than a claim to run it — a workflow that
+# discusses a stage it does not compose, or names one inside an example,
+# would otherwise execute it silently. This is the same rule the
+# declaration surface takes for fences: first column or it is not structure.
+STAGE_REFERENCE = re.compile(
+    r"^[0-9]+\. \[[^\]]*\]\(stages/([a-z][a-z0-9-]*)\.md\)", re.MULTILINE
+)
 # The complete form, anchored to line end — a truncated `### thing (`
 # must not declare a step whose contract then associates (the
 # conformance suite holds the same rule).
@@ -120,10 +128,10 @@ def load_workflow(framework: Path, name: str) -> Workflow:
     # unread is what would make that silent. What the trigger declares is a
     # later module's to act on.
     _blocks(text, f"workflows/{name}.md")
-    # Composition order with the first mention winning: the numbered list at
-    # the top composes; later prose may re-reference the same stages.
+    # Composition order, the first entry naming a stage winning: a list may
+    # name one twice, and the stage composes where it is first read.
     slugs: list[str] = []
-    for match in STAGE_REFERENCE.finditer(text):
+    for match in STAGE_REFERENCE.finditer(_mask_fences(text)):
         if match.group(1) not in slugs:
             slugs.append(match.group(1))
     if not slugs:
@@ -131,6 +139,42 @@ def load_workflow(framework: Path, name: str) -> Workflow:
     stages = tuple(_load_stage(framework, slug) for slug in slugs)
     _check_member_ids(stages)
     return Workflow(name=name, stages=stages)
+
+
+def _mask_fences(text: str) -> str:
+    """Blank every fenced region, keeping offsets and line numbers intact.
+
+    A composition entry shown inside a code block is a demonstration, not a
+    claim to run the stage — the same reading the conformance suite takes
+    for declarations, and the reason it masks before it scans. What counts
+    as a fence is what CommonMark writes: backticks or tildes, three or
+    more, indented up to three spaces, closed by a run at least as long
+    carrying nothing else, or unclosed and running to the end of the file.
+    """
+    masked: list[str] = []
+    marker: str | None = None
+    for line in text.split("\n"):
+        body = line.lstrip(" ")
+        opener: str | None = None
+        if len(line) - len(body) <= 3:
+            for character in ("`", "~"):
+                if body.startswith(character * 3):
+                    opener = character * (len(body) - len(body.lstrip(character)))
+                    break
+        if marker is None:
+            if opener is None:
+                masked.append(line)
+                continue
+            marker = opener
+        elif (
+            opener is not None
+            and opener[0] == marker[0]
+            and len(opener) >= len(marker)
+            and not body[len(opener) :].strip()
+        ):
+            marker = None
+        masked.append(" " * len(line))
+    return "\n".join(masked)
 
 
 def _check_member_ids(stages: tuple[Stage, ...]) -> None:

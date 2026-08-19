@@ -102,6 +102,26 @@ class SyntheticTreeTest(unittest.TestCase):
         workflow = load_workflow(self.framework, "demo")
         self.assertEqual(len(workflow.stages), 1)
 
+    def test_only_the_numbered_list_composes(self) -> None:
+        """A link in a sentence or an example is prose about a stage, not a
+        claim to run it — a workflow discussing one it does not compose
+        would otherwise execute it."""
+        self.write("workflows/stages/other.md", STAGE.replace("name: demo", "name: other"))
+        for name, mention in {
+            "sentence": "A later run may execute [it](stages/other.md) instead.\n",
+            "bullet": "- [stages/other.md](stages/other.md) — discussed, not composed\n",
+            "example": "```md\n1. [stages/other.md](stages/other.md)\n```\n",
+            "tilde example": "~~~\n1. [stages/other.md](stages/other.md)\n~~~\n",
+            "indented fence": "  ```\n1. [stages/other.md](stages/other.md)\n  ```\n",
+            "longer closer": "```\n1. [stages/other.md](stages/other.md)\n`````\n",
+            "unclosed fence": "```\n1. [stages/other.md](stages/other.md)\n",
+            "indented": "   1. [stages/other.md](stages/other.md)\n",
+        }.items():
+            with self.subTest(mention=name):
+                self.write("workflows/demo.md", WORKFLOW + "\n" + mention)
+                workflow = load_workflow(self.framework, "demo")
+                self.assertEqual([stage.name for stage in workflow.stages], ["demo"])
+
     def test_missing_workflow_is_an_error(self) -> None:
         with self.assertRaises(WorkflowError) as caught:
             load_workflow(self.framework, "absent")
