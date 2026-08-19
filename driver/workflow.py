@@ -111,6 +111,15 @@ def load_workflow(framework: Path, name: str) -> Workflow:
     # driver as a traceback instead of the exit code a defect is reported at.
     except (OSError, UnicodeError) as error:
         raise WorkflowError(f"cannot read workflow {name!r}: {error}") from error
+    # The workflow file's own declarations are read for their version even
+    # though this module consumes none of them: §9 holds every block to the
+    # version it was authored against, and a trigger (§9.3) from a release
+    # this driver does not implement, or a block that is not the subset's
+    # YAML, is the same mismatched installation a stage file's would be.
+    # Executing this file's composition while leaving its own declarations
+    # unread is what would make that silent. What the trigger declares is a
+    # later module's to act on.
+    _blocks(text, f"workflows/{name}.md")
     # Composition order with the first mention winning: the numbered list at
     # the top composes; later prose may re-reference the same stages.
     slugs: list[str] = []

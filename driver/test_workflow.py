@@ -234,6 +234,20 @@ class SyntheticTreeTest(unittest.TestCase):
                 with self.assertRaises(WorkflowError):
                     load_workflow(self.framework, "demo")
 
+    def test_the_workflow_file_states_its_own_version_too(self) -> None:
+        """The composition is executed from this file, so leaving its own
+        declarations unread is what would make a mismatch silent."""
+        self.write(
+            "workflows/demo.md",
+            WORKFLOW
+            + "\n```yaml\nmetadata:\n  workflow:\n"
+            '    protocol: "9.0"\n    trigger:\n      kind: manual\n```\n',
+        )
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "demo")
+        self.assertIn("workflows/demo.md", str(caught.exception))
+        self.assertIn("this driver implements", str(caught.exception))
+
     def test_an_older_minor_still_loads(self) -> None:
         """Refusing what the driver does not implement is the rule; an
         earlier minor is not that, and where its shapes differ the load
