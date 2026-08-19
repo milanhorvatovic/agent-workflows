@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import PROTOCOL, PROTOCOL_VERSION, implements
+from .config import ROLES
 from .protocol_yaml import ProtocolYamlError, loads
 
 STAGE_REFERENCE = re.compile(r"\(stages/([a-z][a-z0-9-]*)\.md\)")
@@ -288,10 +289,23 @@ def _step_declaration(declaration: dict, step_id: str, rel: str) -> StepDeclarat
     role = declaration.get("role")
     if not isinstance(role, str) or not role:
         raise WorkflowError(f"{at}: missing role")
+    # The six are the protocol's (§3.1) and the config routes exactly them,
+    # so a seventh is a step nothing can ever execute — caught here, where
+    # the file that declares it can be named, rather than after a run
+    # directory and its state are already on disk.
+    if role not in ROLES:
+        raise WorkflowError(f"{at}: {role!r} is not a protocol role")
     output = declaration.get("output")
     artifact = output.get("artifact") if isinstance(output, dict) else None
     if not isinstance(artifact, str) or not artifact:
         raise WorkflowError(f"{at}: missing output artifact")
+    # §8.1 and §9.1: `{P}` resolves to one path per phase, and a step
+    # produces one artifact — a phase set of outputs is a stage that
+    # repeats, not a step that fans out, which is why the step schema
+    # forbids the placeholder here. Completion resolves `{N}` alone, so an
+    # output carrying `{P}` would enter the manifest as the literal it is.
+    if "{P}" in artifact:
+        raise WorkflowError(f"{at}: output artifact carries {{P}}: {artifact!r}")
     template = output.get("template") if isinstance(output, dict) else None
     if template is not None and not isinstance(template, str):
         raise WorkflowError(f"{at}: template is not a string")

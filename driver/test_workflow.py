@@ -288,6 +288,31 @@ class SyntheticTreeTest(unittest.TestCase):
         workflow = load_workflow(self.framework, "demo")
         self.assertTrue(workflow.step("make").inputs[0].required)
 
+    def test_a_role_outside_the_protocol_six_is_an_error(self) -> None:
+        """The config routes exactly the six roles, so a seventh is a step
+        nothing can execute — and the file that declares it is nameable
+        here, where a run directory does not exist yet."""
+        self.write(
+            "workflows/stages/demo.md",
+            STAGE.replace("### make (analyst)", "### make (auditor)").replace(
+                "role: analyst", "role: auditor"
+            ),
+        )
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "demo")
+        self.assertIn("not a protocol role", str(caught.exception))
+
+    def test_an_output_carrying_the_phase_set_placeholder_is_an_error(self) -> None:
+        """`{P}` is one path per phase; a step produces one artifact, so the
+        placeholder would enter the manifest as the literal it is."""
+        self.write(
+            "workflows/stages/demo.md",
+            STAGE.replace('artifact: "{run}/out.md"', 'artifact: "{run}/phase-{P}-out.md"'),
+        )
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "demo")
+        self.assertIn("carries {P}", str(caught.exception))
+
     def test_a_required_that_is_not_a_boolean_is_an_error(self) -> None:
         """Absence is the default; a present value that is not a boolean
         would be coerced to required and change what blocks the step."""
