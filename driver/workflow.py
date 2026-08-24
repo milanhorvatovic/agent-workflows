@@ -404,10 +404,12 @@ def _step_declaration(declaration: dict, step_id: str, rel: str) -> StepDeclarat
     # output carrying `{P}` would enter the manifest as the literal it is.
     if "{P}" in artifact:
         raise WorkflowError(f"{at}: output artifact carries {{P}}: {artifact!r}")
-    # A template is a path or it is absent; an empty one is neither, and it
-    # would reach the module that scaffolds from it as a path to nowhere.
+    # A template is a path or it is absent — and `template: null` is neither:
+    # declared and empty, it would read as a step that scaffolds nothing,
+    # which is what the key's absence already says. Presence is what decides,
+    # here as everywhere a declared field carries a default.
     template = output.get("template")
-    if template is not None and (not isinstance(template, str) or not template):
+    if "template" in output and (not isinstance(template, str) or not template):
         raise WorkflowError(f"{at}: template is not a path: {template!r}")
     inputs: list[InputDeclaration] = []
     # Absence is the only thing that means "no declared inputs". A present
@@ -439,9 +441,13 @@ def _step_declaration(declaration: dict, step_id: str, rel: str) -> StepDeclarat
         inputs.append(InputDeclaration(artifact=input_artifact, required=required))
     edges: dict[str, str] = {}
     on = declaration.get("on")
-    if on is not None:
+    if "on" in declaration:
+        # Declared and not a mapping is malformed, and `on: null` most of
+        # all: read as absence it drops the step's routing and sends the run
+        # on in composition order, which is what a step with no `on` at all
+        # means — a broken declaration wearing a valid one's behaviour.
         if not isinstance(on, dict):
-            raise WorkflowError(f"{at}: `on` is not a mapping")
+            raise WorkflowError(f"{at}: `on` is not a mapping: {on!r}")
         for verdict, target in on.items():
             if verdict not in VERDICTS or not isinstance(target, str) or not target:
                 raise WorkflowError(f"{at}: bad edge {verdict!r}: {target!r}")

@@ -433,6 +433,25 @@ class SyntheticTreeTest(unittest.TestCase):
                 with self.assertRaises(WorkflowError):
                     load_workflow(self.framework, "demo")
 
+    def test_a_declared_optional_field_is_read_by_presence(self) -> None:
+        """`null` is a declared value, not an absent key: read as absence it
+        gives a broken declaration the behaviour of a valid one — a step
+        that scaffolds nothing, a step that routes by composition order."""
+        for name, (before, after) in {
+            "template": (
+                "        template: references/out.template.md",
+                "        template: null",
+            ),
+            "on": (
+                "      on:\n        PASS: check\n        FAIL: make\n",
+                "      on: null\n",
+            ),
+        }.items():
+            with self.subTest(field=name):
+                self.write("workflows/stages/demo.md", STAGE.replace(before, after))
+                with self.assertRaises(WorkflowError):
+                    load_workflow(self.framework, "demo")
+
     def test_an_empty_template_is_an_error(self) -> None:
         self.write(
             "workflows/stages/demo.md",
