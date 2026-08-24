@@ -365,6 +365,20 @@ class DumpsTest(unittest.TestCase):
     def test_empty_collections_dump_as_flow_empties(self) -> None:
         self.assertEqual(dumps({"a": [], "b": {}}), "a: []\nb: {}\n")
 
+    def test_refuses_to_write_what_it_could_not_read_back(self) -> None:
+        """A key is written plain and a lone surrogate cannot be encoded at
+        all: accepted here, each reaches the save that writes the file — a
+        newline splitting one field into two lines, a surrogate raising
+        inside `stream.write` after the state was assembled."""
+        for key in ("a\nb", "a\rb", "a\x00b", "a\x85b", "a\u2028b"):
+            with self.subTest(key=key):
+                with self.assertRaises(ValueError) as caught:
+                    dumps({key: 1})
+                self.assertIn("cannot write plain", str(caught.exception))
+        with self.assertRaises(ValueError) as caught:
+            dumps({"a": "x\ud800y"})
+        self.assertIn("surrogate", str(caught.exception))
+
     def test_a_document_is_a_mapping_or_a_sequence(self) -> None:
         """Both shapes this module exists for are one of the two, and the
         reader parses nothing else — so a bare scalar written here is a

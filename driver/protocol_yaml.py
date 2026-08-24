@@ -405,6 +405,12 @@ def _emit_block(data: object, indent: int) -> list[str]:
 def _check_key(key: object) -> None:
     if not isinstance(key, str) or not key or any(c in key for c in ":{}[],&*#?|>%@`\"' \t"):
         raise ValueError(f"not a plain key: {key!r}")
+    # A key is written plain, so anything the reader forbids raw would be
+    # written raw: a newline in a key emits two lines where the document
+    # declared one field, and a control character emits text the reader
+    # refuses outright. There is no quoted-key form here to fall back on.
+    if "\n" in key or "\r" in key or RAW_FORBIDDEN.search(key):
+        raise ValueError(f"key carries a character YAML cannot write plain: {key!r}")
     # The emitting half of the rule the reader applies: this subset has no
     # quoted keys, so a key another reader would resolve away is one this
     # module cannot write at all rather than one it writes carefully.
@@ -461,6 +467,15 @@ def _emit_scalar(value: object) -> str:
 
 
 def _quote(value: str) -> str:
+    # The reader refuses a surrogate escape because UTF-8 cannot carry one;
+    # the emitter has to refuse the code point for the same reason, or a
+    # value it accepted reaches the save that encodes the file and fails
+    # there — after the state it belongs to has been assembled.
+    surrogate = next((c for c in value if 0xD800 <= ord(c) <= 0xDFFF), None)
+    if surrogate is not None:
+        raise ValueError(
+            f"value carries a surrogate, which UTF-8 cannot encode: {value!r}"
+        )
     out = ['"']
     for character in value:
         if character == "\\":
