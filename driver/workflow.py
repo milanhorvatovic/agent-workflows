@@ -42,14 +42,17 @@ MEMBER_ID = re.compile('^[a-z][a-z0-9]*(-[a-z0-9]+)*$')
 STEP_HEADING = re.compile(
     r"^### (?P<id>[a-z][a-z0-9-]*) \((?P<role>[a-z]+)\)[ \t]*$", re.MULTILINE
 )
-# Every heading of each level, whatever it says: a contract belongs to the
-# nearest heading above it, so what closed a step section matters as much as
-# what opened one.
 METADATA_KEY = re.compile(r'^"?metadata"?[ \t]*:(?P<rest>.*)$', re.MULTILINE)
 WORKFLOW_KEY = re.compile(r'^[ \t]+"?workflow"?[ \t]*:')
 WORKFLOW_INLINE = re.compile(r'[{,][ \t]*"?workflow"?[ \t]*:')
-H3_HEADING = re.compile(r"^### ", re.MULTILINE)
-H2_HEADING = re.compile(r"^## ", re.MULTILINE)
+# Every heading of each level, whatever it says: a contract belongs to the
+# nearest heading above it, so what closed a step section matters as much as
+# what opened one. CommonMark ends the marker with a space, a tab, or the
+# line — `###`, `###\tname`, and `### name` are all headings, and a scan
+# that knew only the space would let a contract below one of the others
+# bind to a step further up the file.
+H3_HEADING = re.compile(r"^###(?=[ \t]|$)", re.MULTILINE)
+H2_HEADING = re.compile(r"^##(?=[ \t]|$)", re.MULTILINE)
 # One fence model, the conformance suite's: either marker, three or more,
 # up to three spaces of indent, closed by a run at least as long or running
 # to the end of the file. Discovery consumes outermost fences whole, so a
@@ -217,26 +220,42 @@ def _blank_quoted(text: str) -> str:
     within a double-quoted span does not end it early.
     """
     out: list[str] = []
-    quote: str | None = None
     index = 0
     while index < len(text):
         character = text[index]
-        if quote is None:
-            if character in "\"'":
-                quote = character
-                out.append(" ")
-            else:
-                out.append(character)
+        if character not in "\"'":
+            out.append(character)
+            index += 1
+            continue
+        end = _closing_quote(text, index)
+        if end is None:  # unterminated: nothing after it is structure either
+            out.append(" " * (len(text) - index))
+            return "".join(out)
+        span = text[index : end + 1]
+        # A quoted span followed by `:` is a key, and a key is structure: a
+        # declaration may be written `metadata: {"workflow": …}`, and
+        # blanking that span would lose the very thing this scan looks for
+        # and file a malformed declaration as prose.
+        after = text[end + 1 :]
+        if after.lstrip(" \t").startswith(":"):
+            out.append(span)
         else:
-            if character == "\\" and quote == '"' and index + 1 < len(text):
-                out.append("  ")
-                index += 2
-                continue
-            if character == quote:
-                quote = None
-            out.append(" ")
-        index += 1
+            out.append(" " * len(span))
+        index = end + 1
     return "".join(out)
+
+
+def _closing_quote(text: str, start: int) -> int | None:
+    quote = text[start]
+    index = start + 1
+    while index < len(text):
+        if text[index] == "\\" and quote == '"':
+            index += 2
+            continue
+        if text[index] == quote:
+            return index
+        index += 1
+    return None
 
 
 def _declares_workflow(body: str) -> bool:

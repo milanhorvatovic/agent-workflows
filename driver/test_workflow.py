@@ -178,6 +178,28 @@ class SyntheticTreeTest(unittest.TestCase):
             load_workflow(self.framework, "demo")
         self.assertIn("above the first step heading", str(caught.exception))
 
+    def test_every_atx_heading_form_closes_a_step_section(self) -> None:
+        """CommonMark ends the marker with a space, a tab, or the line, so
+        `###`, `###\\tname`, and their H2 forms are headings too — a scan
+        that knew only the space would let the contract below one bind to a
+        step further up the file."""
+        for heading, fragment in {
+            "##\tGates": "closed the step section",
+            "##": "closed the step section",
+            "###\tnot a step": "does not match",
+            "###": "does not match",
+        }.items():
+            with self.subTest(heading=heading):
+                self.write(
+                    "workflows/stages/demo.md",
+                    STAGE + f"\n{heading}\n\n```yaml\nmetadata:\n  workflow:\n"
+                    '    protocol: "0.2"\n    step:\n      role: analyst\n'
+                    '      output:\n        artifact: "{run}/moved.md"\n```\n',
+                )
+                with self.assertRaises(WorkflowError) as caught:
+                    load_workflow(self.framework, "demo")
+                self.assertIn(fragment, str(caught.exception))
+
     def test_a_step_block_below_a_closing_h2_is_an_error(self) -> None:
         """`## Gates` ends the step section above it, so a contract below it
         belongs to no step however many valid headings precede it."""
@@ -466,6 +488,14 @@ class SyntheticTreeTest(unittest.TestCase):
             "metadata:\n  workflow: [one, two]\n",
             "metadata: {workflow: {protocol: '0.2'}}\n",
             'metadata:\n  "workflow": [one, two]\n',
+            # A quoted span followed by `:` is a key, and a key is
+            # structure — blanking it with the quoted values would file a
+            # declaration as prose.
+            'metadata: {"workflow": [one, two]}\n',
+            'metadata: { "workflow" : [one, two] }\n',
+            # The one that carries both: a quoted value mentioning the word
+            # and a real key beside it.
+            'metadata: {name: "workflow: x", workflow: [one, two]}\n',
         ):
             with self.subTest(spelling=spelling.splitlines()[0]):
                 self.write(
