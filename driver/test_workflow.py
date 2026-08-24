@@ -662,6 +662,35 @@ class SyntheticTreeTest(unittest.TestCase):
             load_workflow(self.framework, "demo")
         self.assertIn("carries {P}", str(caught.exception))
 
+    def test_a_placeholder_the_spec_does_not_define_is_an_error(self) -> None:
+        """The spec defines four, and nothing resolves a fifth: completion
+        substitutes `{N}` alone, so an unknown token would enter the manifest
+        as the literal it is — the path a later step reads by that name never
+        existing. Every string the contract addresses a path with is read,
+        the conformance suite's rule and its known set."""
+        for name, stage in {
+            "output artifact": STAGE.replace(
+                'artifact: "{run}/out.md"', 'artifact: "{run}/phase-{Q}-out.md"'
+            ),
+            "input artifact": STAGE.replace(
+                'artifact: "{run}/in.md"', 'artifact: "{run}/{Q}-in.md"'
+            ),
+            "template": STAGE.replace(
+                "template: references/out.template.md",
+                "template: references/{Q}.template.md",
+            ),
+            # Resolved by the executor, never authored — the suite says so
+            # in its own message, and it is unknown here for the same reason.
+            "the manifest's own name": STAGE.replace(
+                'artifact: "{run}/out.md"', 'artifact: "{artifacts}/out.md"'
+            ),
+        }.items():
+            with self.subTest(field=name):
+                self.write("workflows/stages/demo.md", stage)
+                with self.assertRaises(WorkflowError) as caught:
+                    load_workflow(self.framework, "demo")
+                self.assertIn("placeholder", str(caught.exception))
+
     def test_a_required_that_is_not_a_boolean_is_an_error(self) -> None:
         """Absence is the default; a present value that is not a boolean
         would be coerced to required and change what blocks the step."""

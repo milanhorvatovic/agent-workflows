@@ -77,6 +77,16 @@ FENCE = re.compile(
 
 VERDICTS = ("PASS", "PASS_WITH_CONDITIONS", "FAIL")
 
+# The four the spec defines (§8.1, §9.2), and the shape a token takes —
+# both the conformance suite's, which reads every string of a declaration
+# for them. Nothing resolves a fifth: completion substitutes `{N}` alone,
+# so an unknown token would enter the manifest as the literal it is and the
+# path a later step reads by that name would never exist. `{artifacts}` is
+# unknown here on purpose — the executor resolves the manifest's own name,
+# and a declaration that authors it is addressing what it cannot know.
+PLACEHOLDERS = frozenset({"run", "N", "P", "machine-checks"})
+PLACEHOLDER = re.compile(r"(?<!\$)\{([^{}]*)\}")
+
 # The schemas declare every structure below closed, and §9.5 makes unknown
 # keys inside one an authoring error while tolerating unknown siblings of
 # the structures themselves. A typo is what the rule is for: `conditionl`
@@ -320,6 +330,20 @@ def _blank_quoted(text: str) -> str:
         at_node_start = False
         index = end + 1
     return "".join(out)
+
+
+def _check_placeholders(value: str, at: str, what: str) -> None:
+    """Every token the value carries is one the spec defines, or the value
+    addresses a path nothing will resolve."""
+    for token in PLACEHOLDER.findall(value):
+        if token in PLACEHOLDERS:
+            continue
+        known = ", ".join("{" + name + "}" for name in sorted(PLACEHOLDERS))
+        unknown = "{" + token + "}"
+        raise WorkflowError(
+            f"{at}: {what} carries unknown placeholder {unknown} "
+            f"(the spec defines {known})"
+        )
 
 
 def _closing_quote(text: str, start: int) -> int | None:
@@ -779,6 +803,7 @@ def _step_declaration(declaration: dict, step_id: str, rel: str) -> StepDeclarat
     artifact = output.get("artifact")
     if not isinstance(artifact, str) or not artifact:
         raise WorkflowError(f"{at}: missing output artifact")
+    _check_placeholders(artifact, at, "output artifact")
     # §8.1 and §9.1: `{P}` resolves to one path per phase, and a step
     # produces one artifact — a phase set of outputs is a stage that
     # repeats, not a step that fans out, which is why the step schema
@@ -793,6 +818,8 @@ def _step_declaration(declaration: dict, step_id: str, rel: str) -> StepDeclarat
     template = output.get("template")
     if "template" in output and (not isinstance(template, str) or not template):
         raise WorkflowError(f"{at}: template is not a path: {template!r}")
+    if isinstance(template, str):
+        _check_placeholders(template, at, "template")
     inputs: list[InputDeclaration] = []
     # Absence is the only thing that means "no declared inputs". A present
     # `inputs` that is not a list — `false`, `null`, a mapping — is an
@@ -808,6 +835,7 @@ def _step_declaration(declaration: dict, step_id: str, rel: str) -> StepDeclarat
         input_artifact = entry.get("artifact")
         if not isinstance(input_artifact, str) or not input_artifact:
             raise WorkflowError(f"{at}: input without an artifact")
+        _check_placeholders(input_artifact, at, "input artifact")
         # §9.1 has no default in prose; the schemas require the field only
         # when false matters, and every shipped block states it. Reading
         # absence as required errs toward blocking, never toward silently
