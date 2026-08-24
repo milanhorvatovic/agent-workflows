@@ -46,11 +46,16 @@ STEP_HEADING = re.compile(
 # nearest heading above it, so what closed a step section matters as much as
 # what opened one.
 # A block that was reaching for a declaration, recognized textually because
-# it did not parse. `metadata:` alone is not the test: an example may carry
-# a `metadata` of its own — labels, annotations, anything — and the block
-# this module reads is the one whose `metadata` holds `workflow`, which is
-# what the conformance reader filters on before it looks at anything else.
-DECLARES_METADATA = re.compile(r"^metadata:[ \t]*\n[ \t]+workflow:", re.MULTILINE)
+# it did not parse. Two things have to be true and neither alone: a
+# first-column `metadata` key, since an example nested inside something else
+# is not a declaration, and a `workflow` key somewhere under it, since an
+# example may carry a `metadata` of its own — labels, annotations, anything.
+# Both are matched quoted or plain and in either style, because a
+# declaration written `metadata: {workflow: …}` is outside this subset and
+# still a declaration: reporting it is the point, and a spelling test that
+# only knew the block form would skip it as prose.
+DECLARES_METADATA = re.compile(r'^"?metadata"?[ \t]*:', re.MULTILINE)
+DECLARES_WORKFLOW = re.compile(r'"?workflow"?[ \t]*:')
 H3_HEADING = re.compile(r"^### ", re.MULTILINE)
 H2_HEADING = re.compile(r"^## ", re.MULTILINE)
 # One fence model, the conformance suite's: either marker, three or more,
@@ -304,7 +309,7 @@ def _blocks(text: str, rel: str) -> list[tuple[int, dict]]:
             # scalar. Refusing every such block would stop composition over
             # prose the conformance reader ignores, so the refusal is kept
             # for blocks that were reaching for `metadata` and failed.
-            if not DECLARES_METADATA.search(body):
+            if not (DECLARES_METADATA.search(body) and DECLARES_WORKFLOW.search(body)):
                 continue
             raise WorkflowError(f"{rel}:{line}: {error}") from error
         if not isinstance(data, dict):

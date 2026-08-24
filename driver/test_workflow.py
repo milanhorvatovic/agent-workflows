@@ -447,15 +447,22 @@ class SyntheticTreeTest(unittest.TestCase):
                 self.assertEqual(workflow.stages[0].member_ids(), ("make", "check"))
 
     def test_a_broken_declaration_is_still_an_error(self) -> None:
-        """The refusal is kept for a block that was reaching for `metadata`
-        and failed — that one is a declaration, not an example."""
-        self.write(
-            "workflows/stages/demo.md",
-            STAGE + "\n```yaml\nmetadata:\n  workflow: [one, two]\n```\n",
-        )
-        with self.assertRaises(WorkflowError) as caught:
-            load_workflow(self.framework, "demo")
-        self.assertIn("outside the subset", str(caught.exception))
+        """The refusal is kept for a block that was reaching for a
+        declaration and failed — in whichever spelling it reached, since a
+        `metadata: {workflow: …}` is outside this subset and is still a
+        declaration rather than the prose a narrower test would skip it as."""
+        for spelling in (
+            "metadata:\n  workflow: [one, two]\n",
+            "metadata: {workflow: {protocol: '0.2'}}\n",
+            'metadata:\n  "workflow": [one, two]\n',
+        ):
+            with self.subTest(spelling=spelling.splitlines()[0]):
+                self.write(
+                    "workflows/stages/demo.md", STAGE + f"\n```yaml\n{spelling}```\n"
+                )
+                with self.assertRaises(WorkflowError) as caught:
+                    load_workflow(self.framework, "demo")
+                self.assertIn("outside the subset", str(caught.exception))
 
     def test_a_declaration_inside_a_longer_fence_is_an_example(self) -> None:
         """Discovery consumes outermost fences whole, so a block shown
