@@ -432,12 +432,19 @@ class SyntheticTreeTest(unittest.TestCase):
         the only thing that lives there: an example may use YAML this
         subset does not carry, and refusing it would stop composition over
         prose the conformance reader ignores."""
-        self.write(
-            "workflows/stages/demo.md",
-            STAGE + "\n```yaml\nexample: [one, two]\nother: 'quoted'\n```\n",
-        )
-        workflow = load_workflow(self.framework, "demo")
-        self.assertEqual(workflow.stages[0].member_ids(), ("make", "check"))
+        for example in (
+            "example: [one, two]\nother: 'quoted'\n",
+            # An example may carry a `metadata` of its own; the block this
+            # module reads is the one whose `metadata` holds `workflow`.
+            "metadata:\n  labels: [one, two]\n",
+            "metadata: {annotations: 'x'}\n",
+        ):
+            with self.subTest(example=example.splitlines()[0]):
+                self.write(
+                    "workflows/stages/demo.md", STAGE + f"\n```yaml\n{example}```\n"
+                )
+                workflow = load_workflow(self.framework, "demo")
+                self.assertEqual(workflow.stages[0].member_ids(), ("make", "check"))
 
     def test_a_broken_declaration_is_still_an_error(self) -> None:
         """The refusal is kept for a block that was reaching for `metadata`

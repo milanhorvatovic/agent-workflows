@@ -45,7 +45,12 @@ STEP_HEADING = re.compile(
 # Every heading of each level, whatever it says: a contract belongs to the
 # nearest heading above it, so what closed a step section matters as much as
 # what opened one.
-DECLARES_METADATA = re.compile(r"^metadata:", re.MULTILINE)
+# A block that was reaching for a declaration, recognized textually because
+# it did not parse. `metadata:` alone is not the test: an example may carry
+# a `metadata` of its own — labels, annotations, anything — and the block
+# this module reads is the one whose `metadata` holds `workflow`, which is
+# what the conformance reader filters on before it looks at anything else.
+DECLARES_METADATA = re.compile(r"^metadata:[ \t]*\n[ \t]+workflow:", re.MULTILINE)
 H3_HEADING = re.compile(r"^### ", re.MULTILINE)
 H2_HEADING = re.compile(r"^## ", re.MULTILINE)
 # One fence model, the conformance suite's: either marker, three or more,
