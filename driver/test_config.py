@@ -130,10 +130,17 @@ class ConfigTest(unittest.TestCase):
             self.variant(artifacts_dir="  "), "artifacts_dir must be a non-empty string"
         )
 
-    def test_nul_in_artifacts_dir_is_rejected(self) -> None:
-        self.assert_rejected(
-            self.variant(artifacts_dir="artifacts\x00"), "artifacts_dir must not contain NUL"
-        )
+    def test_control_characters_in_a_configured_path_are_rejected(self) -> None:
+        """NUL because no filesystem call accepts one, and the rest because
+        both paths are printed — `run` reports the directory it created, so
+        a newline there splits the line reporting it."""
+        for key in ("artifacts_dir", "framework_dir"):
+            for value in ("a\x00b", "a\nb", "a\x1b[2Kb", "a\x85b", "a\u2028b"):
+                with self.subTest(key=key, value=value):
+                    self.assert_rejected(
+                        self.variant(**{key: value}),
+                        f"{key} must not contain control characters",
+                    )
 
     def test_partially_anchored_windows_artifacts_dir_is_rejected(self) -> None:
         for value in ("D:artifacts", "\\artifacts"):

@@ -105,9 +105,17 @@ def _parse_directory(data: dict, key: str, default: str, config_path: Path) -> P
     if not isinstance(value, str) or not value.strip():
         raise ConfigError(f"{key} must be a non-empty string")
     # JSON strings may carry NUL, but no filesystem call accepts one — it
-    # raises ValueError at use, far from the config that caused it.
-    if "\x00" in value:
-        raise ConfigError(f"{key} must not contain NUL")
+    # raises ValueError at use, far from the config that caused it. The rest
+    # of the control characters are refused for the reason the run-id guard
+    # refuses them: these two paths are printed — `run` reports the directory
+    # it created — so a newline in one splits the line that reports it and an
+    # escape sequence rewrites it, which is the output contract `status`
+    # already keeps for the names it lists.
+    if any(
+        character < " " or "\x7f" <= character <= "\x9f" or character in "\u2028\u2029"
+        for character in value
+    ):
+        raise ConfigError(f"{key} must not contain control characters")
     # JSON has no shell, so a leading ~ arrives literally; expand it rather
     # than creating a directory named `~` under the project.
     try:
