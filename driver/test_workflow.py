@@ -554,6 +554,10 @@ class SyntheticTreeTest(unittest.TestCase):
             # key is looked for outside the quotes or not at all.
             "metadata: '{workflow: demo}'\n",
             'metadata: "{workflow: demo}"\n',
+            # A flow mapping the document does not open with is somebody
+            # else's value: `example.labels.metadata.workflow` is as deep a
+            # descendant written in braces as it is written in lines.
+            "example:\n  labels: {metadata: {workflow: x}}\n",
             # A single-quoted scalar escapes its quote by doubling it, so
             # the pair is a character in the value and not the end of it —
             # closing at the first would expose the rest of a scalar as
@@ -590,6 +594,11 @@ class SyntheticTreeTest(unittest.TestCase):
             # or everything past this apostrophe — the real key included —
             # would blank and file the declaration as prose.
             "metadata: {note: rock 'n roll, workflow: [one, two]}\n",
+            # A document may be a flow mapping whole, and `metadata` is its
+            # direct key there as much as at the first column — a reader
+            # that parses it resolves the same `metadata.workflow`.
+            "{metadata: {workflow: [one, two]}}\n",
+            "{'metadata': {workflow: [one, two]}}\n",
             # A comment after a real key does not unmake the key.
             "metadata: {workflow: [one, two]} # {workflow: no}\n",
             # The one that carries both: a quoted value mentioning the word

@@ -398,11 +398,39 @@ def _declares_workflow(body: str) -> bool:
             continue
         if _block_has_direct_key(body[opening.end() :], "workflow"):
             return True
-    return False
+    return _root_flow_declares(body)
+
+
+def _root_flow_declares(body: str) -> bool:
+    """Whether the document is a flow mapping whose own `metadata` key holds
+    `workflow`.
+
+    A `metadata` at the first column is one spelling of the direct child §9
+    asks for, and `{metadata: {workflow: …}}` is the other: a reader that
+    parses it resolves the same two keys, so a scan anchored to the column
+    reads the whole document as prose and composes from whatever blocks are
+    left. The document must *open* with the brace — a flow mapping nested
+    in a value is somebody else's, and `example.labels.metadata.workflow`
+    is as deep a descendant written in braces as it is written in lines.
+    """
+    flat = " ".join(
+        _without_comment(_blank_quoted(line)) for line in body.split("\n")
+    )
+    if not flat.lstrip(WHITESPACE).startswith("{"):
+        return False
+    end = _flow_key_end(flat, "metadata")
+    return end is not None and _flow_has_direct_key(flat[end:], "workflow")
 
 
 def _flow_has_direct_key(rest: str, name: str) -> bool:
-    """A key of a flow mapping opened on this line, one brace deep."""
+    """Whether a flow mapping opened on this line has `name` as a key."""
+    return _flow_key_end(rest, name) is not None
+
+
+def _flow_key_end(rest: str, name: str) -> int | None:
+    """Where `name` ends, for a key of a flow mapping opened on this line,
+    one brace deep — or None where that mapping declares no such key. The
+    value follows, which is what makes a nested lookup the same lookup."""
     depth = 0
     for index, character in enumerate(rest):
         if character in "{[":
@@ -419,8 +447,8 @@ def _flow_has_direct_key(rest: str, name: str) -> bool:
             if after.startswith(("'", '"')):
                 after = after[1:].lstrip(WHITESPACE)
             if before and before[-1] in "{," and after.startswith(":"):
-                return True
-    return False
+                return index + len(name)
+    return None
 
 
 def _block_has_direct_key(after: str, name: str) -> bool:
