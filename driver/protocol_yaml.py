@@ -76,6 +76,12 @@ PLAIN_SAFE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9 _./:{}()\[\]-]*$")
 # it as a quoted string, laundering the malformation into valid YAML.
 INDICATORS = "'\"&*!|>[]{},#%@`"
 
+# The characters a document may not carry raw: C0 apart from tab, newline,
+# and carriage return, DEL and C1 — NEL among them — and the two Unicode
+# line separators. Quoted, each has an escape; raw, each is either invalid
+# YAML or a line break the reader would consume silently.
+RAW_FORBIDDEN = re.compile("[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f-\\x9f\\u2028\\u2029]")
+
 ESCAPES = {
     "\\": "\\",
     '"': '"',
@@ -123,6 +129,19 @@ def dumps(data: object) -> str:
 
 
 def _content_lines(text: str) -> list[_Line]:
+    # Raw control characters are not YAML content, and this module cannot
+    # read them harmlessly: NUL and its neighbours would survive into a
+    # value and be written back, while NEL and U+2028/U+2029 are consumed as
+    # line breaks by the split below — a document that silently loses its
+    # shape rather than one that is refused. Tab, newline, and carriage
+    # return are the three YAML does allow, and the emitter escapes every
+    # character named here, so nothing the driver writes lands on this.
+    found = RAW_FORBIDDEN.search(text)
+    if found is not None:
+        raise ProtocolYamlError(
+            text.count("\n", 0, found.start()) + 1,
+            f"raw control character in the document: {found.group()!r}",
+        )
     lines: list[_Line] = []
     for number, raw in enumerate(text.splitlines(), start=1):
         if "\t" in raw[: len(raw) - len(raw.lstrip())]:

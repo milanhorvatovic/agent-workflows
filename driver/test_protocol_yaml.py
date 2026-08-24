@@ -127,6 +127,24 @@ class LoadsTest(unittest.TestCase):
                     data = loads(found.group(1))
                     self.assertIn("metadata", data)
 
+    def test_rejects_raw_control_characters(self) -> None:
+        """Raw, each is either invalid YAML that would survive into a value
+        and be written back, or a line break the split consumes silently —
+        a document that loses its shape rather than one that is refused."""
+        for name, character in {
+            "nul": "\x00", "bell": "\x07", "vertical tab": "\v",
+            "escape": "\x1b", "delete": "\x7f", "next line": "\x85",
+            "line separator": "\u2028", "paragraph separator": "\u2029",
+        }.items():
+            with self.subTest(character=name):
+                with self.assertRaises(ProtocolYamlError) as caught:
+                    loads(f"a: before{character}after\n")
+                self.assertIn("raw control character", str(caught.exception))
+        # Tab, newline, and carriage return are YAML's own, and every
+        # forbidden character is readable as an escape inside quotes.
+        self.assertEqual(loads("a: b\tc\r\nd: e\n"), {"a": "b\tc", "d": "e"})
+        self.assertEqual(loads('a: "b\\x00c"\n'), {"a": "b\x00c"})
+
     def test_rejects_tabs_in_indentation(self) -> None:
         with self.assertRaises(ProtocolYamlError) as caught:
             loads("a:\n\tb: 1\n")
