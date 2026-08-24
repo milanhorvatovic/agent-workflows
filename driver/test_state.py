@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import signal
 import tempfile
 import unittest
 from pathlib import Path
@@ -82,6 +84,40 @@ class CreateRunTest(StateTestCase):
         with self.assertRaises(state.StateError) as caught:
             state.create_run(self.runs, "trailing", self.workflow, "0.2\n")
         self.assertIn("this driver implements", str(caught.exception))
+
+    def test_a_run_id_carrying_a_surrogate_is_refused(self) -> None:
+        """The schema's pattern describes documents, and a lone surrogate is
+        a `str` Python holds that UTF-8 cannot encode — it clears the
+        pattern and raises inside `mkdir` or the write, which is the
+        traceback these guards exist to prevent."""
+        with self.assertRaises(state.StateError) as caught:
+            state.create_run(self.runs, "\ud800", self.workflow, "0.2")
+        self.assertIn("not a run id", str(caught.exception))
+        with self.assertRaises(state.StateError):
+            state.open_run(self.runs, "run\udfffid")
+
+    def test_a_state_file_that_is_not_a_regular_file_is_refused(self) -> None:
+        """`O_NOFOLLOW` says the name is not a link and nothing about what
+        kind of file it is: a FIFO there blocks the open until something
+        writes to the other end, so a resume hangs instead of reporting."""
+        run_dir = self.runs / "demo-run"
+        run_dir.mkdir(parents=True)
+        try:
+            os.mkfifo(run_dir / state.STATE_FILE)
+        except (AttributeError, OSError) as error:  # pragma: no cover
+            self.skipTest(f"FIFOs unavailable: {error}")
+        signal.signal(signal.SIGALRM, self._alarm)
+        signal.alarm(5)
+        try:
+            with self.assertRaises(state.StateError) as caught:
+                state.load(run_dir)
+        finally:
+            signal.alarm(0)
+        self.assertIn("not a regular file", str(caught.exception))
+
+    @staticmethod
+    def _alarm(*_: object) -> None:  # pragma: no cover
+        raise AssertionError("load blocked on the FIFO instead of refusing it")
 
     def test_opening_refuses_an_id_that_is_not_a_plain_directory_name(self) -> None:
         """Containment cannot rest on the command surface being the only

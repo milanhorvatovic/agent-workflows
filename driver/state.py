@@ -135,6 +135,23 @@ class RunState:
         return None
 
 
+def _is_run_id(value: object) -> bool:
+    """The schema's plain-directory-name shape, and encodable besides.
+
+    `PLAIN_NAME` is the schema's pattern carried verbatim, and the schema
+    describes documents rather than the strings a caller may pass — a lone
+    surrogate is a `str` Python holds and UTF-8 cannot encode, so it clears
+    the pattern and then raises inside `mkdir` or the YAML write, which is
+    the traceback every guard here exists to prevent. Checked beside the
+    pattern rather than inside it, so the pin against the schema holds.
+    """
+    return (
+        isinstance(value, str)
+        and bool(PLAIN_NAME.match(value))
+        and not any(0xD800 <= ord(character) <= 0xDFFF for character in value)
+    )
+
+
 def create_run(
     runs_dir: Path, run_id: str, workflow: Workflow, protocol: str
 ) -> tuple[Path, RunState]:
@@ -142,7 +159,7 @@ def create_run(
     stage's records alone, conditional members `skipped`, the rest `pending`
     (§10). The directory MUST NOT pre-exist — concurrent runs and re-runs
     never share one (§8.1)."""
-    if not PLAIN_NAME.match(run_id):
+    if not _is_run_id(run_id):
         raise StateError(f"not a run id: {run_id!r}")
     # The version is written into the document and `load` holds every
     # document to it, so an unchecked one here creates a durable run this
@@ -209,6 +226,9 @@ _BINDS_TO_DIRECTORY = (
     and hasattr(os, "O_NOFOLLOW")
 )
 _NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
+# Opening a FIFO blocks until the other end is written; non-blocking
+# turns that wait into a descriptor this module can look at and refuse.
+_NONBLOCK = getattr(os, "O_NONBLOCK", 0)
 
 
 @contextlib.contextmanager
@@ -330,7 +350,7 @@ def open_run(runs_dir: Path, run_id: str) -> tuple[Path, RunState]:
     # check or bound descriptor could have an opinion. The command surface
     # validates its own argument, but containment cannot rest on the caller
     # being that one.
-    if not PLAIN_NAME.match(run_id):
+    if not _is_run_id(run_id):
         raise StateError(f"not a run id: {run_id!r}")
     run_dir = runs_dir / run_id
     with _runs_directory(runs_dir) as runs:
@@ -355,8 +375,18 @@ def load(run_dir: Path, runs: int | None = None) -> RunState:
         # to a file outside the run.
         with _run_directory(run_dir, runs) as directory:
             target = STATE_FILE if directory is not None else os.fspath(path)
-            descriptor = os.open(target, os.O_RDONLY | _NOFOLLOW, dir_fd=directory)
+            # `O_NOFOLLOW` says the name is not a link and nothing about what
+            # kind of file it is. A FIFO in the state file's place would
+            # block this open until something wrote to the other end — a
+            # resume that hangs rather than reporting, which is worse than
+            # any refusal — so the open is non-blocking where the platform
+            # has it and the descriptor is checked before it is read.
+            descriptor = os.open(
+                target, os.O_RDONLY | _NOFOLLOW | _NONBLOCK, dir_fd=directory
+            )
             with os.fdopen(descriptor, "r", encoding="utf-8") as stream:
+                if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                    raise StateError(f"{path} is not a regular file")
                 text = stream.read()
     # An undecodable state file is a defect in the document, and its
     # UnicodeDecodeError is a ValueError rather than an OSError — uncaught,
@@ -653,7 +683,7 @@ def _validate(data: object, path: Path) -> RunState:
     if unknown:
         raise bad(f"run has unknown keys: {', '.join(unknown)}")
     run_id = run.get("id")
-    if not isinstance(run_id, str) or not PLAIN_NAME.match(run_id):
+    if not _is_run_id(run_id):
         raise bad(f"run.id is not a plain directory name: {run_id!r}")
     workflow = run.get("workflow")
     if not isinstance(workflow, str) or not workflow:
