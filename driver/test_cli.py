@@ -133,11 +133,14 @@ class CliTest(unittest.TestCase):
         self.invoke(
             "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
         )
+        # A finished run is one whose done step also manifested what it
+        # declared (§8.2) — marking the status alone builds the invalid
+        # document `resume` now refuses rather than reports finished.
         state_path = self.base / "runs" / "2026-08-17-x" / "workflow-state.yaml"
         state_path.write_text(
-            state_path.read_text(encoding="utf-8").replace(
-                "status: pending", "status: done"
-            ),
+            state_path.read_text(encoding="utf-8")
+            .replace("status: pending", "status: done")
+            .replace("artifacts: []", 'artifacts:\n  - "{run}/out.md"'),
             encoding="utf-8",
         )
         code, out, err = self.invoke(
@@ -182,6 +185,29 @@ class CliTest(unittest.TestCase):
         )
         self.assertEqual(code, 2)
         self.assertIn("names run '2026-08-17-x'", err)
+        self.assertEqual(out, "")
+
+    def test_resume_refuses_a_run_whose_manifest_is_short(self) -> None:
+        """§8.2 ties a done step to its manifested output, and reporting a
+        run finished trusts the same document routing refuses to act on: a
+        truncated manifest would otherwise answer "nothing left to run" for
+        a run the conformance suite rejects."""
+        self.write_framework()
+        self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        state_path = self.base / "runs" / "2026-08-17-x" / "workflow-state.yaml"
+        state_path.write_text(
+            state_path.read_text(encoding="utf-8").replace(
+                "status: pending", "status: done"
+            ),
+            encoding="utf-8",
+        )
+        code, out, err = self.invoke(
+            "resume", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("not in the manifest", err)
         self.assertEqual(out, "")
 
     def test_resume_without_a_run_id_is_a_usage_error(self) -> None:

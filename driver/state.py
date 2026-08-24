@@ -506,6 +506,34 @@ def complete_step(state: RunState, workflow: Workflow, step_id: str) -> None:
         state.artifacts.append(artifact)
 
 
+def check_manifest(state: RunState, workflow: Workflow) -> None:
+    """§8.2: the manifest lists what the run produced, so a `done` step's
+    `{N}`-resolved output belongs in it.
+
+    Routing already refuses to act on a done record the manifest does not
+    account for, and reporting a run finished is the other place the same
+    document is trusted: a manifest truncated or edited by hand would make
+    `resume` answer "nothing left to run" for a run the conformance suite
+    rejects. Only the phase now executing is checked, which is the scope the
+    suite checks in — what an earlier phase owes cannot be read from this
+    document.
+    """
+    phase = str(state.phase if state.phase is not None else 1)
+    manifest = set(state.artifacts)
+    for record in state.steps:
+        if record.status != "done":
+            continue
+        declaration = workflow.step(record.id)
+        if declaration is None:
+            continue  # a gate, or a record no step declares
+        produced = declaration.output_artifact.replace("{N}", phase)
+        if produced not in manifest:
+            raise StateError(
+                f"step {record.id!r} is done and {produced!r} is not in the "
+                f"manifest (spec §8.2)"
+            )
+
+
 def route_verdict(state: RunState, workflow: Workflow, step_id: str, verdict: str) -> str:
     """The target the producing step's `on` declares for `verdict` (§9.1),
     resolved to a member id: a stage id stands for that stage's first
