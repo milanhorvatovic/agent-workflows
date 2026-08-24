@@ -323,6 +323,14 @@ def _blank_quoted(text: str) -> str:
 
 
 def _closing_quote(text: str, start: int) -> int | None:
+    """Where the span opened at `start` ends, or None if it never does.
+
+    Each quoting style escapes its own quote its own way: a double-quoted
+    span by a backslash, a single-quoted one by doubling it. Reading `''`
+    as a close and a reopen ends the span half a scalar early and exposes
+    the rest of it as structure — enough to report `metadata: 'it''s
+    {workflow: …}'`, a scalar, as a declaration that failed to parse.
+    """
     quote = text[start]
     index = start + 1
     while index < len(text):
@@ -330,6 +338,9 @@ def _closing_quote(text: str, start: int) -> int | None:
             index += 2
             continue
         if text[index] == quote:
+            if quote == "'" and text[index + 1 : index + 2] == "'":
+                index += 2
+                continue
             return index
         index += 1
     return None

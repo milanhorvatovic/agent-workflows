@@ -554,6 +554,11 @@ class SyntheticTreeTest(unittest.TestCase):
             # key is looked for outside the quotes or not at all.
             "metadata: '{workflow: demo}'\n",
             'metadata: "{workflow: demo}"\n',
+            # A single-quoted scalar escapes its quote by doubling it, so
+            # the pair is a character in the value and not the end of it —
+            # closing at the first would expose the rest of a scalar as
+            # structure and report an example as a broken declaration.
+            "metadata: 'it''s {workflow: [one, two]}'\n",
         ):
             with self.subTest(example=example.splitlines()[0]):
                 self.write(
