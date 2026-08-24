@@ -209,6 +209,36 @@ def _check_edges(stages: tuple[Stage, ...]) -> None:
                     )
 
 
+def _blank_quoted(text: str) -> str:
+    """The text with every quoted span replaced by spaces, offsets kept.
+
+    Only structure decides whether a block declares, and a quoted scalar is
+    not structure however it reads inside. Escapes are honoured so a quote
+    within a double-quoted span does not end it early.
+    """
+    out: list[str] = []
+    quote: str | None = None
+    index = 0
+    while index < len(text):
+        character = text[index]
+        if quote is None:
+            if character in "\"'":
+                quote = character
+                out.append(" ")
+            else:
+                out.append(character)
+        else:
+            if character == "\\" and quote == '"' and index + 1 < len(text):
+                out.append("  ")
+                index += 2
+                continue
+            if character == quote:
+                quote = None
+            out.append(" ")
+        index += 1
+    return "".join(out)
+
+
 def _declares_workflow(body: str) -> bool:
     """Whether a block that failed to parse was reaching for a declaration.
 
@@ -224,7 +254,11 @@ def _declares_workflow(body: str) -> bool:
     nesting is what ends the scan at the next first-column key.
     """
     for opening in METADATA_KEY.finditer(body):
-        if WORKFLOW_INLINE.search(opening.group("rest")):
+        # Quoted spans are values, not structure: `metadata: '{workflow: x}'`
+        # is a string that mentions the word, and reading it as a flow key
+        # would report an example as a broken declaration. They are blanked
+        # before the flow key is looked for, since a scalar cannot hold one.
+        if WORKFLOW_INLINE.search(_blank_quoted(opening.group("rest"))):
             return True
         for line in body[opening.end() :].split("\n")[1:]:
             if not line.strip():

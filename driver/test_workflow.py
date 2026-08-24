@@ -445,6 +445,10 @@ class SyntheticTreeTest(unittest.TestCase):
             "metadata:\n  labels: [one, two]\n  # workflow: not a key\n",
             "metadata:\n  labels: ['workflow: x']\n",
             "metadata:\n  labels: [a, b]\nother:\n  workflow: 'x'\n",
+            # A quoted scalar is a value however it reads inside, so a flow
+            # key is looked for outside the quotes or not at all.
+            "metadata: '{workflow: demo}'\n",
+            'metadata: "{workflow: demo}"\n',
         ):
             with self.subTest(example=example.splitlines()[0]):
                 self.write(
