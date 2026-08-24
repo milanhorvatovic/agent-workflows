@@ -411,6 +411,45 @@ class CliTest(unittest.TestCase):
                 self.assertEqual(out, "")
                 self.assertIn("check", err)
 
+    def test_resume_refuses_an_acceptance_its_gate_record_does_not_carry(self) -> None:
+        """The acceptance is one write, and the gate's own record is part of
+        it: §7 makes that entry `done` once its decision stands. A decision
+        on file over a record that is `pending` or `skipped` would return
+        the resume to a gate whose decision already stands — the run
+        deciding again what the class it carries says was decided."""
+        self.write_framework()
+        self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        state_path = self.base / "runs" / "2026-08-17-x" / "workflow-state.yaml"
+        accepted = (
+            state_path.read_text(encoding="utf-8")
+            .replace(
+                '  protocol: "0.2"\n',
+                '  protocol: "0.2"\n  risk: R1\n  risk_rationale: "small"\n',
+            )
+            .replace(
+                "gates: []\n",
+                "gates:\n  - gate: check\n    transport: blocking\n"
+                '    outcome: accept\n    at: "2026-08-16T09:00:00Z"\n',
+            )
+        )
+        for status in ("pending", "skipped", "blocked"):
+            with self.subTest(status=status):
+                state_path.write_text(
+                    accepted.replace(
+                        "  - id: check\n    status: skipped",
+                        f"  - id: check\n    status: {status}",
+                    ),
+                    encoding="utf-8",
+                )
+                code, out, err = self.invoke(
+                    "resume", "2026-08-17-x", "--config", str(self.config_path)
+                )
+                self.assertEqual(code, 2)
+                self.assertEqual(out, "")
+                self.assertIn("check", err)
+
     def test_resume_reads_a_class_its_gate_did_accept(self) -> None:
         """The other side of the same rule: an acceptance on file is what
         makes the class readable, and a run past its intake gate resumes."""
