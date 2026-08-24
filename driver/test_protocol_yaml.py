@@ -143,6 +143,28 @@ class LoadsTest(unittest.TestCase):
                 with self.assertRaises(ProtocolYamlError):
                     loads(text)
 
+    def test_rejects_every_indicator_a_plain_scalar_cannot_start_with(self) -> None:
+        """Accepted as text, these are documents no conforming reader takes
+        — and the emitter would rewrite them as quoted strings, laundering
+        the malformation into valid YAML."""
+        # `#` is in the set and unreachable through this spelling: after a
+        # space it opens a comment, which is stripped before a token forms.
+        for token in ("@reserved", "%directive", "`reserved", ",flow", "]flow",
+                      "}flow", "&anchor", "*alias", "!tag", "- item",
+                      "? key", "-", "?"):
+            with self.subTest(token=token):
+                with self.assertRaises(ProtocolYamlError) as caught:
+                    loads(f"a: {token}\n")
+                self.assertIn("outside the subset", str(caught.exception))
+
+    def test_keeps_the_plain_scalars_those_indicators_allow(self) -> None:
+        """`-` and `:` open a scalar when what follows is not a space, and
+        an indicator inside a token was never an indicator at all."""
+        self.assertEqual(
+            loads("a: -7\nb: :x\nc: x-y\nd: a#b\ne: 2026-08-03-x\n"),
+            {"a": -7, "b": ":x", "c": "x-y", "d": "a#b", "e": "2026-08-03-x"},
+        )
+
     def test_rejects_unterminated_quotes_and_bad_escapes(self) -> None:
         for text in ('a: "open\n', 'a: "\\q"\n', 'a: "\\xZZ"\n', 'a: "end\\"\n'):
             with self.subTest(text=text):

@@ -68,6 +68,14 @@ TIMESTAMP = re.compile(
 # is canonical here, misreading is the only failure that matters.
 PLAIN_SAFE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9 _./:{}()\[\]-]*$")
 
+# The characters YAML forbids at the start of a plain scalar: quoting and
+# anchors, tags and aliases, block scalars, flow punctuation, a comment, a
+# directive, and the two reserved indicators. A token beginning with one of
+# these is not a scalar in any context, so reading it as text would accept a
+# document no conforming reader accepts — and the emitter would then rewrite
+# it as a quoted string, laundering the malformation into valid YAML.
+INDICATORS = "'\"&*!|>[]{},#%@`"
+
 ESCAPES = {
     "\\": "\\",
     '"': '"',
@@ -258,7 +266,13 @@ def _parse_scalar(token: str, number: int) -> object:
         return {}
     if token.startswith('"'):
         return _unquote(token, number)
-    if token.startswith(("'", "&", "*", "!", "|", ">", "[", "{")):
+    if token[0] in INDICATORS:
+        raise ProtocolYamlError(number, f"scalar outside the subset: {token!r}")
+    # `-`, `?`, and `:` open a plain scalar only when what follows is not a
+    # space: `-7` is a number and `- item` is a sequence entry written where
+    # a value belongs. Read as text, the second is a document this module
+    # accepts and every conforming reader refuses.
+    if token[0] in "-?:" and (len(token) == 1 or token[1] in " \t"):
         raise ProtocolYamlError(number, f"scalar outside the subset: {token!r}")
     # A plain scalar carrying a mapping indicator is not a plain scalar:
     # `a: value: other` is a nested mapping written on one line, which YAML
