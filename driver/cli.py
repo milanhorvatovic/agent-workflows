@@ -187,6 +187,20 @@ def _report_position(loaded: run_state.RunState) -> int:
     return 1
 
 
+def _bound_runs(runs_dir: Path) -> int | Path:
+    """The runs directory as a descriptor where the platform binds, and as
+    the path otherwise.
+
+    `scandir` reads either. Bound, the refusal is the open — `O_NOFOLLOW`
+    faults a link there and nothing can be swapped in afterwards, since what
+    is scanned is the directory that was opened rather than the name it had.
+    The descriptor closes with the scan, `scandir` owning what it is given.
+    """
+    if not run_state._BINDS_TO_DIRECTORY:
+        return runs_dir
+    return os.open(runs_dir, os.O_RDONLY | os.O_DIRECTORY | run_state._NOFOLLOW)
+
+
 def _status(config: Config) -> int:
     """Print one run id (directory name) per line, sorted."""
     # No probes: pathlib's probe methods (exists, is_dir) suppress
@@ -203,32 +217,38 @@ def _status(config: Config) -> int:
     # `run` and `resume` refuse it: following one lists an external
     # directory's children as this project's runs, and the containment the
     # other two commands enforce would be contradicted by the one that
-    # reports what exists. A *dangling* link is caught below, where absence
-    # and a broken link arrive as the same error.
+    # reports what exists. Where the platform can bind, the refusal is the
+    # open itself and the scan reads that descriptor, so the directory
+    # cannot be swapped between the two — the same reason state reads and
+    # writes are bound. A *dangling* link is caught below, where absence and
+    # a broken link arrive as the same error.
     if run_state.is_link(config.runs_dir) and config.runs_dir.exists():
         print(
             f"driver: {config.runs_dir} is a link, not the runs directory",
             file=sys.stderr,
         )
         return 2
+    # A dangling link is read before the open rather than after it: absence
+    # and a broken link arrive as one error from a path-based open, and as a
+    # different one from a bound open — `O_NOFOLLOW` faults the link itself
+    # rather than reporting what it fails to reach. Deciding here keeps one
+    # answer for both, and it is the answer the first run's mkdir will meet.
+    dangling = next(
+        (
+            path
+            for path in (config.runs_dir, *config.runs_dir.parents)
+            if run_state.is_link(path) and not path.exists()
+        ),
+        None,
+    )
+    if dangling is not None:
+        print(f"driver: {dangling} is a dangling link", file=sys.stderr)
+        return 2
     try:
-        scan = os.scandir(config.runs_dir)
+        scan = os.scandir(_bound_runs(config.runs_dir))
     except FileNotFoundError:
-        # True absence only: the same error arises when any component of
-        # the path is a dangling link — the runs directory itself, or the
-        # configured artifact root above it — and that is a defect the
-        # first run's mkdir can only trip over, not an empty state.
-        dangling = next(
-            (
-                path
-                for path in (config.runs_dir, *config.runs_dir.parents)
-                if run_state.is_link(path) and not path.exists()
-            ),
-            None,
-        )
-        if dangling is not None:
-            print(f"driver: {dangling} is a dangling link", file=sys.stderr)
-            return 2
+        # True absence: the first run creates the directory, so nothing to
+        # list is not a defect.
         return 0
     except NotADirectoryError:
         print(f"driver: {config.runs_dir} is not a directory", file=sys.stderr)

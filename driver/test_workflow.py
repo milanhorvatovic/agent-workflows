@@ -493,6 +493,10 @@ class SyntheticTreeTest(unittest.TestCase):
             # declaration as prose.
             'metadata: {"workflow": [one, two]}\n',
             'metadata: { "workflow" : [one, two] }\n',
+            # A comment at column zero ends nothing, and an apostrophe
+            # inside a plain scalar is an ordinary character.
+            "metadata:\n# a comment\n  workflow: [one, two]\n",
+            "metadata: {note: don't, workflow: [one, two]}\n",
             # The one that carries both: a quoted value mentioning the word
             # and a real key beside it.
             'metadata: {name: "workflow: x", workflow: [one, two]}\n',

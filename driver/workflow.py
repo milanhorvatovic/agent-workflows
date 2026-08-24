@@ -21,7 +21,7 @@ from pathlib import Path
 
 from . import PROTOCOL, PROTOCOL_VERSION, implements
 from .config import ROLES
-from .protocol_yaml import ProtocolYamlError, loads
+from .protocol_yaml import WHITESPACE, ProtocolYamlError, loads
 
 # Composition is the numbered list of stage references, at the first column
 # (§6.1: workflows compose stages by reference). A link anywhere else is
@@ -223,7 +223,8 @@ def _blank_quoted(text: str) -> str:
     index = 0
     while index < len(text):
         character = text[index]
-        if character not in "\"'":
+        opens = index == 0 or text[index - 1] in "{[,:" + WHITESPACE
+        if character not in "\"'" or not opens:
             out.append(character)
             index += 1
             continue
@@ -282,10 +283,10 @@ def _declares_workflow(body: str) -> bool:
         for line in body[opening.end() :].split("\n")[1:]:
             if not line.strip():
                 continue
+            if line.lstrip().startswith("#"):
+                continue  # a comment ends nothing, at whatever column
             if not line[:1].isspace():
                 break  # a first-column key ends what `metadata` contains
-            if line.lstrip().startswith("#"):
-                continue
             if WORKFLOW_KEY.match(line):
                 return True
     return False
