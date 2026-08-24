@@ -45,6 +45,7 @@ STEP_HEADING = re.compile(
 # Every heading of each level, whatever it says: a contract belongs to the
 # nearest heading above it, so what closed a step section matters as much as
 # what opened one.
+DECLARES_METADATA = re.compile(r"^metadata:", re.MULTILINE)
 H3_HEADING = re.compile(r"^### ", re.MULTILINE)
 H2_HEADING = re.compile(r"^## ", re.MULTILINE)
 # One fence model, the conformance suite's: either marker, three or more,
@@ -291,6 +292,15 @@ def _blocks(text: str, rel: str) -> list[tuple[int, dict]]:
         try:
             data = loads(body)
         except ProtocolYamlError as error:
+            # A `yaml` fence at the first column is where a declaration
+            # lives, and it is not the only thing that lives there: a stage
+            # may show an example, and an example is free to use YAML this
+            # subset does not carry — a flow sequence, a single-quoted
+            # scalar. Refusing every such block would stop composition over
+            # prose the conformance reader ignores, so the refusal is kept
+            # for blocks that were reaching for `metadata` and failed.
+            if not DECLARES_METADATA.search(body):
+                continue
             raise WorkflowError(f"{rel}:{line}: {error}") from error
         if not isinstance(data, dict):
             continue

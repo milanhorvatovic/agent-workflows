@@ -409,6 +409,29 @@ class SyntheticTreeTest(unittest.TestCase):
         workflow = load_workflow(self.framework, "demo")
         self.assertEqual(workflow.step("make").role, "analyst")
 
+    def test_an_example_fence_outside_the_subset_is_not_a_declaration(self) -> None:
+        """A first-column `yaml` fence is where declarations live and not
+        the only thing that lives there: an example may use YAML this
+        subset does not carry, and refusing it would stop composition over
+        prose the conformance reader ignores."""
+        self.write(
+            "workflows/stages/demo.md",
+            STAGE + "\n```yaml\nexample: [one, two]\nother: 'quoted'\n```\n",
+        )
+        workflow = load_workflow(self.framework, "demo")
+        self.assertEqual(workflow.stages[0].member_ids(), ("make", "check"))
+
+    def test_a_broken_declaration_is_still_an_error(self) -> None:
+        """The refusal is kept for a block that was reaching for `metadata`
+        and failed — that one is a declaration, not an example."""
+        self.write(
+            "workflows/stages/demo.md",
+            STAGE + "\n```yaml\nmetadata:\n  workflow: [one, two]\n```\n",
+        )
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "demo")
+        self.assertIn("outside the subset", str(caught.exception))
+
     def test_a_declaration_inside_a_longer_fence_is_an_example(self) -> None:
         """Discovery consumes outermost fences whole, so a block shown
         inside a wrapper is part of the example, never a declaration."""
