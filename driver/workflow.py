@@ -577,13 +577,23 @@ def _block_has_direct_key(after: str, name: str) -> bool:
             child_indent = indent
         if indent != child_indent:
             continue  # deeper: a child of the key above, not of `metadata`
-        key = _without_properties(line.strip())
+        key = line.strip()
+        # The explicit key form names the key on its own line, with the
+        # value on the `:` line beneath — `? workflow` is that key as much
+        # as `workflow:` is, and the indicator stands where a tag or an
+        # anchor does, before the name it belongs to.
+        explicit = key.startswith("?") and key[1:2] in tuple(WHITESPACE) + ("",)
+        if explicit:
+            key = key[1:].lstrip(WHITESPACE)
+        key = _without_properties(key)
         for quote in ("'", '"'):
             if key.startswith(quote):
                 key = key[1:].partition(quote)[0] + ":"
                 break
-        if key.startswith(name) and key[len(name) :].lstrip(WHITESPACE).startswith(":"):
-            return True
+        if key.startswith(name):
+            after = key[len(name) :].lstrip(WHITESPACE)
+            if after.startswith(":") or (explicit and not after):
+                return True
     return False
 
 
