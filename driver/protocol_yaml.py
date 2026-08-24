@@ -548,6 +548,13 @@ def _check_key(key: object) -> None:
     # module cannot write at all rather than one it writes carefully.
     if _resolves_as_non_string(key):
         raise ValueError(f"key would resolve as a non-string: {key!r}")
+    # The surrogate rule `_quote` applies to a value, applied to the other
+    # half of the mapping: UTF-8 cannot carry one on either side, and a key
+    # accepted here reaches the save that encodes the file and raises there,
+    # after the state it belongs to has been assembled.
+    surrogate = next((c for c in key if 0xD800 <= ord(c) <= 0xDFFF), None)
+    if surrogate is not None:
+        raise ValueError(f"key carries a surrogate, which UTF-8 cannot encode: {key!r}")
 
 
 def _resolves_as_non_string(value: str) -> bool:

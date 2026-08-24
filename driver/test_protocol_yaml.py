@@ -495,9 +495,14 @@ class DumpsTest(unittest.TestCase):
                 with self.assertRaises(ValueError) as caught:
                     dumps({key: 1})
                 self.assertIn("cannot write plain", str(caught.exception))
-        with self.assertRaises(ValueError) as caught:
-            dumps({"a": "x\ud800y"})
-        self.assertIn("surrogate", str(caught.exception))
+        # Both sides of the mapping: a key is as unencodable as a value,
+        # and only the value was ever checked — the text came back and the
+        # save that writes it raised instead.
+        for data in ({"a": "x\ud800y"}, {"a\ud800b": 1}):
+            with self.subTest(data=data):
+                with self.assertRaises(ValueError) as caught:
+                    dumps(data)
+                self.assertIn("surrogate", str(caught.exception))
 
     def test_a_document_is_a_mapping_or_a_sequence(self) -> None:
         """Both shapes this module exists for are one of the two, and the
