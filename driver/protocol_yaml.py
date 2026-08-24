@@ -78,11 +78,14 @@ TIMESTAMP = re.compile(
 )
 
 # A plain scalar the emitter may leave unquoted: no YAML indicator where it
-# could change meaning — a leading `{`, `[`, or `(` opens flow syntax, so a
+# could change meaning — a leading `{` or `[` opens a flow collection, so a
 # `{run}/…` path is always quoted, which is also how the shipped fixtures
 # write it — no leading/trailing space, no characters the reader would
-# misparse. Conservative on purpose: quoting more than YAML strictly requires
-# is canonical here, misreading is the only failure that matters.
+# misparse. The first character is held to a letter, a digit, or `_`, which
+# is narrower than YAML asks: a leading `(` is an ordinary character to any
+# reader, and quoting it costs nothing this module needs back. Conservative
+# on purpose: quoting more than YAML strictly requires is canonical here,
+# misreading is the only failure that matters.
 PLAIN_SAFE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9 _./:{}()\[\]-]*$")
 
 # The characters YAML forbids at the start of a plain scalar: quoting and
