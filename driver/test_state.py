@@ -366,6 +366,32 @@ class LoadValidationTest(StateTestCase):
                 "steps:\n  - id: make\n    status: active\n  - id: also\n    status: active\n",
             ),
             "drive-relative id": self.BASE.replace("id: demo-run", 'id: "C:demo"'),
+            # A field the schema admits no null for, read as absence, is
+            # dropped by the next save — malformed state laundered into
+            # well-formed state by a round trip through the driver.
+            "run phase is null": self.BASE.replace(
+                "  workflow: demo\n", "  workflow: demo\n  phase: null\n"
+            ),
+            "risk is null": self.BASE.replace(
+                "  workflow: demo\n",
+                "  workflow: demo\n  risk: null\n  risk_rationale: null\n",
+            ),
+            "rationale is null": self.BASE.replace(
+                "  workflow: demo\n",
+                "  workflow: demo\n  risk: R2\n  risk_rationale: null\n",
+            ),
+            "iterations is null": self.BASE.replace(
+                "    status: pending\n", "    status: pending\n    iterations: null\n"
+            ),
+            "stall_flags is null": self.BASE.replace(
+                "    status: pending\n", "    status: pending\n    stall_flags: null\n"
+            ),
+            "gate phase is null": self.BASE.replace(
+                "gates: []\n",
+                "gates:\n  - gate: intake-approval\n    phase: null\n"
+                "    transport: blocking\n    outcome: accept\n"
+                '    at: "2026-08-16T09:00:00Z"\n',
+            ),
             # §10's enrichment is a mapping or null, and this module writes
             # back what it accepts — so a scalar here would make the driver
             # the source of the invalid state, not just its reader.

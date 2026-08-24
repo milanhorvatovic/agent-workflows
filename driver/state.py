@@ -542,17 +542,23 @@ def _validate(data: object, path: Path) -> RunState:
             f"run.protocol is {protocol}, and this driver implements {PROTOCOL} "
             f"(spec §11)"
         )
+    # Every optional field below is read by the key's presence, not by its
+    # value. The schema admits none of them as null, and this module writes
+    # back what it loads: read as absence, `phase: null` would be dropped by
+    # the next save and the document would come out valid — malformed state
+    # laundered into well-formed state by a round trip through the driver,
+    # with nothing anywhere saying it happened.
     phase = run.get("phase")
-    if phase is not None and not _is_count(phase, 1):
+    if "phase" in run and not _is_count(phase, 1):
         raise bad(f"run.phase is not a positive integer: {phase!r}")
     risk = run.get("risk")
     rationale = run.get("risk_rationale")
-    if (risk is None) != (rationale is None):
+    if ("risk" in run) != ("risk_rationale" in run):
         raise bad("run.risk and run.risk_rationale move together (spec §10)")
-    if risk is not None and risk not in RISKS:
+    if "risk" in run and risk not in RISKS:
         raise bad(f"run.risk is not one of {'/'.join(RISKS)}: {risk!r}")
-    if rationale is not None and (not isinstance(rationale, str) or not rationale):
-        raise bad("run.risk_rationale is empty")
+    if "risk_rationale" in run and (not isinstance(rationale, str) or not rationale):
+        raise bad(f"run.risk_rationale is empty: {rationale!r}")
 
     steps_data = data["steps"]
     if not isinstance(steps_data, list):
@@ -652,10 +658,10 @@ def _validate_step(entry: object, bad) -> StepRecord:
     if status not in STATUSES:
         raise bad(f"step {step_id!r} status is not one of {'/'.join(STATUSES)}: {status!r}")
     iterations = entry.get("iterations")
-    if iterations is not None and not _is_count(iterations, 0):
+    if "iterations" in entry and not _is_count(iterations, 0):
         raise bad(f"step {step_id!r} iterations is not a count: {iterations!r}")
     stall_flags = entry.get("stall_flags")
-    if stall_flags is not None and (
+    if "stall_flags" in entry and (
         not isinstance(stall_flags, list)
         or not all(isinstance(x, str) and x for x in stall_flags)
     ):
@@ -684,6 +690,6 @@ def _validate_gate(entry: object, bad) -> GateRecord:
     if not _is_timestamp(at):
         raise bad(f"gate {gate!r} without an RFC 3339 timestamp: {at!r}")
     phase = entry.get("phase")
-    if phase is not None and not _is_count(phase, 1):
+    if "phase" in entry and not _is_count(phase, 1):
         raise bad(f"gate {gate!r} phase is not a positive integer: {phase!r}")
     return GateRecord(gate=gate, transport=transport, outcome=outcome, at=at, phase=phase)
