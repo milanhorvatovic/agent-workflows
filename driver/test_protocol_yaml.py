@@ -237,6 +237,13 @@ class LoadsTest(unittest.TestCase):
         self.assertEqual(loads("a:\tvalue\nb:\t1 # c\n"), {"a": "value", "b": 1})
         self.assertEqual(loads('c:\t"q # x"\n'), {"c": "q # x"})
         self.assertEqual(loads("- key:\tvalue\n"), [{"key": "value"}])
+        # Mixed separation: whichever comes first ends the key, and the rest
+        # of the run is skipped before the scalar begins — read as spaces
+        # alone, a quoted value after `: \t` is not seen as quoted and its
+        # `#` truncates it.
+        self.assertEqual(loads('key: \t"kept # text"\n'), {"key": "kept # text"})
+        self.assertEqual(loads('- key: \t"kept # text"\n'), [{"key": "kept # text"}])
+        self.assertEqual(loads('a:\t "x # y"\n'), {"a": "x # y"})
 
     def test_an_integer_too_long_to_convert_is_a_subset_error(self) -> None:
         """Python caps `int()` at 4300 digits and YAML puts no ceiling on

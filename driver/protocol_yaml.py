@@ -225,10 +225,10 @@ def _scalar_start(raw: str) -> int:
     a quoted scalar that never closes. Knowing where a scalar may begin is
     what tells the two apart.
     """
-    index = len(raw) - len(raw.lstrip(" "))
+    index = len(raw) - len(raw.lstrip(WHITESPACE))
     if raw[index : index + 2] == "- ":
         index += 2
-        index += len(raw[index:]) - len(raw[index:].lstrip(" "))
+        index += len(raw[index:]) - len(raw[index:].lstrip(WHITESPACE))
     rest = raw[index:]
     if rest.startswith(('"', "#")):
         return index
@@ -238,7 +238,7 @@ def _scalar_start(raw: str) -> int:
     )
     if marker != -1:
         index += marker + 2
-        return index + len(raw[index:]) - len(raw[index:].lstrip(" "))
+        return index + len(raw[index:]) - len(raw[index:].lstrip(WHITESPACE))
     if rest.rstrip(WHITESPACE).endswith(":"):
         # `key:` alone — the value is the block that follows, and this line
         # carries no scalar for a quote to open.
