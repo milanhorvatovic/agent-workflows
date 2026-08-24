@@ -45,17 +45,9 @@ STEP_HEADING = re.compile(
 # Every heading of each level, whatever it says: a contract belongs to the
 # nearest heading above it, so what closed a step section matters as much as
 # what opened one.
-# A block that was reaching for a declaration, recognized textually because
-# it did not parse. Two things have to be true and neither alone: a
-# first-column `metadata` key, since an example nested inside something else
-# is not a declaration, and a `workflow` key somewhere under it, since an
-# example may carry a `metadata` of its own — labels, annotations, anything.
-# Both are matched quoted or plain and in either style, because a
-# declaration written `metadata: {workflow: …}` is outside this subset and
-# still a declaration: reporting it is the point, and a spelling test that
-# only knew the block form would skip it as prose.
-DECLARES_METADATA = re.compile(r'^"?metadata"?[ \t]*:', re.MULTILINE)
-DECLARES_WORKFLOW = re.compile(r'"?workflow"?[ \t]*:')
+METADATA_KEY = re.compile(r'^"?metadata"?[ \t]*:(?P<rest>.*)$', re.MULTILINE)
+WORKFLOW_KEY = re.compile(r'^[ \t]+"?workflow"?[ \t]*:')
+WORKFLOW_INLINE = re.compile(r'[{,][ \t]*"?workflow"?[ \t]*:')
 H3_HEADING = re.compile(r"^### ", re.MULTILINE)
 H2_HEADING = re.compile(r"^## ", re.MULTILINE)
 # One fence model, the conformance suite's: either marker, three or more,
@@ -217,6 +209,35 @@ def _check_edges(stages: tuple[Stage, ...]) -> None:
                     )
 
 
+def _declares_workflow(body: str) -> bool:
+    """Whether a block that failed to parse was reaching for a declaration.
+
+    It has to be decided on text, the parse having failed, and the test is
+    nesting rather than co-occurrence: a `workflow` key *under* a
+    first-column `metadata`, which is the shape §9 gives a declaration and
+    the shape the conformance reader filters on. Co-occurrence anywhere in
+    the fence was the last cut of this, and it read an example's
+    `metadata.labels` beside a comment mentioning `workflow:` as a broken
+    declaration. Both spellings count, since a declaration written
+    `metadata: {workflow: …}` is outside this subset and still a
+    declaration — reporting it is the point — and the block form's own
+    nesting is what ends the scan at the next first-column key.
+    """
+    for opening in METADATA_KEY.finditer(body):
+        if WORKFLOW_INLINE.search(opening.group("rest")):
+            return True
+        for line in body[opening.end() :].split("\n")[1:]:
+            if not line.strip():
+                continue
+            if not line[:1].isspace():
+                break  # a first-column key ends what `metadata` contains
+            if line.lstrip().startswith("#"):
+                continue
+            if WORKFLOW_KEY.match(line):
+                return True
+    return False
+
+
 def _mask_fences(text: str) -> str:
     """Blank every fenced region, keeping offsets and line numbers intact.
 
@@ -309,7 +330,7 @@ def _blocks(text: str, rel: str) -> list[tuple[int, dict]]:
             # scalar. Refusing every such block would stop composition over
             # prose the conformance reader ignores, so the refusal is kept
             # for blocks that were reaching for `metadata` and failed.
-            if not (DECLARES_METADATA.search(body) and DECLARES_WORKFLOW.search(body)):
+            if not _declares_workflow(body):
                 continue
             raise WorkflowError(f"{rel}:{line}: {error}") from error
         if not isinstance(data, dict):

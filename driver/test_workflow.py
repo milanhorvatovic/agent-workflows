@@ -435,9 +435,16 @@ class SyntheticTreeTest(unittest.TestCase):
         for example in (
             "example: [one, two]\nother: 'quoted'\n",
             # An example may carry a `metadata` of its own; the block this
-            # module reads is the one whose `metadata` holds `workflow`.
+            # module reads is the one whose `metadata` holds `workflow`, and
+            # nesting decides that rather than the word appearing anywhere —
+            # a comment or a quoted value may mention it in passing, and a
+            # `workflow` key after the metadata block has ended belongs to
+            # whatever opened at the first column instead.
             "metadata:\n  labels: [one, two]\n",
             "metadata: {annotations: 'x'}\n",
+            "metadata:\n  labels: [one, two]\n  # workflow: not a key\n",
+            "metadata:\n  labels: ['workflow: x']\n",
+            "metadata:\n  labels: [a, b]\nother:\n  workflow: 'x'\n",
         ):
             with self.subTest(example=example.splitlines()[0]):
                 self.write(
