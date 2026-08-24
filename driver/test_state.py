@@ -464,6 +464,16 @@ class LoadValidationTest(StateTestCase):
             # is guessing at statuses, edges, and record order.
             # `$` matches before a final newline, so a version or timestamp
             # carrying one passed every check written with it.
+            # An id reaches a terminal: `resume` prints the position it
+            # resolves, and the reader decodes escapes before this check.
+            "step id splits a line": self.BASE.replace(
+                "  - id: make\n", '  - id: "make\\nfake: 1"\n'
+            ),
+            "gate id carries an escape": self.BASE.replace(
+                "gates: []\n",
+                'gates:\n  - gate: "sign\\u001b[2K"\n    transport: blocking\n'
+                '    outcome: accept\n    at: "2026-08-16T09:00:00Z"\n',
+            ),
             "protocol with a trailing newline": self.BASE.replace(
                 'protocol: "0.2"', 'protocol: "0.2\\n"'
             ),

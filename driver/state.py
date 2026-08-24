@@ -55,6 +55,14 @@ PLAIN_NAME = re.compile('^(?![A-Za-z]:)(?!\\.{1,2}$)(?!\\s+$)(?!(?:[Cc][Oo][Nn]|
 # lineage to the materialization that later copies it. The literal is the
 # schema's own pattern; test_state pins the two byte-for-byte.
 IMPORT_PATH = re.compile('^\\{run\\}(?:/(?!\\.{1,2}(?:/|$))(?!(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Mm][1-9¹²³]|[Ll][Pp][Tt][1-9¹²³])(?:\\.|/|$))[^/\\\\:?*"<>|\x00-\x1f\x7f-\x9f\u2028\u2029]+(?<![. ]))+(?![\\s\\S])')
+# What a record id may not carry, whatever else it is. The run-state
+# schema asks only for a non-empty string, and the driver does not
+# narrow that to §9.4's member-id shape here — a document the suite
+# accepts is not this module's to refuse. But an id reaches a terminal:
+# `resume` prints the position it resolves, so a record carrying a line
+# break or an escape sequence would split that line or rewrite it, which
+# is the guard the run id already carries, applied where ids are read.
+OUTPUT_BREAKING = re.compile("[\\x00-\\x1f\\x7f-\\x9f\\u2028\\u2029]")
 # RFC 3339, the `format: date-time` the run-state schema declares for
 # every `at` — a full date and time with an offset, the shape the
 # conformance suite's format checker holds the shipped fixtures to.
@@ -756,6 +764,8 @@ def _validate_step(entry: object, bad) -> StepRecord:
     status = entry.get("status")
     if not isinstance(step_id, str) or not step_id:
         raise bad(f"step record without an id: {entry!r}")
+    if OUTPUT_BREAKING.search(step_id):
+        raise bad(f"step record id carries a control character: {step_id!r}")
     if status not in STATUSES:
         raise bad(f"step {step_id!r} status is not one of {'/'.join(STATUSES)}: {status!r}")
     iterations = entry.get("iterations")
@@ -781,6 +791,8 @@ def _validate_gate(entry: object, bad) -> GateRecord:
     gate = entry.get("gate")
     if not isinstance(gate, str) or not gate:
         raise bad(f"gate record without a gate id: {entry!r}")
+    if OUTPUT_BREAKING.search(gate):
+        raise bad(f"gate record id carries a control character: {gate!r}")
     transport = entry.get("transport")
     if transport not in TRANSPORTS:
         raise bad(f"gate {gate!r} transport is not one of {'/'.join(TRANSPORTS)}")
