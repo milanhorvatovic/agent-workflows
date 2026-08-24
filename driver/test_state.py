@@ -585,6 +585,35 @@ class LoadValidationTest(StateTestCase):
         self.assertIn("not the runs directory", str(caught.exception))
         self.assertFalse((self.base / "nowhere").exists())
 
+    def test_a_linked_run_directory_is_refused_without_dir_fd_too(self) -> None:
+        """Where the platform cannot bind an operation to a descriptor, the
+        link check is the whole of the containment — and `save` reaches the
+        directory without any caller having looked."""
+        import unittest.mock
+
+        outside = self.base / "elsewhere"
+        outside.mkdir()
+        (outside / state.STATE_FILE).write_text(self.BASE, encoding="utf-8")
+        self.runs.mkdir(parents=True)
+        self.symlink(self.runs / "demo-run", outside)
+        loaded = state.RunState(
+            run_id="demo-run", workflow="demo", protocol="0.2",
+            steps=[state.StepRecord(id="make", status="pending")],
+            gates=[], artifacts=[],
+        )
+        with unittest.mock.patch.object(state, "_BINDS_TO_DIRECTORY", False):
+            for name, call in {
+                "load": lambda: state.load(self.runs / "demo-run"),
+                "save": lambda: state.save(loaded, self.runs / "demo-run"),
+            }.items():
+                with self.subTest(operation=name):
+                    with self.assertRaises(state.StateError) as caught:
+                        call()
+                    self.assertIn("is a link", str(caught.exception))
+        self.assertEqual(
+            (outside / state.STATE_FILE).read_text(encoding="utf-8"), self.BASE
+        )
+
     def test_open_run_refuses_state_that_names_another_run(self) -> None:
         """The id is the run's identity (§8.1): a document naming another
         run would be reported as that run while every path it resolves stays
