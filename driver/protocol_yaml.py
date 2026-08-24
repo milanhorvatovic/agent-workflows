@@ -334,7 +334,11 @@ def _is_mapping_start(rest: str) -> bool:
     if rest.startswith('"'):
         return False
     head, separator, tail = rest.partition(":")
-    return bool(separator) and (not tail or tail.startswith(" ")) and bool(head.strip())
+    # Either separator YAML gives, as everywhere else a key is recognized:
+    # read without the tab, `- key:\tvalue` falls through to the scalar
+    # resolver and is refused as a mapping indicator, which is a document
+    # the subset admits reported as one it does not.
+    return bool(separator) and (not tail or tail[0] in " \t") and bool(head.strip())
 
 
 def _parse_scalar(token: str, number: int) -> object:
@@ -443,7 +447,18 @@ def _emit_block(data: object, indent: int) -> list[str]:
 
 
 def _check_key(key: object) -> None:
-    if not isinstance(key, str) or not key or any(c in key for c in ":{}[],&*#?|>%@`\"' \t"):
+    # A space inside a key is content — `token count: 1` is a plain key the
+    # reader accepts, and an instrumentation mapping (§10) is where one
+    # plausibly appears. Refusing it here made a document this module reads
+    # one it cannot write back: state that loads and then fails on save.
+    # Leading and trailing whitespace still go, being invisible where the
+    # key's identity is the thing, and a tab with them.
+    if (
+        not isinstance(key, str)
+        or not key
+        or key != key.strip()
+        or any(c in key for c in ":{}[],&*#?|>%@`\"'\t")
+    ):
         raise ValueError(f"not a plain key: {key!r}")
     # A key is written plain, so anything the reader forbids raw would be
     # written raw: a newline in a key emits two lines where the document

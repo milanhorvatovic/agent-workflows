@@ -219,9 +219,22 @@ class LoadsTest(unittest.TestCase):
 
     def test_a_tab_separates_a_key_from_its_value(self) -> None:
         """YAML separates with a space or a tab, so a document written with
-        the second is legal and must not be called malformed."""
+        the second is legal and must not be called malformed — inside a
+        sequence entry's inline mapping as much as anywhere else."""
         self.assertEqual(loads("a:\tvalue\nb:\t1 # c\n"), {"a": "value", "b": 1})
         self.assertEqual(loads('c:\t"q # x"\n'), {"c": "q # x"})
+        self.assertEqual(loads("- key:\tvalue\n"), [{"key": "value"}])
+
+    def test_a_key_may_carry_a_space_on_both_sides(self) -> None:
+        """§10's instrumentation is where a plain key with a space in it
+        plausibly appears: refused on write, state that loads here could
+        not be saved back."""
+        self.assertEqual(loads("token count: 1\n"), {"token count": 1})
+        self.assertEqual(dumps({"token count": 1}), "token count: 1\n")
+        for key in (" leading", "trailing ", "a\tb"):
+            with self.subTest(key=key):
+                with self.assertRaises(ValueError):
+                    dumps({key: 1})
 
     def test_rejects_a_plain_scalar_carrying_a_mapping_indicator(self) -> None:
         """`a: value: other` is a nested mapping on one line, which YAML
@@ -380,7 +393,7 @@ class DumpsTest(unittest.TestCase):
         self.assertEqual(dumps({"on": 1}), "on: 1\n")
 
     def test_rejects_values_outside_the_subset(self) -> None:
-        for value in ({"a": 1.5}, {"a": {1: "int key"}}, {"bad key": 1}, {"a": b"x"}):
+        for value in ({"a": 1.5}, {"a": {1: "int key"}}, {"bad:key": 1}, {"a": b"x"}):
             with self.subTest(value=value):
                 with self.assertRaises((TypeError, ValueError)):
                     dumps(value)
