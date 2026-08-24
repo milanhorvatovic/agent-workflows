@@ -629,6 +629,32 @@ def check_gates(state: RunState, workflow: Workflow) -> None:
     # `run.risk` is what every check keyed on the post-intake shape reads,
     # `check_records` first among them. The two directions are the one rule:
     # the class stands where the acceptance does, and nowhere else.
+    # A revise is the decision that did not stand — the gate decides again,
+    # and in the phase the run is in. §10 has a decision taken while the run
+    # carries a phase name the phase it was taken in, and the `done` check
+    # below never reaches this one: a revise returns its gate to `pending`.
+    # What the run carries is the test, and it is enough of one here: the
+    # acceptance that sets `run.phase` is appended after any revise taken
+    # before the run had phases, so a revise still standing as the latest
+    # entry was taken under this phase. That is why the rule holds of a
+    # revise and not of an accept, which a `pending` gate may legitimately
+    # carry from the phase before this one.
+    if state.phase is not None:
+        for gate_id, decision in {
+            record.gate: record for record in state.gates
+        }.items():
+            if decision.outcome != "revise" or not scopes.get(gate_id):
+                continue
+            if decision.phase != state.phase:
+                says = (
+                    f"phase {decision.phase}"
+                    if decision.phase is not None
+                    else "no phase"
+                )
+                raise StateError(
+                    f"gate {gate_id!r} is to decide again at phase {state.phase} "
+                    f"and its latest decision records {says} (spec §10)"
+                )
     entry_gate = workflow.entry_gate()
     if entry_gate is not None:
         decision = latest.get(entry_gate)

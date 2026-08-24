@@ -445,6 +445,81 @@ class TransitionTest(StateTestCase):
         self.assertIn("no runnable step", str(caught.exception))
 
 
+class GatePhaseTest(StateTestCase):
+    """A phased gate's latest decision, in a run that carries a phase.
+
+    Two stages, because the rule needs a phased gate that is not the entry
+    gate: intake's own decision sets the class, so the gate whose latest
+    entry is still a revise has to be a later one.
+    """
+
+    def build(self) -> object:
+        phased = (
+            STAGE.replace("name: demo", "name: phased")
+            .replace("- step: make", "- step: build")
+            .replace("- gate: check\n          conditional: true", "- gate: approve")
+            .replace("### make (analyst)", "### build (implementer)")
+            .replace("role: analyst", "role: implementer")
+            .replace('artifact: "{run}/out.md"', 'artifact: "{run}/phase-{N}-out.md"')
+            .replace("PASS: check", "PASS: approve")
+            .replace("FAIL: make", "FAIL: build")
+            .replace("- **check** — a gate.", "- **approve** — a gate.")
+        )
+        (self.base / "workflows" / "stages" / "phased.md").write_text(
+            phased, encoding="utf-8"
+        )
+        (self.base / "workflows" / "demo.md").write_text(
+            WORKFLOW + "2. [stages/phased.md](stages/phased.md)\n", encoding="utf-8"
+        )
+        return load_workflow(self.base, "demo")
+
+    def accepted(self, workflow, phase: int | None) -> state.RunState:
+        return state.RunState(
+            run_id="2026-08-17-x",
+            workflow="demo",
+            protocol="0.2",
+            phase=2,
+            risk="R1",
+            risk_rationale="small",
+            steps=[
+                state.StepRecord(id="make", status="done"),
+                state.StepRecord(id="check", status="done"),
+                state.StepRecord(id="build", status="pending"),
+                state.StepRecord(id="approve", status="pending"),
+            ],
+            gates=[
+                state.GateRecord(
+                    gate="check",
+                    transport="blocking",
+                    outcome="accept",
+                    at="2026-08-16T09:00:00Z",
+                ),
+                state.GateRecord(
+                    gate="approve",
+                    transport="blocking",
+                    outcome="revise",
+                    at="2026-08-16T10:00:00Z",
+                    phase=phase,
+                ),
+            ],
+            artifacts=["{run}/out.md"],
+        )
+
+    def test_a_standing_revise_names_the_phase_it_was_taken_in(self) -> None:
+        """§10 has a decision taken while the run carries a phase name it,
+        and a revise is the decision that did not stand — the gate decides
+        again, in this phase. The accept that set `run.phase` is appended
+        after any revise taken before the run had phases, so a revise that
+        is still the latest entry was taken under the phase the run is in."""
+        workflow = self.build()
+        for phase in (None, 1):
+            with self.subTest(phase=phase):
+                with self.assertRaises(state.StateError) as caught:
+                    state.check_gates(self.accepted(workflow, phase), workflow)
+                self.assertIn("approve", str(caught.exception))
+        state.check_gates(self.accepted(workflow, 2), workflow)
+
+
 class LoadValidationTest(StateTestCase):
     def write_state(self, text: str) -> Path:
         run_dir = self.runs / "demo-run"
