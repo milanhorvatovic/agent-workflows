@@ -224,6 +224,48 @@ class SyntheticTreeTest(unittest.TestCase):
             load_workflow(self.framework, "pair")
         self.assertIn("declared by stages 'demo' and 'other'", str(caught.exception))
 
+    def test_an_edge_target_nothing_declares_is_an_error(self) -> None:
+        """Unchecked, a mistyped target loads, writes a durable run, and
+        fails at the first verdict that tries to route."""
+        self.write(
+            "workflows/stages/demo.md", STAGE.replace("PASS: check", "PASS: chek")
+        )
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "demo")
+        self.assertIn("declares nothing for", str(caught.exception))
+
+    def test_an_edge_may_target_another_composed_stage(self) -> None:
+        """Which ids exist is a property of the composition: a stage's steps
+        routinely route into the stage that follows."""
+        self.compose_two_stages(
+            STAGE.replace("name: demo", "name: other")
+            .replace("- step: make", "- step: build")
+            .replace("- gate: check", "- gate: sign")
+            .replace("### make (analyst)", "### build (analyst)")
+            .replace("PASS: check", "PASS: sign")
+            .replace("FAIL: make", "FAIL: build")
+            .replace("**check**", "**sign**")
+        )
+        self.write("workflows/stages/demo.md", STAGE.replace("PASS: check", "PASS: build"))
+        workflow = load_workflow(self.framework, "pair")
+        self.assertEqual(workflow.step("make").edges["PASS"], "build")
+
+    def test_a_stage_target_with_no_step_declared_is_an_error(self) -> None:
+        """A stage of gates alone can never resolve a stage target, and
+        that is knowable here rather than one verdict into the run."""
+        gates_only = (
+            "---\nname: other\ndescription: A stage of gates.\n---\n\n"
+            "# Stage: other\n\n"
+            "```yaml\nmetadata:\n  workflow:\n"
+            '    protocol: "0.2"\n    stage:\n      sequence:\n        - gate: sign\n'
+            "```\n\n## Gates\n\n- **sign** — a gate.\n"
+        )
+        self.compose_two_stages(gates_only)
+        self.write("workflows/stages/demo.md", STAGE.replace("PASS: check", "PASS: other"))
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "pair")
+        self.assertIn("no step to resolve to", str(caught.exception))
+
     def test_a_member_wearing_a_stage_id_is_an_error(self) -> None:
         """§9.1's targets are untyped strings: a member named for a stage
         makes every edge naming it ambiguous."""

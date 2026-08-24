@@ -164,7 +164,41 @@ def load_workflow(framework: Path, name: str) -> Workflow:
         raise WorkflowError(f"workflow {name!r} composes no stages")
     stages = tuple(_load_stage(framework, slug) for slug in slugs)
     _check_member_ids(stages)
+    _check_edges(stages)
     return Workflow(name=name, stages=stages)
+
+
+def _check_edges(stages: tuple[Stage, ...]) -> None:
+    """§9.1: an edge target names a step, a gate, or a stage — and which
+    ids exist is a property of the composition, not of any one file, since
+    a stage's steps routinely route into the stage that follows.
+
+    Unchecked, a mistyped target is the most expensive kind of authoring
+    error this module can pass on: the composition loads, the run directory
+    and its bootstrap state are written, and the run fails at the first
+    verdict that tries to route — with the state on disk already claiming a
+    run that cannot finish. A stage target with no step to resolve to is the
+    same failure a declaration later, so it is refused here too.
+    """
+    members = {member.id for stage in stages for member in stage.members}
+    by_name = {stage.name: stage for stage in stages}
+    for stage in stages:
+        for step_id, declaration in stage.steps.items():
+            at = f"{stage.name}: step {step_id!r}"
+            for verdict, target in declaration.edges.items():
+                if target not in members and target not in by_name:
+                    raise WorkflowError(
+                        f"{at}: {verdict} routes to {target!r}, which this "
+                        f"workflow declares nothing for"
+                    )
+                targeted = by_name.get(target)
+                if targeted is not None and not any(
+                    member.kind == "step" for member in targeted.members
+                ):
+                    raise WorkflowError(
+                        f"{at}: {verdict} routes to stage {target!r}, which "
+                        f"declares no step to resolve to (spec §9.1)"
+                    )
 
 
 def _mask_fences(text: str) -> str:
