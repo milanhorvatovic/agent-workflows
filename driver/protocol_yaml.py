@@ -247,6 +247,17 @@ def _split_key(line: _Line) -> tuple[str, str]:
     key = head.strip()
     if not key or any(c in key for c in "{}[],&*#?|>%@`\"'"):
         raise ProtocolYamlError(line.number, f"not a plain key: {head!r}")
+    # A key is resolved like any other plain scalar, and a key's type decides
+    # the mapping's shape rather than one value inside it: `true:` is a
+    # boolean key to a conforming reader and a string key here, and `1:` and
+    # `01:` are one integer key there and two distinct string keys here — a
+    # document that reads as two different mappings depending on who opens
+    # it. Quoting is how YAML says "the string", and quoted keys are outside
+    # this subset, so the only reading left is to refuse.
+    if _resolves_as_non_string(key):
+        raise ProtocolYamlError(
+            line.number, f"key would resolve as a non-string: {key!r}"
+        )
     return key, rest.strip()
 
 
@@ -367,6 +378,11 @@ def _emit_block(data: object, indent: int) -> list[str]:
 def _check_key(key: object) -> None:
     if not isinstance(key, str) or not key or any(c in key for c in ":{}[],&*#?|>%@`\"' \t"):
         raise ValueError(f"not a plain key: {key!r}")
+    # The emitting half of the rule the reader applies: this subset has no
+    # quoted keys, so a key another reader would resolve away is one this
+    # module cannot write at all rather than one it writes carefully.
+    if _resolves_as_non_string(key):
+        raise ValueError(f"key would resolve as a non-string: {key!r}")
 
 
 def _resolves_as_non_string(value: str) -> bool:

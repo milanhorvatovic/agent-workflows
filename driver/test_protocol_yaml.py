@@ -132,6 +132,19 @@ class LoadsTest(unittest.TestCase):
             loads("a:\n\tb: 1\n")
         self.assertIn("tab", str(caught.exception))
 
+    def test_a_key_that_would_resolve_away_is_refused(self) -> None:
+        """A key's type decides the mapping's shape, not one value in it:
+        `1:` and `01:` are one integer key to a conforming reader and two
+        string keys here — the same document read as two different mappings.
+        `on:` stays the string key §9.1 declares."""
+        for text in ("true: 1\n", "1: x\n", "01: x\n", "null: x\n",
+                     "~: x\n", "2026-08-03: x\n", "0x10: x\n"):
+            with self.subTest(text=text):
+                with self.assertRaises(ProtocolYamlError) as caught:
+                    loads(text)
+                self.assertIn("non-string", str(caught.exception))
+        self.assertEqual(loads("on: x\nPASS: y\n"), {"on": "x", "PASS": "y"})
+
     def test_rejects_duplicate_keys(self) -> None:
         with self.assertRaises(ProtocolYamlError) as caught:
             loads("a: 1\na: 2\n")
@@ -315,6 +328,15 @@ class DumpsTest(unittest.TestCase):
             with self.subTest(fixture=path.name):
                 data = loads(path.read_text(encoding="utf-8"))
                 self.assertEqual(loads(dumps(data)), data)
+
+    def test_refuses_to_write_a_key_that_would_resolve_away(self) -> None:
+        """The emitting half: this subset has no quoted keys, so a key
+        another reader would retype is one the module cannot write."""
+        for key in ("true", "42", "null", "2026-08-03"):
+            with self.subTest(key=key):
+                with self.assertRaises(ValueError):
+                    dumps({key: 1})
+        self.assertEqual(dumps({"on": 1}), "on: 1\n")
 
     def test_rejects_values_outside_the_subset(self) -> None:
         for value in ({"a": 1.5}, {"a": {1: "int key"}}, {"bad key": 1}, {"a": b"x"}):
