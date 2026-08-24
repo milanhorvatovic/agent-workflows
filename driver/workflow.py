@@ -51,6 +51,12 @@ WORKFLOW_INLINE = re.compile(r'[{,][ \t]*[\'"]?workflow[\'"]?[ \t]*:')
 # line — `###`, `###\tname`, and `### name` are all headings, and a scan
 # that knew only the space would let a contract below one of the others
 # bind to a step further up the file.
+# A gate is declared as a bullet in the stage's own `## Gates` section —
+# the exact level-2 heading, bounded by the next one, so a `### Gates` or
+# an inline mention does not open it and a bullet under `## Notes` is not
+# a gate.
+GATES_HEADING = re.compile(r"^## Gates[ \t]*$", re.MULTILINE)
+GATE_BULLET = re.compile(r"^- \*\*(?P<id>[a-z][a-z0-9-]*)\*\*", re.MULTILINE)
 H3_HEADING = re.compile(r"^###(?=[ \t]|$)", re.MULTILINE)
 H2_HEADING = re.compile(r"^##(?=[ \t]|$)", re.MULTILINE)
 # One fence model, the conformance suite's: either marker, three or more,
@@ -331,6 +337,11 @@ def _declares_workflow(body: str) -> bool:
         rest = _without_comment(_blank_quoted(opening.group("rest")))
         if _flow_has_direct_key(rest, "workflow"):
             return True
+        # `metadata: |` or `metadata: >` opens a block scalar, and what is
+        # indented under it is that string's content — a conforming reader
+        # sees `metadata` as text and no declaration at all.
+        if rest.lstrip(WHITESPACE)[:1] in ("|", ">"):
+            continue
         if _block_has_direct_key(body[opening.end() :], "workflow"):
             return True
     return False
@@ -454,6 +465,18 @@ def _load_stage(framework: Path, slug: str) -> Stage:
         raise WorkflowError(f"{rel}: sequence step {member_id!r} has no step block")
     for step_id in sorted(set(steps) - declared):
         raise WorkflowError(f"{rel}: step {step_id!r} is not in the sequence")
+    # §9.4 asks parity of both kinds, and a gate's declaration is its bullet:
+    # a sequence naming a gate the stage does not declare blocks the run at a
+    # decision nothing describes, and one the stage declares but the sequence
+    # omits is a decision population can carry no record for.
+    sequenced_gates = {member.id for member in members if member.kind == "gate"}
+    declared_gates = _gates(text)
+    for gate_id in sorted(sequenced_gates - declared_gates):
+        raise WorkflowError(
+            f"{rel}: sequence names gate {gate_id!r}, which the stage does not declare"
+        )
+    for gate_id in sorted(declared_gates - sequenced_gates):
+        raise WorkflowError(f"{rel}: gate {gate_id!r} is missing from the sequence")
     return Stage(name=slug, members=members, steps=steps)
 
 
@@ -523,6 +546,23 @@ def _check_protocol(block: dict, rel: str, line: int) -> None:
         )
 
 
+def _gates(text: str) -> set[str]:
+    """Every gate the stage declares, from its `## Gates` section alone.
+
+    Fenced code is masked first, so an example carrying the heading is not a
+    second section and its bullets are not gates, and the section ends at the
+    next level-2 heading — stages place `## Notes` after it.
+    """
+    masked = _mask_fences(text)
+    opening = GATES_HEADING.search(masked)
+    if opening is None:
+        return set()
+    tail = masked[opening.end() :]
+    boundary = tail.find("\n## ")
+    section = tail if boundary == -1 else tail[:boundary]
+    return {match.group("id") for match in GATE_BULLET.finditer(section)}
+
+
 def _members(text: str, rel: str) -> tuple[Member, ...]:
     sequences = []
     for _, workflow in _blocks(text, rel):
@@ -589,6 +629,7 @@ def _steps(text: str, rel: str) -> dict[str, StepDeclaration]:
     h3_offsets = [m.start() for m in H3_HEADING.finditer(masked)]
     h2_offsets = [m.start() for m in H2_HEADING.finditer(masked)]
     steps: dict[str, StepDeclaration] = {}
+    contracts_under: dict[int, int] = {}
     for offset, workflow in _blocks(text, rel):
         if "step" not in workflow:
             continue
@@ -632,6 +673,25 @@ def _steps(text: str, rel: str) -> dict[str, StepDeclaration]:
                 f"heading that says {heading_role!r}"
             )
         steps[step_id] = step
+        contracts_under[nearest_valid] = contracts_under.get(nearest_valid, 0) + 1
+    # The reverse association, which tracking contracts alone cannot see: a
+    # heading with no contract is a step the prose declares and the driver
+    # has no role or handoff to execute, and two headings sharing an id are
+    # a record population could not tell apart — the sequence naming it
+    # would reach whichever contract happened to associate.
+    for offset, step_id, _ in headings:
+        if contracts_under.get(offset, 0) == 0:
+            raise WorkflowError(
+                f"{rel}: step {step_id!r} declares no contract block (spec §9.1)"
+            )
+    seen: set[str] = set()
+    for _, step_id, _ in headings:
+        if step_id in seen:
+            raise WorkflowError(
+                f"{rel}: step {step_id!r} is declared by more than one heading "
+                f"(spec §10 carries one record per step)"
+            )
+        seen.add(step_id)
     return steps
 
 

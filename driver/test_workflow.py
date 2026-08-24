@@ -213,6 +213,34 @@ class SyntheticTreeTest(unittest.TestCase):
             load_workflow(self.framework, "demo")
         self.assertIn("closed the step section", str(caught.exception))
 
+    def test_gates_and_the_sequence_must_name_the_same_members(self) -> None:
+        """§9.4 asks parity of both kinds: a sequenced gate the stage does
+        not declare blocks the run at a decision nothing describes, and a
+        declared one the sequence omits is a decision no record can carry."""
+        for name, stage in {
+            "sequenced but undeclared": STAGE.replace("- **check** — a gate.", "- **other** — a gate."),
+            "declared but unsequenced": STAGE.replace(
+                "- **check** — a gate.", "- **check** — a gate.\n- **extra** — a gate."
+            ),
+        }.items():
+            with self.subTest(case=name):
+                self.write("workflows/stages/demo.md", stage)
+                with self.assertRaises(WorkflowError) as caught:
+                    load_workflow(self.framework, "demo")
+                self.assertIn("gate", str(caught.exception))
+
+    def test_a_heading_and_its_contract_associate_one_to_one(self) -> None:
+        """A heading with no contract is a step the prose declares and the
+        driver has no role or handoff to execute; two headings sharing an id
+        are a record population could not tell apart."""
+        headless = STAGE.replace(
+            "## Gates", "### spare (analyst)\n\nProse with no contract.\n\n## Gates"
+        )
+        self.write("workflows/stages/demo.md", headless)
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "demo")
+        self.assertIn("declares no contract block", str(caught.exception))
+
     def test_a_sequence_step_without_a_block_is_an_error(self) -> None:
         self.write(
             "workflows/stages/demo.md",
