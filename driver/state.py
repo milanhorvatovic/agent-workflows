@@ -541,6 +541,14 @@ def _validate(data: object, path: Path) -> RunState:
     ):
         raise bad("artifacts is not a list of paths")
 
+    # §10's enrichment is a mapping or null, and this module is the one
+    # writer of the file: a string or a list accepted here is a string or a
+    # list `save` writes back, so the driver would be the source of the
+    # schema-invalid state rather than merely the reader of it.
+    instrumentation = data.get("instrumentation")
+    if "instrumentation" in data and not isinstance(instrumentation, (dict, type(None))):
+        raise bad(f"instrumentation is not a mapping: {instrumentation!r}")
+
     imports = _validate_imports(data, run_id, set(artifacts_data), bad)
 
     return RunState(

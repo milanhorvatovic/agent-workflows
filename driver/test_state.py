@@ -361,6 +361,11 @@ class LoadValidationTest(StateTestCase):
                 "steps:\n  - id: make\n    status: active\n  - id: also\n    status: active\n",
             ),
             "drive-relative id": self.BASE.replace("id: demo-run", 'id: "C:demo"'),
+            # §10's enrichment is a mapping or null, and this module writes
+            # back what it accepts — so a scalar here would make the driver
+            # the source of the invalid state, not just its reader.
+            "instrumentation is a scalar": self.BASE + 'instrumentation: "tokens"\n',
+            "instrumentation is a list": self.BASE + "instrumentation:\n  - 1\n",
             # §11 again, on the run's own record of what it executes under:
             # resuming state from a version this driver does not implement
             # is guessing at statuses, edges, and record order.
