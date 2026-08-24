@@ -170,6 +170,18 @@ def _resume(config: Config, run_id: str) -> int:
     except run_state.StateError as error:
         print(f"driver: {error}", file=sys.stderr)
         return 2
+    # The composition is read on the way in, not only to report a position:
+    # §8.2 ties a done step to its manifested output, and a document that
+    # breaks that tie would otherwise be answered "nothing left to run" —
+    # a run reported finished that the conformance suite rejects. Routing
+    # refuses to act on such a record already; reporting is the other place
+    # the same document is trusted.
+    try:
+        workflow = load_workflow(config.framework_dir, loaded.workflow)
+        run_state.check_manifest(loaded, workflow)
+    except (WorkflowError, run_state.StateError) as error:
+        print(f"driver: {error}", file=sys.stderr)
+        return 2
     return _report_position(loaded)
 
 
@@ -244,8 +256,29 @@ def _status(config: Config) -> int:
     if dangling is not None:
         print(f"driver: {dangling} is a dangling link", file=sys.stderr)
         return 2
+    # The descriptor is this function's to close: `scandir` reads one it is
+    # given without taking ownership, so exhausting the iterator leaves it
+    # open — twenty `status` calls in one process leaked twenty of them.
     try:
-        scan = os.scandir(_bound_runs(config.runs_dir))
+        bound = _bound_runs(config.runs_dir)
+    except FileNotFoundError:
+        return 0
+    except NotADirectoryError:
+        print(f"driver: {config.runs_dir} is not a directory", file=sys.stderr)
+        return 2
+    except OSError as error:
+        print(f"driver: cannot read {config.runs_dir}: {error}", file=sys.stderr)
+        return 2
+    try:
+        return _list_runs(config, bound)
+    finally:
+        if isinstance(bound, int):
+            os.close(bound)
+
+
+def _list_runs(config: Config, bound: int | Path) -> int:
+    try:
+        scan = os.scandir(bound)
     except FileNotFoundError:
         # True absence: the first run creates the directory, so nothing to
         # list is not a defect.
