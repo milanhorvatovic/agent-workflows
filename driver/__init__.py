@@ -31,6 +31,21 @@ def implements(version: str) -> bool:
     the load fails on the declaration it is missing, which says more than
     its version number would.
     """
-    major, minor = (int(part) for part in version.split("."))
-    implemented_major, implemented_minor = (int(part) for part in PROTOCOL.split("."))
+    major, minor = _components(version)
+    implemented_major, implemented_minor = _components(PROTOCOL)
     return major == implemented_major and minor <= implemented_minor
+
+
+def _components(version: str) -> tuple[tuple[int, str], tuple[int, str]]:
+    """A version as two comparable components, without converting either to
+    an integer. The schema puts no ceiling on a component's digits, and
+    Python 3.11 caps `int()` at 4300 of them — so a version this shape but
+    absurdly long would raise where every other malformed one is reported,
+    escaping the workflow and state errors that carry a defect to the exit
+    code. Length then digits orders the same way the numbers would, once
+    the leading zeros the schema permits are gone.
+    """
+    major, _, minor = version.partition(".")
+    return tuple(  # type: ignore[return-value]
+        (len(part.lstrip("0")), part.lstrip("0")) for part in (major, minor)
+    )

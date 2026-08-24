@@ -332,6 +332,24 @@ class SyntheticTreeTest(unittest.TestCase):
         self.assertIn("workflows/demo.md", str(caught.exception))
         self.assertIn("this driver implements", str(caught.exception))
 
+    def test_a_version_is_compared_without_converting_it(self) -> None:
+        """The schema puts no ceiling on a component's digits and Python
+        caps `int()` at 4300 of them, so a version this shape but absurdly
+        long has to be reported like any other rather than raising past
+        every handler that carries a defect to an exit code."""
+        from driver import implements
+
+        self.assertFalse(implements("0." + "1" * 5000))
+        self.assertTrue(implements("0." + "0" * 5000 + "2"))
+        self.assertTrue(implements("0.02"))
+        self.write(
+            "workflows/stages/demo.md",
+            STAGE.replace('protocol: "0.2"', 'protocol: "0.%s"' % ("1" * 5000), 1),
+        )
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "demo")
+        self.assertIn("this driver implements", str(caught.exception))
+
     def test_an_older_minor_still_loads(self) -> None:
         """Refusing what the driver does not implement is the rule; an
         earlier minor is not that, and where its shapes differ the load
