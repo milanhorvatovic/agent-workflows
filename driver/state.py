@@ -541,6 +541,24 @@ def check_records(state: RunState, workflow: Workflow) -> None:
                 f"the composed sequences declare it before (spec §10)"
             )
         position = index + 1
+    # §10 gives the two working statuses to different kinds: `active` is the
+    # record of the step currently running, and `blocked` is a gate waiting
+    # on its outcome. A step marked `blocked` or a gate marked `active` is a
+    # position neither path can advance — `start_step` refuses a record the
+    # composition declares no step for, and the gate handler will not find a
+    # decision to make on a step — so a resume would land there and stop.
+    for record in state.steps:
+        kind = workflow.member_kind(record.id)
+        if record.status == "blocked" and kind != "gate":
+            raise StateError(
+                f"step {record.id!r} is blocked, and `blocked` is a gate waiting "
+                f"on its outcome (spec §7, §10)"
+            )
+        if record.status == "active" and kind != "step":
+            raise StateError(
+                f"gate {record.id!r} is active, and `active` is the step currently "
+                f"running (spec §10)"
+            )
     if accepted:
         recorded = {record.id for record in state.steps}
         missing = [member for member in order if member not in recorded]

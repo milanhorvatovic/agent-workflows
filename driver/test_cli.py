@@ -297,6 +297,34 @@ class CliTest(unittest.TestCase):
                 self.assertEqual(out, "")
                 self.assertIn("gate 'check'", err)
 
+    def test_resume_refuses_a_status_the_member_kind_does_not_own(self) -> None:
+        """§10 gives the two working statuses to different kinds: `active`
+        is the step currently running, `blocked` a gate waiting on its
+        outcome. Either on the wrong kind is a position neither path can
+        advance, so a resume would land there and stop."""
+        self.write_framework()
+        self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        state_path = self.base / "runs" / "2026-08-17-x" / "workflow-state.yaml"
+        original = state_path.read_text(encoding="utf-8")
+        for name, document in {
+            "a step marked blocked": original.replace(
+                "  - id: make\n    status: pending", "  - id: make\n    status: blocked"
+            ),
+            "a gate marked active": original.replace(
+                "  - id: check\n    status: skipped", "  - id: check\n    status: active"
+            ),
+        }.items():
+            with self.subTest(case=name):
+                state_path.write_text(document, encoding="utf-8")
+                code, out, err = self.invoke(
+                    "resume", "2026-08-17-x", "--config", str(self.config_path)
+                )
+                self.assertEqual(code, 2)
+                self.assertEqual(out, "")
+                self.assertTrue("is blocked" in err or "is active" in err, err)
+
     def test_resume_without_a_run_id_is_a_usage_error(self) -> None:
         with contextlib.redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit) as caught:
