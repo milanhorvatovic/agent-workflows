@@ -25,10 +25,40 @@ import re
 
 INDENT = 2
 
-# YAML 1.2 core scalars the subset resolves; everything else plain is a string.
-NULLS = frozenset({"null", "~", ""})
-BOOLEANS = {"true": True, "false": False}
-INTEGER = re.compile(r"^-?(0|[1-9][0-9]*)$")
+# YAML 1.2 core resolution: what any conforming reader applies to a plain
+# scalar, and therefore what decides whether a value this module writes comes
+# back as the type it was given. The subset resolves three of core's kinds —
+# null, boolean, decimal integer — in every spelling core gives them, since a
+# document the driver did not write may use any of them. `on`, `yes`, and `On`
+# are deliberately absent: they are booleans in YAML 1.1 and strings in 1.2,
+# and `on:` is the key §9.1 declares.
+CORE_NULL = re.compile(r"^(?:null|Null|NULL|~|)$")
+CORE_BOOL = re.compile(r"^(?:true|True|TRUE|false|False|FALSE)$")
+CORE_INT = re.compile(r"^[-+]?[0-9]+$")
+# Core resolves these too, to types the subset does not carry. They are
+# refused on read rather than returned as text, and quoted on write rather
+# than emitted as a lookalike another reader would resolve away — which is
+# what `protocol: 0.2` was: a string on the way out, a float on the way back,
+# and a document the schema rejects for a type the driver never intended.
+CORE_UNSUPPORTED = re.compile(
+    r"^(?:[-+]?0[xX][0-9a-fA-F]+"  # hexadecimal integer
+    r"|[-+]?0[oO][0-7]+"  # octal integer
+    r"|[-+]?(?:\.[0-9]+|[0-9]+\.[0-9]*)(?:[eE][-+]?[0-9]+)?"  # float with a fraction
+    r"|[-+]?[0-9]+[eE][-+]?[0-9]+"  # float with an exponent
+    r"|[-+]?\.(?:inf|Inf|INF)|\.(?:nan|NaN|NAN))$"  # infinity, not-a-number
+)
+# Not a core kind, and quoted on write all the same: readers in this
+# ecosystem resolve a plain timestamp to a date or a datetime — the
+# conformance suite's does — while §10 declares `at` a string. The
+# asymmetry is deliberate. On write the module must leave nothing a reader
+# can retype, which is why every shipped fixture quotes its timestamps; on
+# read it resolves as 1.2 core does, since a producer writing a plain
+# timestamp under that schema meant the string core gives back.
+TIMESTAMP = re.compile(
+    r"^(?:[0-9]{4}-[0-9]{2}-[0-9]{2}"
+    r"|[0-9]{4}-[0-9]{1,2}-[0-9]{1,2}(?:[Tt]|[ \t]+)[0-9]{1,2}:[0-9]{2}:[0-9]{2}"
+    r"(?:\.[0-9]*)?(?:[ \t]*(?:Z|[-+][0-9]{1,2}(?::[0-9]{2})?))?)$"
+)
 
 # A plain scalar the emitter may leave unquoted: no YAML indicator where it
 # could change meaning — a leading `{`, `[`, or `(` opens flow syntax, so a
@@ -239,12 +269,14 @@ def _parse_scalar(token: str, number: int) -> object:
         raise ProtocolYamlError(
             number, f"plain scalar carries a mapping indicator: {token!r}"
         )
-    if token in NULLS:
+    if CORE_NULL.match(token):
         return None
-    if token in BOOLEANS:
-        return BOOLEANS[token]
-    if INTEGER.match(token):
+    if CORE_BOOL.match(token):
+        return token.lower() == "true"
+    if CORE_INT.match(token):
         return int(token)
+    if CORE_UNSUPPORTED.match(token):
+        raise ProtocolYamlError(number, f"scalar type outside the subset: {token!r}")
     return token
 
 
@@ -323,6 +355,19 @@ def _check_key(key: object) -> None:
         raise ValueError(f"not a plain key: {key!r}")
 
 
+def _resolves_as_non_string(value: str) -> bool:
+    """Whether a conforming reader would resolve this text as something
+    other than the string it is. Such a value has to be quoted, or the
+    document says one thing to this module and another to everyone else."""
+    return bool(
+        CORE_NULL.match(value)
+        or CORE_BOOL.match(value)
+        or CORE_INT.match(value)
+        or CORE_UNSUPPORTED.match(value)
+        or TIMESTAMP.match(value)
+    )
+
+
 def _emit_scalar(value: object) -> str:
     if value is None:
         return "null"
@@ -344,9 +389,7 @@ def _emit_scalar(value: object) -> str:
         raise TypeError(f"not a subset value: {type(value).__name__}")
     if (
         PLAIN_SAFE.match(value)
-        and value not in NULLS
-        and value not in BOOLEANS
-        and not INTEGER.match(value)
+        and not _resolves_as_non_string(value)
         and not value.endswith(" ")
         and ": " not in value
         # A trailing colon opens a mapping wherever a value may start one:

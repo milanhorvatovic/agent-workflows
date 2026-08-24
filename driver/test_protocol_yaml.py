@@ -50,6 +50,24 @@ class LoadsTest(unittest.TestCase):
         data = loads("on:\n  PASS: next-step\n  FAIL: fix-step\n")
         self.assertEqual(data, {"on": {"PASS": "next-step", "FAIL": "fix-step"}})
 
+    def test_resolves_every_core_spelling(self) -> None:
+        """Core gives each kind more than one spelling, and a document the
+        driver did not write may use any of them."""
+        self.assertEqual(
+            loads("a: True\nb: TRUE\nc: False\nd: NULL\ne: Null\nf: ~\ng: +1\nh: 007\n"),
+            {"a": True, "b": True, "c": False, "d": None, "e": None, "f": None,
+             "g": 1, "h": 7},
+        )
+
+    def test_rejects_core_kinds_the_subset_does_not_carry(self) -> None:
+        """Returned as text, a float or a hex integer is a value this module
+        reads as one type and every other reader as another."""
+        for token in ("0x10", "0o17", "0.2", "1e3", ".5", "-.inf", ".nan"):
+            with self.subTest(token=token):
+                with self.assertRaises(ProtocolYamlError) as caught:
+                    loads(f"a: {token}\n")
+                self.assertIn("outside the subset", str(caught.exception))
+
     def test_resolves_core_scalars_only(self) -> None:
         data = loads(
             "a: true\nb: false\nc: null\nd: ~\ne:\nf: 42\ng: -7\nh: yes\ni: On\n"
@@ -197,6 +215,43 @@ class DumpsTest(unittest.TestCase):
         self.assertEqual(loads(text), data)
         self.assertIn('a: "true"', text)
         self.assertIn('b: "42"', text)
+
+    def test_quotes_every_string_core_would_resolve_away(self) -> None:
+        """The one that mattered: `protocol: "0.2"` emitted plain is a float
+        to every conforming reader, so the state the driver writes says one
+        thing to this module and another — schema-invalid — to everyone
+        else. Quoting is what keeps the type the value was given."""
+        for value in ("0.2", "True", "TRUE", "NULL", "Null", "~", "+1", "007",
+                      "0x10", "0o17", "1e3", ".inf", ".nan", ""):
+            with self.subTest(value=value):
+                text = dumps({"a": value})
+                self.assertEqual(text, f'a: "{value}"\n')
+                self.assertEqual(loads(text), {"a": value})
+
+    def test_quotes_a_timestamp_another_reader_would_resolve(self) -> None:
+        """Not a core kind, quoted all the same: readers in this ecosystem —
+        the conformance suite's among them — resolve a plain timestamp to a
+        datetime, while §10 declares `at` a string. A run id that merely
+        contains a date is not one, and stays plain."""
+        text = dumps({"at": "2026-08-03T13:40:00Z", "on": "2026-08-03",
+                      "id": "2026-08-03-x"})
+        self.assertEqual(
+            text, 'at: "2026-08-03T13:40:00Z"\non: "2026-08-03"\nid: 2026-08-03-x\n'
+        )
+
+    def test_a_saved_run_state_keeps_every_scalar_its_type(self) -> None:
+        """The whole point of the two rules above, on the documents that
+        matter: what the driver writes back must carry the same types the
+        fixture did, `protocol` and `at` as the strings §10 declares."""
+        for path in sorted(
+            (REPO / "protocol" / "schemas" / "examples").glob("run-state.valid*.yaml")
+        ):
+            with self.subTest(fixture=path.name):
+                emitted = dumps(loads(path.read_text(encoding="utf-8")))
+                self.assertIn('protocol: "', emitted)
+                for line in emitted.splitlines():
+                    if line.strip().startswith("at:"):
+                        self.assertIn('at: "', line)
 
     def test_leaves_ids_plain_and_quotes_placeholder_paths(self) -> None:
         """A leading `{` opens flow syntax, so `{run}/…` paths are quoted —
