@@ -302,6 +302,32 @@ class TransitionTest(StateTestCase):
             },
         )
 
+    def test_a_re_entry_never_invalidates_what_precedes_it(self) -> None:
+        """§10 bounds what §7 derives: "its destination MUST precede every
+        record it invalidates". The shipped planning stage is where the two
+        rules meet — `plan-revise` both reads and rewrites the plan, so a
+        dependency walk with no bound reaches `plan-create`, which produced
+        it first and sits ahead of it in the record order, and a resume
+        would pick that over the destination the edge named."""
+        workflow = load_workflow(REPO, "feature")
+        records = [
+            state.StepRecord(id=member.id, status="done")
+            for stage in workflow.stages
+            for member in stage.members
+        ]
+        run = state.RunState(
+            run_id="planning-run", workflow="feature", protocol="0.2",
+            steps=records, gates=[], artifacts=[],
+        )
+        invalidated = state._invalidated_by(run, workflow, "plan-revise")
+        order = [record.id for record in records]
+        self.assertNotIn("plan-create", invalidated)
+        for step_id in invalidated:
+            self.assertGreater(order.index(step_id), order.index("plan-revise"))
+        # What the revision does feed is still invalidated.
+        self.assertIn("plan-validate", invalidated)
+        self.assertIn("plan-approval", invalidated)
+
     def test_a_re_entry_leaves_a_skipped_record_skipped(self) -> None:
         """What a class excluded, or a condition has not fired, is not work
         the revision invalidated."""

@@ -607,6 +607,19 @@ def _invalidated_by(state: RunState, workflow: Workflow, destination: str) -> se
                 consumers.setdefault(_phase_free(declared_input.artifact), set()).add(
                     step_id
                 )
+    # §10 bounds the set as well as §7 deriving it: "its destination MUST
+    # precede every record it invalidates". Without that bound the walk runs
+    # backwards through the declarations — the planning stage's `plan-revise`
+    # both reads and rewrites the plan, so re-entering it reached
+    # `plan-create`, which produced the plan before it and sits ahead of it
+    # in the record order, and a resume would then have picked `plan-create`
+    # over the destination the edge named. Only what ran after the
+    # destination can be what its output fed, and only a `done` record ran
+    # at all — the two together are what "what actually ran on the
+    # artifact" means once the order is read as well as the declarations.
+    order = [step.id for step in state.steps]
+    after = set(order[order.index(destination) + 1 :]) if destination in order else set()
+    ran = {step.id for step in state.steps if step.status == "done"}
     invalidated: set[str] = set()
     pending = [destination]
     while pending:
@@ -614,7 +627,7 @@ def _invalidated_by(state: RunState, workflow: Workflow, destination: str) -> se
         if artifact is None:
             continue
         for consumer in sorted(consumers.get(artifact, ())):
-            if consumer != destination and consumer not in invalidated:
+            if consumer in after and consumer in ran and consumer not in invalidated:
                 invalidated.add(consumer)
                 pending.append(consumer)
     for stage in workflow.stages:
@@ -622,7 +635,7 @@ def _invalidated_by(state: RunState, workflow: Workflow, destination: str) -> se
         if destination not in ids:
             continue
         for member in stage.members[ids.index(destination) + 1 :]:
-            if member.kind == "gate":
+            if member.kind == "gate" and member.id in after:
                 invalidated.add(member.id)
     return invalidated
 
