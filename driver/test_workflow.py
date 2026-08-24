@@ -464,6 +464,9 @@ class SyntheticTreeTest(unittest.TestCase):
             # whatever opened at the first column instead.
             "metadata:\n  labels: [one, two]\n",
             "metadata: {annotations: 'x'}\n",
+            # A comment mentioning the word is a comment, inline as well as
+            # on a line of its own.
+            "metadata: # {workflow: demo}\n  labels: [one, two]\n",
             "metadata:\n  labels: [one, two]\n  # workflow: not a key\n",
             "metadata:\n  labels: ['workflow: x']\n",
             "metadata:\n  labels: [a, b]\nother:\n  workflow: 'x'\n",
@@ -497,6 +500,8 @@ class SyntheticTreeTest(unittest.TestCase):
             # inside a plain scalar is an ordinary character.
             "metadata:\n# a comment\n  workflow: [one, two]\n",
             "metadata: {note: don't, workflow: [one, two]}\n",
+            # A comment after a real key does not unmake the key.
+            "metadata: {workflow: [one, two]} # {workflow: no}\n",
             # The one that carries both: a quoted value mentioning the word
             # and a real key beside it.
             'metadata: {name: "workflow: x", workflow: [one, two]}\n',

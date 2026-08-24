@@ -212,6 +212,20 @@ def _check_edges(stages: tuple[Stage, ...]) -> None:
                     )
 
 
+def _without_comment(text: str) -> str:
+    """The text up to an unquoted comment, quoted spans already blanked.
+
+    The block-form scan skips comment lines and the inline one read the
+    whole of the metadata line, so `metadata: # {workflow: demo}` — a
+    comment mentioning the word — read as a flow declaration and stopped
+    composition over the example carrying it.
+    """
+    for index, character in enumerate(text):
+        if character == "#" and (index == 0 or text[index - 1] in WHITESPACE):
+            return text[:index]
+    return text
+
+
 def _blank_quoted(text: str) -> str:
     """The text with every quoted span replaced by spaces, offsets kept.
 
@@ -278,7 +292,7 @@ def _declares_workflow(body: str) -> bool:
         # is a string that mentions the word, and reading it as a flow key
         # would report an example as a broken declaration. They are blanked
         # before the flow key is looked for, since a scalar cannot hold one.
-        if WORKFLOW_INLINE.search(_blank_quoted(opening.group("rest"))):
+        if WORKFLOW_INLINE.search(_without_comment(_blank_quoted(opening.group("rest")))):
             return True
         for line in body[opening.end() :].split("\n")[1:]:
             if not line.strip():
