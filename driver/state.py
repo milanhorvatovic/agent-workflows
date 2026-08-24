@@ -136,6 +136,15 @@ def create_run(
     never share one (§8.1)."""
     if not PLAIN_NAME.match(run_id):
         raise StateError(f"not a run id: {run_id!r}")
+    # The version is written into the document and `load` holds every
+    # document to it, so an unchecked one here creates a durable run this
+    # same module refuses to read back — a directory and a state file that
+    # exist and cannot be resumed.
+    if not PROTOCOL_VERSION.match(protocol) or not implements(protocol):
+        raise StateError(
+            f"cannot create a run under protocol {protocol!r}: this driver "
+            f"implements {PROTOCOL} (spec §11)"
+        )
     run_dir = runs_dir / run_id
     with _runs_directory(runs_dir, create=True) as runs:
         try:
@@ -287,6 +296,13 @@ def open_run(runs_dir: Path, run_id: str) -> tuple[Path, RunState]:
     while every path it resolves stayed under this directory, which is the
     identity §8.1 gives each run.
     """
+    # The same guard creation applies, and for the same reason: the id joins
+    # under the runs directory, so `../other` would leave it before any link
+    # check or bound descriptor could have an opinion. The command surface
+    # validates its own argument, but containment cannot rest on the caller
+    # being that one.
+    if not PLAIN_NAME.match(run_id):
+        raise StateError(f"not a run id: {run_id!r}")
     run_dir = runs_dir / run_id
     with _runs_directory(runs_dir) as runs:
         if is_link(run_dir):
@@ -688,6 +704,14 @@ def _validate_imports(
     if not isinstance(entries, list) or not entries:
         raise bad("imports must be a non-empty list when present (spec §10)")
     records: list[ImportRecord] = []
+    # §8.6 and §10 both bound the list, and the conformance suite holds the
+    # shipped documents to each: one record per imported artifact, since a
+    # second gives that artifact two lineages and no single source to read,
+    # and one source run for the whole list, since artifacts from several
+    # never descended from one another. Accepted here, either would be
+    # written back by the next save as validated lineage.
+    seen: set[str] = set()
+    sources: set[str] = set()
     for entry in entries:
         if not isinstance(entry, dict) or sorted(entry) != ["artifact", "at", "from"]:
             raise bad(f"import record must carry artifact, from, at: {entry!r}")
@@ -702,6 +726,15 @@ def _validate_imports(
             raise bad(f"import {artifact!r} names this run as its source (spec §8.6)")
         if not _is_timestamp(at):
             raise bad(f"import {artifact!r} without an RFC 3339 timestamp: {at!r}")
+        if artifact in seen:
+            raise bad(f"import {artifact!r} has more than one record (spec §10)")
+        seen.add(artifact)
+        sources.add(source)
+        if len(sources) > 1:
+            raise bad(
+                f"imports name {len(sources)} source runs "
+                f"({', '.join(sorted(sources))}) — a run imports from one (spec §8.6)"
+            )
         records.append(ImportRecord(artifact=artifact, from_run=source, at=at))
     return records
 

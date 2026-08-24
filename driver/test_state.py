@@ -64,6 +64,25 @@ class CreateRunTest(StateTestCase):
         self.assertTrue((run_dir / state.STATE_FILE).is_file())
         self.assertEqual(created.run_id, "2026-08-19-x")
 
+    def test_creating_refuses_a_protocol_it_cannot_load_back(self) -> None:
+        """The version is written into the document and `load` holds every
+        document to it, so an unchecked one leaves a run that exists and
+        cannot be resumed."""
+        for protocol in ("0.9", "1.0", "0.2.0", "", "zero"):
+            with self.subTest(protocol=protocol):
+                with self.assertRaises(state.StateError) as caught:
+                    state.create_run(self.runs, f"run-{abs(hash(protocol))}", self.workflow, protocol)
+                self.assertIn("this driver implements", str(caught.exception))
+
+    def test_opening_refuses_an_id_that_is_not_a_plain_directory_name(self) -> None:
+        """Containment cannot rest on the command surface being the only
+        caller: the id joins under the runs directory either way."""
+        for run_id in ("../other", "a/b", "..", "C:run"):
+            with self.subTest(run_id=run_id):
+                with self.assertRaises(state.StateError) as caught:
+                    state.open_run(self.runs, run_id)
+                self.assertIn("not a run id", str(caught.exception))
+
     def test_refuses_an_id_that_is_not_a_plain_directory_name(self) -> None:
         for run_id in (
             "../x", "a/b", "C:run", "x.", "x ", "a\x85b", "..",
@@ -298,6 +317,22 @@ class LoadValidationTest(StateTestCase):
                 "    from: demo-run\n    at: \"2026-08-16T09:00:00Z\"\n"
             ),
             "empty imports": ('artifacts: []\nimports: []\n'),
+            # §8.6 and §10 bound the list, and the suite holds the shipped
+            # documents to both: one record per artifact, one source run.
+            "one artifact twice": (
+                'artifacts:\n  - "{run}/brief.md"\n'
+                'imports:\n  - artifact: "{run}/brief.md"\n'
+                '    from: earlier-run\n    at: "2026-08-16T09:00:00Z"\n'
+                '  - artifact: "{run}/brief.md"\n'
+                '    from: earlier-run\n    at: "2026-08-16T10:00:00Z"\n'
+            ),
+            "two source runs": (
+                'artifacts:\n  - "{run}/brief.md"\n  - "{run}/plan.md"\n'
+                'imports:\n  - artifact: "{run}/brief.md"\n'
+                '    from: earlier-run\n    at: "2026-08-16T09:00:00Z"\n'
+                '  - artifact: "{run}/plan.md"\n'
+                '    from: other-run\n    at: "2026-08-16T10:00:00Z"\n'
+            ),
             "import timestamp is prose": (
                 'artifacts:\n  - "{run}/brief.md"\n'
                 'imports:\n  - artifact: "{run}/brief.md"\n'
