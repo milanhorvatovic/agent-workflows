@@ -503,6 +503,34 @@ class LoadValidationTest(StateTestCase):
             (outside / state.STATE_FILE).read_text(encoding="utf-8"), self.BASE
         )
 
+    def test_neither_creating_nor_resuming_follows_a_linked_runs_directory(self) -> None:
+        """The runs segment is derived by the driver, not configured, so a
+        link in its place redirects every run the artifact root should hold
+        — and binding the run alone does not notice, its child being an
+        ordinary directory inside the link's target."""
+        outside = self.base / "elsewhere"
+        (outside / "demo-run").mkdir(parents=True)
+        (outside / "demo-run" / state.STATE_FILE).write_text(self.BASE, encoding="utf-8")
+        self.runs.parent.mkdir(parents=True, exist_ok=True)
+        self.symlink(self.runs, outside)
+        with self.assertRaises(state.StateError) as caught:
+            state.open_run(self.runs, "demo-run")
+        self.assertIn("not the runs directory", str(caught.exception))
+        with self.assertRaises(state.StateError) as caught:
+            state.create_run(self.runs, "2026-08-24-x", self.workflow, "0.2")
+        self.assertIn("not the runs directory", str(caught.exception))
+        self.assertFalse((outside / "2026-08-24-x").exists())
+
+    def test_creating_refuses_a_dangling_runs_link_before_it_creates(self) -> None:
+        """The refusal comes before the mkdir that would otherwise follow
+        the link and put the first run wherever it points."""
+        self.runs.parent.mkdir(parents=True, exist_ok=True)
+        self.symlink(self.runs, self.base / "nowhere")
+        with self.assertRaises(state.StateError) as caught:
+            state.create_run(self.runs, "2026-08-24-x", self.workflow, "0.2")
+        self.assertIn("not the runs directory", str(caught.exception))
+        self.assertFalse((self.base / "nowhere").exists())
+
     def test_open_run_refuses_state_that_names_another_run(self) -> None:
         """The id is the run's identity (§8.1): a document naming another
         run would be reported as that run while every path it resolves stays

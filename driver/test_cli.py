@@ -114,6 +114,14 @@ class CliTest(unittest.TestCase):
         self.assertIn("have not landed", err)
 
     def test_resume_on_a_missing_run_is_a_defect(self) -> None:
+        """Reported at whichever level is actually absent: the runs root
+        the artifact root should hold, or the state inside a run."""
+        code, _, err = self.invoke(
+            "resume", "2026-08-12-bugfix-one", "--config", str(self.config_path)
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("cannot open", err)
+        (self.base / "runs").mkdir()
         code, _, err = self.invoke(
             "resume", "2026-08-12-bugfix-one", "--config", str(self.config_path)
         )

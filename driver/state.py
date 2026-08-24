@@ -136,12 +136,21 @@ def create_run(
     never share one (§8.1)."""
     if not PLAIN_NAME.match(run_id):
         raise StateError(f"not a run id: {run_id!r}")
-    runs_dir.mkdir(parents=True, exist_ok=True)
     run_dir = runs_dir / run_id
-    try:
-        run_dir.mkdir()
-    except FileExistsError:
-        raise StateError(f"run {run_id!r} already exists") from None
+    with _runs_directory(runs_dir, create=True) as runs:
+        try:
+            if runs is None:
+                run_dir.mkdir()
+            else:
+                os.mkdir(run_id, dir_fd=runs)
+        except FileExistsError:
+            raise StateError(f"run {run_id!r} already exists") from None
+        return _bootstrap(run_dir, run_id, workflow, protocol, runs)
+
+
+def _bootstrap(
+    run_dir: Path, run_id: str, workflow: Workflow, protocol: str, runs: int | None
+) -> tuple[Path, RunState]:
     entry_stage = workflow.stages[0]
     state = RunState(
         run_id=run_id,
@@ -155,7 +164,7 @@ def create_run(
         artifacts=[],
     )
     try:
-        save(state, run_dir)
+        save(state, run_dir, runs)
     except BaseException:
         # The directory exists only to hold this state, and §8.1 makes a
         # pre-existing one a refusal — so leaving an empty one behind after
@@ -164,7 +173,10 @@ def create_run(
         # Only an empty directory is removed, nothing else having written
         # into it yet, and the failure itself is what propagates.
         try:
-            run_dir.rmdir()
+            if runs is None:
+                run_dir.rmdir()
+            else:
+                os.rmdir(run_dir.name, dir_fd=runs)
         except OSError:
             pass
         raise
@@ -183,7 +195,40 @@ _NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 
 
 @contextlib.contextmanager
-def _run_directory(run_dir: Path):
+def _runs_directory(runs_dir: Path, create: bool = False):
+    """Hold `{artifacts}/runs` open and yield its descriptor, or `None`.
+
+    The runs segment is the spec's, derived by the driver rather than
+    configured (§8.1), so a link in its place redirects every run the
+    artifact root is supposed to contain — and binding the run directory
+    alone does not notice: the child of a linked `runs` is an ordinary
+    directory inside the target, which passes its own link check and its
+    own `O_NOFOLLOW` open. Where the operator's configured artifact root
+    itself is a link, that is their configuration and not an escape.
+    """
+    # Refused before anything is created: a `runs` link that already points
+    # somewhere would otherwise be followed by the very mkdir that makes the
+    # directory, and the first run would land in the target before any
+    # descriptor was opened to notice.
+    if is_link(runs_dir):
+        raise StateError(f"{runs_dir} is a link, not the runs directory")
+    if create:
+        runs_dir.mkdir(parents=True, exist_ok=True)
+    if not _BINDS_TO_DIRECTORY:
+        yield None
+        return
+    try:
+        descriptor = os.open(runs_dir, os.O_RDONLY | os.O_DIRECTORY | _NOFOLLOW)
+    except OSError as error:
+        raise StateError(f"cannot open {runs_dir}: {error}") from error
+    try:
+        yield descriptor
+    finally:
+        os.close(descriptor)
+
+
+@contextlib.contextmanager
+def _run_directory(run_dir: Path, runs: int | None = None):
     """Hold the run directory open and yield its descriptor, or `None` where
     the platform cannot bind operations to one.
 
@@ -199,7 +244,14 @@ def _run_directory(run_dir: Path):
     if not _BINDS_TO_DIRECTORY:
         yield None
         return
-    descriptor = os.open(run_dir, os.O_RDONLY | os.O_DIRECTORY | _NOFOLLOW)
+    flags = os.O_RDONLY | os.O_DIRECTORY | _NOFOLLOW
+    # Named relative to the runs descriptor where the caller holds one, so
+    # the whole path from the artifact root down is bound rather than
+    # resolved again — the parent is as re-pointable as the child was.
+    if runs is None:
+        descriptor = os.open(run_dir, flags)
+    else:
+        descriptor = os.open(run_dir.name, flags, dir_fd=runs)
     try:
         yield descriptor
     finally:
@@ -224,18 +276,22 @@ def is_link(path: Path) -> bool:
 def open_run(runs_dir: Path, run_id: str) -> tuple[Path, RunState]:
     """Resolve a run by id under `{artifacts}/runs/` and load its state.
 
-    Two things hold the run to the directory the caller named. The directory
-    itself must not be a link: `status` refuses to list one for the reason
-    that bites here — following it would read, and later write, a run
-    outside the artifact root the id was validated against. And the state
-    must name this run: a copied or corrupt document declaring another id
-    would be reported and resumed as that run while every path it resolves
-    stayed under this directory, which is the identity §8.1 gives each run.
+    Three things hold the run to the directory the caller named. Neither the
+    runs directory nor the run's own may be a link: `status` refuses to list
+    one for the reason that bites here — following either would read, and
+    later write, a run outside the artifact root the id was validated
+    against — and the runs descriptor is what the run's open is named
+    against, so the whole path down from the root is bound rather than
+    resolved twice. And the state must name this run: a copied or corrupt
+    document declaring another id would be reported and resumed as that run
+    while every path it resolves stayed under this directory, which is the
+    identity §8.1 gives each run.
     """
     run_dir = runs_dir / run_id
-    if is_link(run_dir):
-        raise StateError(f"{run_dir} is a link, not a run directory")
-    state = load(run_dir)
+    with _runs_directory(runs_dir) as runs:
+        if is_link(run_dir):
+            raise StateError(f"{run_dir} is a link, not a run directory")
+        state = load(run_dir, runs)
     if state.run_id != run_id:
         raise StateError(
             f"{run_dir / STATE_FILE} names run {state.run_id!r}, not {run_id!r}"
@@ -243,7 +299,7 @@ def open_run(runs_dir: Path, run_id: str) -> tuple[Path, RunState]:
     return run_dir, state
 
 
-def load(run_dir: Path) -> RunState:
+def load(run_dir: Path, runs: int | None = None) -> RunState:
     path = run_dir / STATE_FILE
     if is_link(path):
         raise StateError(f"{path} is a link, not this run's state file")
@@ -252,7 +308,7 @@ def load(run_dir: Path) -> RunState:
         # state file at this one. The state file is the single document this
         # module owns, and a link in either place would hand that ownership
         # to a file outside the run.
-        with _run_directory(run_dir) as directory:
+        with _run_directory(run_dir, runs) as directory:
             target = STATE_FILE if directory is not None else os.fspath(path)
             descriptor = os.open(target, os.O_RDONLY | _NOFOLLOW, dir_fd=directory)
             with os.fdopen(descriptor, "r", encoding="utf-8") as stream:
@@ -270,7 +326,7 @@ def load(run_dir: Path) -> RunState:
     return _validate(data, path)
 
 
-def save(state: RunState, run_dir: Path) -> None:
+def save(state: RunState, run_dir: Path, runs: int | None = None) -> None:
     """One atomic write: temp sibling, then replace. The temp file lands in
     the run directory so the replace never crosses a filesystem boundary."""
     document: dict[str, object] = {"run": _run_mapping(state)}
@@ -285,7 +341,7 @@ def save(state: RunState, run_dir: Path) -> None:
             for record in state.imports
         ]
     text = dumps(document)
-    with _run_directory(run_dir) as directory:
+    with _run_directory(run_dir, runs) as directory:
         if directory is None:
             handle, temp_name = tempfile.mkstemp(
                 prefix=f".{STATE_FILE}.", dir=run_dir, text=False
