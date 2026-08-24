@@ -199,6 +199,18 @@ def _status(config: Config) -> int:
     # later failure is a defect too — exit 1 is reserved for unimplemented
     # commands, so defects land in 2 rather than escaping as tracebacks or
     # hiding as empty output.
+    # A link at the runs directory itself is refused before it is read, as
+    # `run` and `resume` refuse it: following one lists an external
+    # directory's children as this project's runs, and the containment the
+    # other two commands enforce would be contradicted by the one that
+    # reports what exists. A *dangling* link is caught below, where absence
+    # and a broken link arrive as the same error.
+    if run_state.is_link(config.runs_dir) and config.runs_dir.exists():
+        print(
+            f"driver: {config.runs_dir} is a link, not the runs directory",
+            file=sys.stderr,
+        )
+        return 2
     try:
         scan = os.scandir(config.runs_dir)
     except FileNotFoundError:
