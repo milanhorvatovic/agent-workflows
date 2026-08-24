@@ -564,28 +564,71 @@ def route_verdict(state: RunState, workflow: Workflow, step_id: str, verdict: st
     # the disagreement is recorded rather than silently settled.
     if destination.status in ("skipped", "done", "blocked"):
         destination.status = "pending"
-    # §10: a re-entry "invalidates what its output fed by the same write that
-    # starts it", and the record order exists to make that reachable — "its
-    # destination MUST precede every record it invalidates". Resetting the
-    # destination alone left those records `done`, so a resume walked past
-    # them: route a failing plan verdict to `plan-revise` and `plan-validate`
-    # stayed done, so the revised plan reached `plan-approval` unvalidated.
-    # Everything `done` after the destination returns to `pending` in this
-    # same write. A `skipped` record is left as it is — what a class
-    # excluded or a condition has not fired is not work this revision
-    # invalidated — and `blocked` likewise, being a decision still open
+    # §7: a step run again "invalidates what its output fed: the validator
+    # that must re-check it, the gate that must decide again" — and what
+    # that is "differs by route and MUST be read from the stage rather than
+    # assumed", because "resetting a fixed shape would both miss a dependent
+    # and run a step the overlay excludes". Only `done` records move, so a
+    # validator the class skipped "stays `skipped` and is not resurrected by
+    # a rule expecting it", and a `blocked` gate is a decision still open
     # rather than one this write undoes.
-    for step in state.steps[_record_index(state, resolved) + 1 :]:
-        if step.status == "done":
-            step.status = "pending"
+    for step_id in _invalidated_by(state, workflow, resolved):
+        record = next((step for step in state.steps if step.id == step_id), None)
+        if record is not None and record.status == "done":
+            record.status = "pending"
     return resolved
 
 
-def _record_index(state: RunState, step_id: str) -> int:
-    for index, step in enumerate(state.steps):
-        if step.id == step_id:
-            return index
-    raise StateError(f"no record for step {step_id!r}")
+def _invalidated_by(state: RunState, workflow: Workflow, destination: str) -> set[str]:
+    """What a re-entry into `destination` invalidates, read from the stage.
+
+    A step is invalidated where it declares the re-entered output among its
+    inputs — the validator that must re-check it, the classifier that read
+    it — and then whatever consumed *that* step's output in turn, since a
+    dependent's output is as stale as what it was computed from. Intake is
+    §7's own illustration: re-entering `brief-confirm` invalidates
+    `risk-route`, which is no validator but did read the brief.
+
+    A gate declares no inputs and is invalidated by position within its own
+    stage, being "the gate that must decide again" about the artifact its
+    stage just changed.
+
+    `{N}` and `{P}` both stand for a phase in these paths, so both normalize
+    to one token before the comparison: a step reading `{P}` of an artifact
+    family depends on the phase being rewritten as surely as one reading
+    `{N}` does.
+    """
+    produced: dict[str, str] = {}
+    consumers: dict[str, set[str]] = {}
+    for stage in workflow.stages:
+        for step_id, declaration in stage.steps.items():
+            produced[step_id] = _phase_free(declaration.output_artifact)
+            for declared_input in declaration.inputs:
+                consumers.setdefault(_phase_free(declared_input.artifact), set()).add(
+                    step_id
+                )
+    invalidated: set[str] = set()
+    pending = [destination]
+    while pending:
+        artifact = produced.get(pending.pop())
+        if artifact is None:
+            continue
+        for consumer in sorted(consumers.get(artifact, ())):
+            if consumer != destination and consumer not in invalidated:
+                invalidated.add(consumer)
+                pending.append(consumer)
+    for stage in workflow.stages:
+        ids = [member.id for member in stage.members]
+        if destination not in ids:
+            continue
+        for member in stage.members[ids.index(destination) + 1 :]:
+            if member.kind == "gate":
+                invalidated.add(member.id)
+    return invalidated
+
+
+def _phase_free(artifact: str) -> str:
+    return artifact.replace("{N}", "{phase}").replace("{P}", "{phase}")
 
 
 def _resolve_target(state: RunState, workflow: Workflow, target: str) -> str:

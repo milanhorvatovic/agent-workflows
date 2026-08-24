@@ -256,36 +256,51 @@ class TransitionTest(StateTestCase):
         # The skipped conditional gate was routed to, so it re-enters pending.
         self.assertEqual(self.state.record("check").status, "pending")
 
-    def test_a_re_entry_invalidates_what_follows_it(self) -> None:
-        """§10: a re-entry "invalidates what its output fed by the same write
-        that starts it", and the record order is what makes that reachable —
-        the destination precedes every record it invalidates. Resetting the
-        destination alone leaves those records `done` and a resume walks
-        past them, so a revised output reaches the next gate unvalidated."""
+    def build_dependents(self) -> object:
+        """A stage where one later step reads `make`'s output and another
+        does not — which is the difference §7 turns on."""
         stage = STAGE.replace(
-            "        - step: make\n", "        - step: make\n        - step: also\n"
+            "        - step: make\n",
+            "        - step: make\n        - step: reads\n        - step: apart\n",
         ).replace(
             "## Gates",
-            "### also (planner)\n\n```yaml\nmetadata:\n  workflow:\n"
-            '    protocol: "0.2"\n    step:\n      role: planner\n      output:\n'
-            '        artifact: "{run}/also.md"\n      on:\n        PASS: check\n'
-            "        FAIL: make\n```\n\n## Gates",
+            "### reads (validator)\n\n```yaml\nmetadata:\n  workflow:\n"
+            '    protocol: "0.2"\n    step:\n      role: validator\n'
+            '      inputs:\n        - artifact: "{run}/out.md"\n'
+            '      output:\n        artifact: "{run}/verdict.md"\n'
+            "      on:\n        PASS: check\n        FAIL: make\n```\n\n"
+
+            "### apart (planner)\n\n```yaml\nmetadata:\n  workflow:\n"
+            '    protocol: "0.2"\n    step:\n      role: planner\n'
+            '      output:\n        artifact: "{run}/apart.md"\n```\n\n## Gates',
         )
-        (self.base / "workflows" / "stages" / "demo.md").write_text(stage, encoding="utf-8")
-        workflow = load_workflow(self.base, "demo")
-        _, created = state.create_run(self.runs, "invalidate", workflow, "0.2")
-        for step_id in ("make", "also"):
+        (self.base / "workflows" / "stages" / "demo.md").write_text(
+            stage, encoding="utf-8"
+        )
+        return load_workflow(self.base, "demo")
+
+    def test_a_re_entry_invalidates_what_its_output_fed(self) -> None:
+        """§7: a step run again "invalidates what its output fed: the
+        validator that must re-check it, the gate that must decide again",
+        and what that is "MUST be read from the stage rather than assumed" —
+        "resetting a fixed shape would both miss a dependent and run a step
+        the overlay excludes"."""
+        workflow = self.build_dependents()
+        _, created = state.create_run(self.runs, "dependents", workflow, "0.2")
+        for step_id in ("make", "reads", "apart"):
             state.start_step(created, workflow, step_id)
             state.complete_step(created, workflow, step_id)
         created.record("check").status = "done"
-        # `also` fails, routing back to `make`: what ran after `make` is no
-        # longer valid, whatever its record last said.
-        state.route_verdict(created, workflow, "also", "FAIL")
+        state.route_verdict(created, workflow, "reads", "FAIL")
         self.assertEqual(
-            [(s.id, s.status) for s in created.steps],
-            [("make", "pending"), ("also", "pending"), ("check", "pending")],
+            {record.id: record.status for record in created.steps},
+            {
+                "make": "pending",   # the destination, re-entered
+                "reads": "pending",  # declares make's output among its inputs
+                "apart": "done",     # ran after it and read none of it
+                "check": "pending",  # the gate that must decide again
+            },
         )
-        self.assertEqual(created.position().id, "make")
 
     def test_a_re_entry_leaves_a_skipped_record_skipped(self) -> None:
         """What a class excluded, or a condition has not fired, is not work
