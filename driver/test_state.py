@@ -298,6 +298,11 @@ class LoadValidationTest(StateTestCase):
                 "    from: demo-run\n    at: \"2026-08-16T09:00:00Z\"\n"
             ),
             "empty imports": ('artifacts: []\nimports: []\n'),
+            "import timestamp is prose": (
+                'artifacts:\n  - "{run}/brief.md"\n'
+                'imports:\n  - artifact: "{run}/brief.md"\n'
+                '    from: earlier-run\n    at: "yesterday"\n'
+            ),
         }
         # Paths the schema's pattern refuses, each manifested so that the
         # path itself is what the load rejects: an unsafe destination
@@ -364,6 +369,24 @@ class LoadValidationTest(StateTestCase):
             # §10's enrichment is a mapping or null, and this module writes
             # back what it accepts — so a scalar here would make the driver
             # the source of the invalid state, not just its reader.
+            # §10 declares every `at` an RFC 3339 date-time, and the suite's
+            # format checker holds the fixtures to it — so a bare string
+            # accepted here is state the driver writes and the suite rejects.
+            "gate timestamp is prose": self.BASE.replace(
+                "gates: []\n",
+                "gates:\n  - gate: intake-approval\n    transport: blocking\n"
+                '    outcome: accept\n    at: "not-a-timestamp"\n',
+            ),
+            "gate timestamp has no offset": self.BASE.replace(
+                "gates: []\n",
+                "gates:\n  - gate: intake-approval\n    transport: blocking\n"
+                '    outcome: accept\n    at: "2026-08-16T09:00:00"\n',
+            ),
+            "gate timestamp is not a date": self.BASE.replace(
+                "gates: []\n",
+                "gates:\n  - gate: intake-approval\n    transport: blocking\n"
+                '    outcome: accept\n    at: "2026-02-30T09:00:00Z"\n',
+            ),
             "instrumentation is a scalar": self.BASE + 'instrumentation: "tokens"\n',
             "instrumentation is a list": self.BASE + "instrumentation:\n  - 1\n",
             # §11 again, on the run's own record of what it executes under:
@@ -470,6 +493,18 @@ class LoadValidationTest(StateTestCase):
         run_dir, loaded = state.open_run(self.runs, "demo-run")
         self.assertEqual(run_dir, self.runs / "demo-run")
         self.assertEqual(loaded.run_id, "demo-run")
+
+    def test_a_timestamp_is_rfc_3339_or_it_is_not_one(self) -> None:
+        """The forms the schema's format assertion accepts, and the ones a
+        regex alone would let past: an hour of 24, a February 30th."""
+        for value in ("2026-08-03T13:40:00Z", "2026-08-03t13:40:00z",
+                      "2026-08-03T13:40:00.5+02:00", "2026-08-03T23:59:60Z"):
+            with self.subTest(accepted=value):
+                self.assertTrue(state._is_timestamp(value))
+        for value in ("2026-08-03", "2026-08-03T13:40:00", "2026-08-03T24:00:00Z",
+                      "2026-02-30T00:00:00Z", "2026-08-03T13:60:00Z", "", None, 42):
+            with self.subTest(refused=value):
+                self.assertFalse(state._is_timestamp(value))
 
     def test_state_from_an_earlier_minor_still_loads(self) -> None:
         """The refusal is for versions the driver does not implement; an

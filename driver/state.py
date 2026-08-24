@@ -19,6 +19,7 @@ land (§8.2).
 from __future__ import annotations
 
 import contextlib
+import datetime
 import os
 import re
 import stat
@@ -54,6 +55,14 @@ PLAIN_NAME = re.compile('^(?![A-Za-z]:)(?!\\.{1,2}$)(?!\\s+$)(?!(?:[Cc][Oo][Nn]|
 # lineage to the materialization that later copies it. The literal is the
 # schema's own pattern; test_state pins the two byte-for-byte.
 IMPORT_PATH = re.compile('^\\{run\\}(?:/(?!\\.{1,2}(?:/|$))(?!(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Mm][1-9¹²³]|[Ll][Pp][Tt][1-9¹²³])(?:\\.|/|$))[^/\\\\:?*"<>|\x00-\x1f\x7f-\x9f\u2028\u2029]+(?<![. ]))+(?![\\s\\S])')
+# RFC 3339, the `format: date-time` the run-state schema declares for
+# every `at` — a full date and time with an offset, the shape the
+# conformance suite's format checker holds the shipped fixtures to.
+RFC3339 = re.compile(
+    r"^([0-9]{4})-([0-9]{2})-([0-9]{2})[Tt]"
+    r"([0-9]{2}):([0-9]{2}):([0-9]{2})(?:\.[0-9]+)?"
+    r"(?:[Zz]|[-+][0-9]{2}:[0-9]{2})$"
+)
 
 
 class StateError(Exception):
@@ -453,6 +462,32 @@ def _gate_mapping(gate: GateRecord) -> dict[str, object]:
     return mapping
 
 
+def _is_timestamp(value: object) -> bool:
+    """An RFC 3339 date-time, which is what the run-state schema declares
+    every `at` to be and what the conformance suite asserts with its
+    format checker — offset included, since a timestamp without one names
+    a different instant to every reader that resolves it. Accepted as a
+    bare non-empty string, `not-a-timestamp` would load and `save` would
+    write it back, making the driver the author of state the suite it
+    ships beside rejects."""
+    match = RFC3339.match(value) if isinstance(value, str) else None
+    if match is None:
+        return False
+    year, month, day, hour, minute, second = (
+        int(part) for part in match.group(1, 2, 3, 4, 5, 6)
+    )
+    # The shape is the pattern's; whether the date exists is the calendar's,
+    # and February 30th passes any regex written for it. Second 60 is a leap
+    # second, which RFC 3339 allows and the calendar module does not.
+    if hour > 23 or minute > 59 or second > 60:
+        return False
+    try:
+        datetime.date(year, month, day)
+    except ValueError:
+        return False
+    return True
+
+
 def _is_count(value: object, minimum: int) -> bool:
     """An integer the schema would accept. `bool` subclasses `int` in Python
     and is a separate type in JSON Schema, so the exclusion is what keeps
@@ -593,8 +628,8 @@ def _validate_imports(
             raise bad(f"import source is not a plain run id: {source!r}")
         if source == run_id:
             raise bad(f"import {artifact!r} names this run as its source (spec §8.6)")
-        if not isinstance(at, str) or not at:
-            raise bad(f"import {artifact!r} without a timestamp")
+        if not _is_timestamp(at):
+            raise bad(f"import {artifact!r} without an RFC 3339 timestamp: {at!r}")
         records.append(ImportRecord(artifact=artifact, from_run=source, at=at))
     return records
 
@@ -641,8 +676,8 @@ def _validate_gate(entry: object, bad) -> GateRecord:
     if outcome not in OUTCOMES:
         raise bad(f"gate {gate!r} outcome is not one of {'/'.join(OUTCOMES)}")
     at = entry.get("at")
-    if not isinstance(at, str) or not at:
-        raise bad(f"gate {gate!r} without a timestamp")
+    if not _is_timestamp(at):
+        raise bad(f"gate {gate!r} without an RFC 3339 timestamp: {at!r}")
     phase = entry.get("phase")
     if phase is not None and not _is_count(phase, 1):
         raise bad(f"gate {gate!r} phase is not a positive integer: {phase!r}")
