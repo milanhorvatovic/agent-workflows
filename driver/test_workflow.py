@@ -229,6 +229,20 @@ class SyntheticTreeTest(unittest.TestCase):
                     load_workflow(self.framework, "demo")
                 self.assertIn("gate", str(caught.exception))
 
+    def test_every_atx_heading_form_closes_the_gates_section(self) -> None:
+        """The section ends at the next level-2 heading, and CommonMark ends
+        that marker with a space, a tab, or the line — a boundary that knew
+        only the space would read the bold bullets of the section below as
+        gates and fail parity against a sequence that rightly omits them."""
+        for heading in ("##\tNotes", "##"):
+            with self.subTest(heading=heading):
+                self.write(
+                    "workflows/stages/demo.md",
+                    STAGE + f"\n{heading}\n\n- **stray** — prose, not a gate.\n",
+                )
+                workflow = load_workflow(self.framework, "demo")
+                self.assertEqual(workflow.gate_scopes(), {"check": False})
+
     def test_a_heading_and_its_contract_associate_one_to_one(self) -> None:
         """A heading with no contract is a step the prose declares and the
         driver has no role or handoff to execute; two headings sharing an id

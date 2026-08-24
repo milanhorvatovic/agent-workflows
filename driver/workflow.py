@@ -551,15 +551,19 @@ def _gates(text: str) -> set[str]:
 
     Fenced code is masked first, so an example carrying the heading is not a
     second section and its bullets are not gates, and the section ends at the
-    next level-2 heading — stages place `## Notes` after it.
+    next level-2 heading — stages place `## Notes` after it. That boundary is
+    the same `H2_HEADING` the step scan closes on: CommonMark ends the marker
+    with a space, a tab, or the line, and a boundary that knew only the space
+    would read `##\tNotes` as part of this section and its bold bullets as
+    gates the sequence rightly omits.
     """
     masked = _mask_fences(text)
     opening = GATES_HEADING.search(masked)
     if opening is None:
         return set()
     tail = masked[opening.end() :]
-    boundary = tail.find("\n## ")
-    section = tail if boundary == -1 else tail[:boundary]
+    boundary = H2_HEADING.search(tail)
+    section = tail if boundary is None else tail[: boundary.start()]
     return {match.group("id") for match in GATE_BULLET.finditer(section)}
 
 
