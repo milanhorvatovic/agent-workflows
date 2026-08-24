@@ -116,6 +116,13 @@ def _parse_directory(data: dict, key: str, default: str, config_path: Path) -> P
         for character in value
     ):
         raise ConfigError(f"{key} must not contain control characters")
+    # JSON decodes `\ud800` into a lone surrogate, which is a str Python
+    # carries and UTF-8 cannot encode — so the path reaches `mkdir` or the
+    # line that prints it and raises there, turning the config defect this
+    # function exists to report into a traceback. The YAML writer refuses
+    # the same character for the same reason.
+    if any(0xD800 <= ord(character) <= 0xDFFF for character in value):
+        raise ConfigError(f"{key} must not contain surrogates")
     # JSON has no shell, so a leading ~ arrives literally; expand it rather
     # than creating a directory named `~` under the project.
     try:

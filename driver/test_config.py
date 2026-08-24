@@ -142,6 +142,17 @@ class ConfigTest(unittest.TestCase):
                         f"{key} must not contain control characters",
                     )
 
+    def test_a_surrogate_in_a_configured_path_is_rejected(self) -> None:
+        """JSON decodes `\\ud800` into a lone surrogate, which UTF-8 cannot
+        encode — so the path reaches `mkdir` or the line that prints it and
+        raises there, turning a config defect into a traceback."""
+        for key in ("artifacts_dir", "framework_dir"):
+            with self.subTest(key=key):
+                text = json.dumps(self.variant(**{key: "artifacts"})).replace(
+                    '"artifacts"', '"art\\ud800ifacts"'
+                )
+                self.assert_rejected(text, f"{key} must not contain surrogates")
+
     def test_partially_anchored_windows_artifacts_dir_is_rejected(self) -> None:
         for value in ("D:artifacts", "\\artifacts"):
             with self.subTest(value=value):
