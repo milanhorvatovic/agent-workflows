@@ -564,7 +564,28 @@ def route_verdict(state: RunState, workflow: Workflow, step_id: str, verdict: st
     # the disagreement is recorded rather than silently settled.
     if destination.status in ("skipped", "done", "blocked"):
         destination.status = "pending"
+    # §10: a re-entry "invalidates what its output fed by the same write that
+    # starts it", and the record order exists to make that reachable — "its
+    # destination MUST precede every record it invalidates". Resetting the
+    # destination alone left those records `done`, so a resume walked past
+    # them: route a failing plan verdict to `plan-revise` and `plan-validate`
+    # stayed done, so the revised plan reached `plan-approval` unvalidated.
+    # Everything `done` after the destination returns to `pending` in this
+    # same write. A `skipped` record is left as it is — what a class
+    # excluded or a condition has not fired is not work this revision
+    # invalidated — and `blocked` likewise, being a decision still open
+    # rather than one this write undoes.
+    for step in state.steps[_record_index(state, resolved) + 1 :]:
+        if step.status == "done":
+            step.status = "pending"
     return resolved
+
+
+def _record_index(state: RunState, step_id: str) -> int:
+    for index, step in enumerate(state.steps):
+        if step.id == step_id:
+            return index
+    raise StateError(f"no record for step {step_id!r}")
 
 
 def _resolve_target(state: RunState, workflow: Workflow, target: str) -> str:

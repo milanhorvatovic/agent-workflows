@@ -256,6 +256,46 @@ class TransitionTest(StateTestCase):
         # The skipped conditional gate was routed to, so it re-enters pending.
         self.assertEqual(self.state.record("check").status, "pending")
 
+    def test_a_re_entry_invalidates_what_follows_it(self) -> None:
+        """§10: a re-entry "invalidates what its output fed by the same write
+        that starts it", and the record order is what makes that reachable —
+        the destination precedes every record it invalidates. Resetting the
+        destination alone leaves those records `done` and a resume walks
+        past them, so a revised output reaches the next gate unvalidated."""
+        stage = STAGE.replace(
+            "        - step: make\n", "        - step: make\n        - step: also\n"
+        ).replace(
+            "## Gates",
+            "### also (planner)\n\n```yaml\nmetadata:\n  workflow:\n"
+            '    protocol: "0.2"\n    step:\n      role: planner\n      output:\n'
+            '        artifact: "{run}/also.md"\n      on:\n        PASS: check\n'
+            "        FAIL: make\n```\n\n## Gates",
+        )
+        (self.base / "workflows" / "stages" / "demo.md").write_text(stage, encoding="utf-8")
+        workflow = load_workflow(self.base, "demo")
+        _, created = state.create_run(self.runs, "invalidate", workflow, "0.2")
+        for step_id in ("make", "also"):
+            state.start_step(created, workflow, step_id)
+            state.complete_step(created, workflow, step_id)
+        created.record("check").status = "done"
+        # `also` fails, routing back to `make`: what ran after `make` is no
+        # longer valid, whatever its record last said.
+        state.route_verdict(created, workflow, "also", "FAIL")
+        self.assertEqual(
+            [(s.id, s.status) for s in created.steps],
+            [("make", "pending"), ("also", "pending"), ("check", "pending")],
+        )
+        self.assertEqual(created.position().id, "make")
+
+    def test_a_re_entry_leaves_a_skipped_record_skipped(self) -> None:
+        """What a class excluded, or a condition has not fired, is not work
+        the revision invalidated."""
+        self.complete(self.state, self.workflow, "make")
+        self.assertEqual(self.state.record("check").status, "skipped")
+        state.route_verdict(self.state, self.workflow, "make", "FAIL")
+        self.assertEqual(self.state.record("make").status, "pending")
+        self.assertEqual(self.state.record("check").status, "skipped")
+
     def test_a_verdict_routes_only_where_the_manifest_says_it_produced(self) -> None:
         """`done` is a status; §8.2 makes the manifest the record of what was
         produced, and the conformance suite holds every shipped document to
