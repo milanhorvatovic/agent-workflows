@@ -42,9 +42,9 @@ MEMBER_ID = re.compile('^[a-z][a-z0-9]*(-[a-z0-9]+)*$')
 STEP_HEADING = re.compile(
     r"^### (?P<id>[a-z][a-z0-9-]*) \((?P<role>[a-z]+)\)[ \t]*$", re.MULTILINE
 )
-METADATA_KEY = re.compile(r'^"?metadata"?[ \t]*:(?P<rest>.*)$', re.MULTILINE)
-WORKFLOW_KEY = re.compile(r'^[ \t]+"?workflow"?[ \t]*:')
-WORKFLOW_INLINE = re.compile(r'[{,][ \t]*"?workflow"?[ \t]*:')
+METADATA_KEY = re.compile(r'^[\'"]?metadata[\'"]?[ \t]*:(?P<rest>.*)$', re.MULTILINE)
+WORKFLOW_KEY = re.compile(r'^[ \t]+[\'"]?workflow[\'"]?[ \t]*:')
+WORKFLOW_INLINE = re.compile(r'[{,][ \t]*[\'"]?workflow[\'"]?[ \t]*:')
 # Every heading of each level, whatever it says: a contract belongs to the
 # nearest heading above it, so what closed a step section matters as much as
 # what opened one. CommonMark ends the marker with a space, a tab, or the

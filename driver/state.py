@@ -589,7 +589,7 @@ def _record_index(state: RunState, step_id: str) -> int:
 
 
 def _resolve_target(state: RunState, workflow: Workflow, target: str) -> str:
-    for stage in workflow.stages:
+    for index, stage in enumerate(workflow.stages):
         if stage.name == target:
             # §9.1: a stage id stands for that stage's first *step*, past the
             # content the run's class skips. Gates are members of the same
@@ -607,16 +607,25 @@ def _resolve_target(state: RunState, workflow: Workflow, target: str) -> str:
             # conditional would be entered past it. Narrowing this needs the
             # protocol to carry why a record was skipped; until it does,
             # reading all three alike is the only reading available.
-            for member in stage.members:
-                if member.kind != "step":
-                    continue
-                record = next(
-                    (step for step in state.steps if step.id == member.id), None
-                )
-                if record is not None and record.status != "skipped":
-                    return member.id
+            # Resolution continues past the stage where the stage itself is
+            # skipped whole: the overlays say "an edge or stage id targeting
+            # skipped content resolves to the next non-skipped point in
+            # composition order", and composition order does not stop at a
+            # stage boundary — a class that skips ideation entirely leaves
+            # an edge naming it pointing at the stage that follows, not at
+            # nothing.
+            for later in workflow.stages[index:]:
+                for member in later.members:
+                    if member.kind != "step":
+                        continue
+                    record = next(
+                        (step for step in state.steps if step.id == member.id), None
+                    )
+                    if record is not None and record.status != "skipped":
+                        return member.id
             raise StateError(
-                f"stage {target!r} resolves to no runnable step (spec §9.1)"
+                f"stage {target!r} resolves to no runnable step, here or after "
+                f"it (spec §9.1, overlays' skip resolution)"
             )
     state.record(target)  # raises if the id names nothing
     return target

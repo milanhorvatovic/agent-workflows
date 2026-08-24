@@ -496,6 +496,10 @@ class SyntheticTreeTest(unittest.TestCase):
             # The one that carries both: a quoted value mentioning the word
             # and a real key beside it.
             'metadata: {name: "workflow: x", workflow: [one, two]}\n',
+            # Single quotes are outside this subset, which is why the block
+            # fails to parse — and a key written in them is still a key.
+            "'metadata': {workflow: [one, two]}\n",
+            "metadata:\n  'workflow': [one, two]\n",
         ):
             with self.subTest(spelling=spelling.splitlines()[0]):
                 self.write(
@@ -503,7 +507,11 @@ class SyntheticTreeTest(unittest.TestCase):
                 )
                 with self.assertRaises(WorkflowError) as caught:
                     load_workflow(self.framework, "demo")
-                self.assertIn("outside the subset", str(caught.exception))
+                # Which subset rule catches it depends on the spelling — a
+                # flow collection, a single-quoted key — and what matters is
+                # that the block is reported against its file rather than
+                # skipped as prose.
+                self.assertIn("workflows/stages/demo.md", str(caught.exception))
 
     def test_a_declaration_inside_a_longer_fence_is_an_example(self) -> None:
         """Discovery consumes outermost fences whole, so a block shown
