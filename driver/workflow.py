@@ -57,6 +57,10 @@ WORKFLOW_INLINE = re.compile(r'[{,][ \t]*[\'"]?workflow[\'"]?[ \t]*:')
 # a gate.
 GATES_HEADING = re.compile(r"^## Gates[ \t]*$", re.MULTILINE)
 GATE_BULLET = re.compile(r"^- \*\*(?P<id>[a-z][a-z0-9-]*)\*\*", re.MULTILINE)
+# Anything bullet-and-bold in a Gates section is a gate declaration; one
+# that then fails GATE_BULLET's id form is a malformed gate to report,
+# never one to read as nothing — the conformance suite reads it the same.
+GATE_SHAPED = re.compile(r"^- \*\*(?P<raw>[^*\n]+)\*\*", re.MULTILINE)
 H3_HEADING = re.compile(r"^###(?=[ \t]|$)", re.MULTILINE)
 H2_HEADING = re.compile(r"^##(?=[ \t]|$)", re.MULTILINE)
 # One fence model, the conformance suite's: either marker, three or more,
@@ -594,6 +598,15 @@ def _gates(text: str, rel: str) -> set[str]:
     tail = masked[opening.end() :]
     boundary = H2_HEADING.search(tail)
     section = tail if boundary is None else tail[: boundary.start()]
+    # A gate whose id fails the form is a typo, and reading it as nothing
+    # would leave the stage describing a human decision that parity never
+    # asks the sequence for — a gate the run executes straight past.
+    for shaped in GATE_SHAPED.finditer(section):
+        if not GATE_BULLET.match(section, shaped.start()):
+            raise WorkflowError(
+                f"{rel}: gate bullet '- **{shaped.group('raw')}**' does not match "
+                f"the `- **<id>**` form — ids are lowercase kebab-case (spec §9.4)"
+            )
     declared = [match.group("id") for match in GATE_BULLET.finditer(section)]
     for gate_id in declared:
         if declared.count(gate_id) > 1:

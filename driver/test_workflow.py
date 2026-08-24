@@ -229,6 +229,21 @@ class SyntheticTreeTest(unittest.TestCase):
                     load_workflow(self.framework, "demo")
                 self.assertIn("gate", str(caught.exception))
 
+    def test_a_gate_bullet_whose_id_is_malformed_is_an_error(self) -> None:
+        """Anything bullet-and-bold in the section is a gate declaration, and
+        one whose id fails the form is a typo to report. Read as nothing, it
+        is a gate the stage describes that parity never asks the sequence
+        for — a human decision the run would execute straight past."""
+        self.write(
+            "workflows/stages/demo.md",
+            STAGE.replace(
+                "- **check** — a gate.", "- **check** — a gate.\n- **Extra_Gate** — a typo."
+            ),
+        )
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "demo")
+        self.assertIn("Extra_Gate", str(caught.exception))
+
     def test_a_gate_declared_more_than_once_is_an_error(self) -> None:
         """Parity compares declarations, so erasing their multiplicity before
         the comparison lets two `- **check**` bullets answer one sequence
