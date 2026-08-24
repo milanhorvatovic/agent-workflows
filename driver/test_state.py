@@ -667,6 +667,24 @@ class LoadValidationTest(StateTestCase):
             (outside / state.STATE_FILE).read_text(encoding="utf-8"), self.BASE
         )
 
+    def test_a_save_after_resume_still_binds_the_runs_directory(self) -> None:
+        """`open_run` closes its descriptor when it returns, so the next
+        save holds a run directory and no parent — and `O_NOFOLLOW` on the
+        run cannot see past a `runs` that was swapped in the meantime, the
+        child it reaches being an ordinary directory inside the target."""
+        import shutil
+
+        run_dir, _ = state.create_run(self.runs, "demo-run", self.workflow, "0.2")
+        _, loaded = state.open_run(self.runs, "demo-run")
+        outside = self.base / "elsewhere"
+        (outside / "demo-run").mkdir(parents=True)
+        shutil.rmtree(self.runs)
+        self.symlink(self.runs, outside)
+        with self.assertRaises(state.StateError) as caught:
+            state.save(loaded, run_dir)
+        self.assertIn("not the runs directory", str(caught.exception))
+        self.assertFalse((outside / "demo-run" / state.STATE_FILE).exists())
+
     def test_open_run_refuses_state_that_names_another_run(self) -> None:
         """The id is the run's identity (§8.1): a document naming another
         run would be reported as that run while every path it resolves stays

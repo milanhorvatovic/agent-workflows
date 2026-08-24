@@ -268,14 +268,24 @@ def _run_directory(run_dir: Path, runs: int | None = None):
             raise StateError(f"{run_dir} is a link, not a run directory")
         yield None
         return
-    flags = os.O_RDONLY | os.O_DIRECTORY | _NOFOLLOW
-    # Named relative to the runs descriptor where the caller holds one, so
-    # the whole path from the artifact root down is bound rather than
-    # resolved again — the parent is as re-pointable as the child was.
     if runs is None:
-        descriptor = os.open(run_dir, flags)
-    else:
-        descriptor = os.open(run_dir.name, flags, dir_fd=runs)
+        # No descriptor from the caller means the parent is a path again,
+        # and `O_NOFOLLOW` on the run directory cannot see past it: with
+        # `runs` replaced by a link, the child it reaches is an ordinary
+        # directory inside the target and the open succeeds. A save after
+        # `open_run` has returned — the only way a caller holds a run
+        # directory and no descriptor — would write there. So the parent is
+        # bound here too, and the run named relative to it.
+        with _runs_directory(run_dir.parent) as parent:
+            with _run_directory(run_dir, parent) as descriptor:
+                yield descriptor
+        return
+    # Named relative to the runs descriptor, never by path: the parent is as
+    # re-pointable as the child was, so the whole way down from the artifact
+    # root is bound rather than resolved again.
+    descriptor = os.open(
+        run_dir.name, os.O_RDONLY | os.O_DIRECTORY | _NOFOLLOW, dir_fd=runs
+    )
     try:
         yield descriptor
     finally:
