@@ -91,6 +91,21 @@ class LoadsTest(unittest.TestCase):
         data = loads('a: 1 # trailing\n# full line\nb: "kept # inside"\n')
         self.assertEqual(data, {"a": 1, "b": "kept # inside"})
 
+    def test_a_quote_delimits_only_where_a_scalar_starts(self) -> None:
+        """Quotes delimit a scalar only when the scalar itself starts
+        quoted; anywhere else they are ordinary characters, so `5"` is a
+        plain scalar with a comment after it rather than the start of a
+        quoted scalar that never closes."""
+        self.assertEqual(loads('note: 5" # inches\n'), {"note": '5"'})
+        self.assertEqual(loads('a: x"y # z\n'), {"a": 'x"y'})
+        self.assertEqual(loads('- 6" long # item\n'), ['6" long'])
+        # Where one does start quoted, its interior `#` stays content and a
+        # comment may follow the closing quote — escapes included.
+        self.assertEqual(loads('b: "kept # inside"\n'), {"b": "kept # inside"})
+        self.assertEqual(loads('c: "esc \\" still" # after\n'), {"c": 'esc " still'})
+        with self.assertRaises(ProtocolYamlError):
+            loads('d: "open\n')
+
     def test_unescapes_double_quoted_scalars(self) -> None:
         data = loads('a: "tab\\tnewline\\nquote\\" backslash\\\\ nul\\x00 u\\u0085"\n')
         self.assertEqual(data, {"a": 'tab\tnewline\nquote" backslash\\ nul\x00 u\x85'})

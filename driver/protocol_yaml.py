@@ -172,23 +172,56 @@ def _strip_comment(raw: str, number: int) -> str:
     that *begins* with a quote, is refused where scalars are resolved rather
     than wherever an apostrophe appears.
     """
-    in_quotes = False
-    index = 0
+    index = _scalar_start(raw)
+    if index < len(raw) and raw[index] == '"':
+        # A quoted scalar: everything to its closing quote is content, `#`
+        # included, and a comment can only begin after it.
+        index += 1
+        while index < len(raw):
+            if raw[index] == "\\":
+                index += 2
+                continue
+            if raw[index] == '"':
+                break
+            index += 1
+        else:
+            raise ProtocolYamlError(number, "unterminated double-quoted scalar")
+        if index >= len(raw):
+            raise ProtocolYamlError(number, "unterminated double-quoted scalar")
+        index += 1
     while index < len(raw):
-        character = raw[index]
-        if in_quotes:
-            if character == "\\":
-                index += 1
-            elif character == '"':
-                in_quotes = False
-        elif character == '"':
-            in_quotes = True
-        elif character == "#" and (index == 0 or raw[index - 1] in " \t"):
+        if raw[index] == "#" and (index == 0 or raw[index - 1] in " \t"):
             return raw[:index]
         index += 1
-    if in_quotes:
-        raise ProtocolYamlError(number, "unterminated double-quoted scalar")
     return raw
+
+
+def _scalar_start(raw: str) -> int:
+    """Where this line's scalar begins — past the indentation, a sequence
+    dash, and a `key: ` if the line carries one.
+
+    Quotes delimit a scalar only when the scalar itself starts quoted;
+    anywhere else they are ordinary characters, so `note: 5" # inches` is
+    the plain scalar `5"` with a comment after it rather than the start of
+    a quoted scalar that never closes. Knowing where a scalar may begin is
+    what tells the two apart.
+    """
+    index = len(raw) - len(raw.lstrip(" "))
+    if raw[index : index + 2] == "- ":
+        index += 2
+        index += len(raw[index:]) - len(raw[index:].lstrip(" "))
+    rest = raw[index:]
+    if rest.startswith(('"', "#")):
+        return index
+    marker = rest.find(": ")
+    if marker != -1:
+        index += marker + 2
+        return index + len(raw[index:]) - len(raw[index:].lstrip(" "))
+    if rest.rstrip().endswith(":"):
+        # `key:` alone — the value is the block that follows, and this line
+        # carries no scalar for a quote to open.
+        return len(raw)
+    return index
 
 
 def _parse_block(lines: list[_Line], start: int, indent: int) -> tuple[object, int]:
