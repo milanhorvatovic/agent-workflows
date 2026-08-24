@@ -259,14 +259,18 @@ def _run_directory(run_dir: Path, runs: int | None = None):
     re-pointed underneath it.
     """
     if not _BINDS_TO_DIRECTORY:
-        # Where the platform cannot bind, the check is what there is — and
-        # it has to happen here rather than at the callers, since `save`
+        # Where the platform cannot bind, the checks are what there is — and
+        # they have to happen here rather than at the callers, since `save`
         # would otherwise follow a linked run directory and replace a state
         # file outside the run root, which is the containment `O_NOFOLLOW`
-        # provides on every other platform.
-        if is_link(run_dir):
-            raise StateError(f"{run_dir} is a link, not a run directory")
-        yield None
+        # provides on every other platform. Both levels, for the reason the
+        # bound path acquires both: a link at `runs` leaves the child inside
+        # its target an ordinary directory, so checking the run alone sees
+        # nothing wrong and the write still lands outside the root.
+        with _runs_directory(run_dir.parent):
+            if is_link(run_dir):
+                raise StateError(f"{run_dir} is a link, not a run directory")
+            yield None
         return
     if runs is None:
         # No descriptor from the caller means the parent is a path again,

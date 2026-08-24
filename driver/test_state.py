@@ -685,6 +685,27 @@ class LoadValidationTest(StateTestCase):
         self.assertIn("not the runs directory", str(caught.exception))
         self.assertFalse((outside / "demo-run" / state.STATE_FILE).exists())
 
+    def test_the_fallback_path_refuses_a_linked_parent_too(self) -> None:
+        """Without binding, the checks are the containment — and checking
+        the run alone sees nothing wrong when `runs` is the link, its child
+        inside the target being an ordinary directory."""
+        import shutil
+        import unittest.mock
+
+        run_dir, _ = state.create_run(self.runs, "demo-run", self.workflow, "0.2")
+        _, loaded = state.open_run(self.runs, "demo-run")
+        outside = self.base / "elsewhere"
+        (outside / "demo-run").mkdir(parents=True)
+        shutil.rmtree(self.runs)
+        self.symlink(self.runs, outside)
+        with unittest.mock.patch.object(state, "_BINDS_TO_DIRECTORY", False):
+            with self.assertRaises(state.StateError) as caught:
+                state.save(loaded, run_dir)
+            self.assertIn("not the runs directory", str(caught.exception))
+            with self.assertRaises(state.StateError):
+                state.load(run_dir)
+        self.assertFalse((outside / "demo-run" / state.STATE_FILE).exists())
+
     def test_open_run_refuses_state_that_names_another_run(self) -> None:
         """The id is the run's identity (§8.1): a document naming another
         run would be reported as that run while every path it resolves stays
