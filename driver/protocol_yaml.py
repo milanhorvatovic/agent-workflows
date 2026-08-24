@@ -41,7 +41,7 @@ WHITESPACE = " \t"
 # and `on:` is the key §9.1 declares.
 CORE_NULL = re.compile(r"^(?:null|Null|NULL|~|)$")
 CORE_BOOL = re.compile(r"^(?:true|True|TRUE|false|False|FALSE)$")
-CORE_INT = re.compile(r"^[-+]?[0-9]+$")
+CORE_INT = re.compile(r"^[-+]?(?:0|[1-9][0-9]*)$")
 # Core resolves these too, to types the subset does not carry. They are
 # refused on read rather than returned as text, and quoted on write rather
 # than emitted as a lookalike another reader would resolve away — which is
@@ -50,6 +50,12 @@ CORE_INT = re.compile(r"^[-+]?[0-9]+$")
 CORE_UNSUPPORTED = re.compile(
     r"^(?:[-+]?0[xX][0-9a-fA-F]+"  # hexadecimal integer
     r"|[-+]?0[oO][0-7]+"  # octal integer
+    # A decimal with a leading zero is the one form readers disagree about:
+    # `010` is ten to a 1.2 reader and eight to a 1.1 one, `0777` is 777 or
+    # 511, and `08` is a number to the first and a string to the second.
+    # Resolving it either way picks a side, so the subset does not carry it
+    # — the same treatment its octal and hexadecimal neighbours get.
+    r"|[-+]?0[0-9]+"
     r"|[-+]?(?:\.[0-9]+|[0-9]+\.[0-9]*)(?:[eE][-+]?[0-9]+)?"  # float with a fraction
     r"|[-+]?[0-9]+[eE][-+]?[0-9]+"  # float with an exponent
     r"|[-+]?\.(?:inf|Inf|INF)|\.(?:nan|NaN|NAN))$"  # infinity, not-a-number

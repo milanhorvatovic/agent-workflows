@@ -54,15 +54,19 @@ class LoadsTest(unittest.TestCase):
         """Core gives each kind more than one spelling, and a document the
         driver did not write may use any of them."""
         self.assertEqual(
-            loads("a: True\nb: TRUE\nc: False\nd: NULL\ne: Null\nf: ~\ng: +1\nh: 007\n"),
+            loads("a: True\nb: TRUE\nc: False\nd: NULL\ne: Null\nf: ~\ng: +1\nh: -0\n"),
             {"a": True, "b": True, "c": False, "d": None, "e": None, "f": None,
-             "g": 1, "h": 7},
+             "g": 1, "h": 0},
         )
 
     def test_rejects_core_kinds_the_subset_does_not_carry(self) -> None:
         """Returned as text, a float or a hex integer is a value this module
         reads as one type and every other reader as another."""
-        for token in ("0x10", "0o17", "0.2", "1e3", ".5", "-.inf", ".nan"):
+        # A decimal with a leading zero is the form readers disagree about:
+        # `010` is ten under YAML 1.2 and eight under 1.1, and `08` is a
+        # number to one and a string to the other. Resolving it picks a side.
+        for token in ("0x10", "0o17", "0.2", "1e3", ".5", "-.inf", ".nan",
+                      "007", "010", "08", "-0777"):
             with self.subTest(token=token):
                 with self.assertRaises(ProtocolYamlError) as caught:
                     loads(f"a: {token}\n")
