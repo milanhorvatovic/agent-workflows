@@ -121,11 +121,19 @@ def loads(text: str) -> object:
 
 
 def dumps(data: object) -> str:
-    """Emit the canonical form of `data`; `loads` round-trips it."""
-    if isinstance(data, (dict, list)) and data:
-        return "\n".join(_emit_block(data, 0)) + "\n"
-    # A bare scalar or empty collection is a one-line document.
-    return _emit_scalar(data) + "\n"
+    """Emit the canonical form of `data`; `loads` round-trips it.
+
+    A document is a non-empty mapping or sequence, which is what both shapes
+    this module exists for are — run state and a `metadata.workflow` block.
+    A bare scalar was emitted here once and `loads` never read one back: the
+    reader parses a document as a mapping or a sequence and nothing else, so
+    what `dumps` wrote could not be reloaded, breaking the round trip this
+    line promises. Refusing is the half that keeps the promise true, since
+    widening the reader would admit a document the protocol never has.
+    """
+    if not isinstance(data, (dict, list)) or not data:
+        raise ValueError(f"not a document: {data!r}")
+    return "\n".join(_emit_block(data, 0)) + "\n"
 
 
 def _content_lines(text: str) -> list[_Line]:

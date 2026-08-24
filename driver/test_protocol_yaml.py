@@ -365,6 +365,18 @@ class DumpsTest(unittest.TestCase):
     def test_empty_collections_dump_as_flow_empties(self) -> None:
         self.assertEqual(dumps({"a": [], "b": {}}), "a: []\nb: {}\n")
 
+    def test_a_document_is_a_mapping_or_a_sequence(self) -> None:
+        """Both shapes this module exists for are one of the two, and the
+        reader parses nothing else — so a bare scalar written here is a
+        document `loads` could not read back."""
+        for data in (None, "text", 42, True, [], {}):
+            with self.subTest(data=data):
+                with self.assertRaises(ValueError):
+                    dumps(data)
+        for data in ({"a": 1}, [1, 2]):
+            with self.subTest(data=data):
+                self.assertEqual(loads(dumps(data)), data)
+
 
 if __name__ == "__main__":
     unittest.main()
