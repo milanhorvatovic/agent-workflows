@@ -524,13 +524,16 @@ class LoadValidationTest(StateTestCase):
         """The forms the schema's format assertion accepts, and the ones a
         regex alone would let past: an hour of 24, a February 30th."""
         for value in ("2026-08-03T13:40:00Z", "2026-08-03t13:40:00z",
-                      "2026-08-03T13:40:00.5+02:00", "2026-08-03T23:59:60Z"):
+                      "2026-08-03T13:40:00.5+02:00"):
             with self.subTest(accepted=value):
                 self.assertTrue(state._is_timestamp(value))
         for value in ("2026-08-03T13:40:00+02:00", "2026-08-03T13:40:00-05:30"):
             with self.subTest(accepted=value):
                 self.assertTrue(state._is_timestamp(value))
-        for value in ("2026-08-03", "2026-08-03T13:40:00", "2026-08-03T24:00:00Z",
+        # Every `:60` is refused, boundary or not: the format checker behind
+        # the schema rejects them, and state the driver writes has to pass it.
+        for value in ("2026-08-03T13:40:60Z", "2026-12-31T23:59:60Z",
+                      "2026-08-03", "2026-08-03T13:40:00", "2026-08-03T24:00:00Z",
                       "2026-02-30T00:00:00Z", "2026-08-03T13:60:00Z",
                       "2026-08-03T13:40:00+99:99", "2026-08-03T13:40:00+24:00",
                       "2026-08-03T13:40:00+02:60", "", None, 42):

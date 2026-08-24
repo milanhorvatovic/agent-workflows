@@ -477,9 +477,14 @@ def _is_timestamp(value: object) -> bool:
         int(part) for part in match.group(1, 2, 3, 4, 5, 6)
     )
     # The shape is the pattern's; whether the date exists is the calendar's,
-    # and February 30th passes any regex written for it. Second 60 is a leap
-    # second, which RFC 3339 allows and the calendar module does not.
-    if hour > 23 or minute > 59 or second > 60:
+    # and February 30th passes any regex written for it. Second 60 is RFC
+    # 3339's leap second and is refused here all the same: the format
+    # assertion behind the schema — `rfc3339-validator`, which the
+    # conformance suite fails loudly without — rejects every `:60`, boundary
+    # or not, so accepting one would put state the driver wrote outside what
+    # the suite it ships beside will validate. Agreement with the checker
+    # that guards the fixtures is what this function is for.
+    if hour > 23 or minute > 59 or second > 59:
         return False
     # An offset is two numbers, not four digits: `+99:99` is the shape and
     # not the thing, and it names no zone any reader can resolve.
