@@ -559,14 +559,25 @@ def check_records(state: RunState, workflow: Workflow) -> None:
                 f"gate {record.id!r} is active, and `active` is the step currently "
                 f"running (spec §10)"
             )
-    if accepted:
-        recorded = {record.id for record in state.steps}
-        missing = [member for member in order if member not in recorded]
-        if missing:
-            raise StateError(
-                f"the accepted class makes the list complete (spec §10) and these "
-                f"members have no record: {', '.join(missing)}"
+    # The list owes every member `order` holds, which `accepted` has already
+    # narrowed: the whole composition once a class is accepted, the entry
+    # stage's own members before that. `alone` in §10's "the list holds the
+    # intake steps alone" bounds both sides — the acceptance is what creates
+    # the records after them, and nothing creates the entry stage's own after
+    # creation does, which is why the pre-acceptance starter fixture carries
+    # the stage whole. Unchecked, an empty list resolved to no position at
+    # all and a run that never reached its first step read as finished.
+    recorded = {record.id for record in state.steps}
+    missing = [member for member in order if member not in recorded]
+    if missing:
+        raise StateError(
+            (
+                "the accepted class makes the list complete (spec §10)"
+                if accepted
+                else "§10's pre-acceptance list is the entry stage's records"
             )
+            + f" and these members have no record: {', '.join(missing)}"
+        )
 
 
 def check_gates(state: RunState, workflow: Workflow) -> None:

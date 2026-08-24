@@ -238,6 +238,36 @@ class CliTest(unittest.TestCase):
                     "declare" in err or "recorded after" in err, err
                 )
 
+    def test_resume_refuses_a_pre_acceptance_list_short_of_the_entry_stage(self) -> None:
+        """§10's pre-acceptance list is the entry stage's records alone, and
+        alone is a bound on both sides: the acceptance creates what comes
+        after, and nothing creates the entry stage's own records after
+        creation does. An empty list would otherwise resolve to no position
+        at all — `resume` reporting nothing left to run for a run that never
+        reached its first step."""
+        self.write_framework()
+        self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        state_path = self.base / "runs" / "2026-08-17-x" / "workflow-state.yaml"
+        original = state_path.read_text(encoding="utf-8")
+        for name, document in {
+            "no records at all": original.replace(
+                "steps:\n  - id: make\n    status: pending\n"
+                "  - id: check\n    status: skipped\n",
+                "steps: []\n",
+            ),
+            "a member missing": original.replace("  - id: check\n    status: skipped\n", ""),
+        }.items():
+            with self.subTest(case=name):
+                state_path.write_text(document, encoding="utf-8")
+                code, out, err = self.invoke(
+                    "resume", "2026-08-17-x", "--config", str(self.config_path)
+                )
+                self.assertEqual(code, 2)
+                self.assertEqual(out, "")
+                self.assertIn("check", err)
+
     def test_a_gate_position_names_the_module_that_clears_it(self) -> None:
         """A gate waits on a human (§7): no context assembler or backend can
         clear it, and which kind a record is comes from the composition
