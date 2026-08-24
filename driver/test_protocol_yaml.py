@@ -217,10 +217,18 @@ class LoadsTest(unittest.TestCase):
                 with self.assertRaises(ProtocolYamlError):
                     loads(text)
 
+    def test_a_tab_separates_a_key_from_its_value(self) -> None:
+        """YAML separates with a space or a tab, so a document written with
+        the second is legal and must not be called malformed."""
+        self.assertEqual(loads("a:\tvalue\nb:\t1 # c\n"), {"a": "value", "b": 1})
+        self.assertEqual(loads('c:\t"q # x"\n'), {"c": "q # x"})
+
     def test_rejects_a_plain_scalar_carrying_a_mapping_indicator(self) -> None:
         """`a: value: other` is a nested mapping on one line, which YAML
-        refuses; read as text it is the misreading this module avoids."""
-        for text in ("a: value: other\n", "a: value:\n", "- item: nested: deep\n"):
+        refuses; read as text it is the misreading this module avoids.
+        A tab is the other separator YAML gives that indicator."""
+        for text in ("a: value: other\n", "a: value:\n", "- item: nested: deep\n",
+                     "a: value:\tother\n"):
             with self.subTest(text=text):
                 with self.assertRaises(ProtocolYamlError) as caught:
                     loads(text)

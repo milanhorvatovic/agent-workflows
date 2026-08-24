@@ -213,7 +213,10 @@ def _scalar_start(raw: str) -> int:
     rest = raw[index:]
     if rest.startswith(('"', "#")):
         return index
-    marker = rest.find(": ")
+    marker = min(
+        (found for found in (rest.find(": "), rest.find(":\t")) if found != -1),
+        default=-1,
+    )
     if marker != -1:
         index += marker + 2
         return index + len(raw[index:]) - len(raw[index:].lstrip(" "))
@@ -302,7 +305,11 @@ def _split_key(line: _Line) -> tuple[str, str]:
     if content.startswith('"'):
         raise ProtocolYamlError(line.number, "quoted keys are outside the subset")
     head, separator, rest = content.partition(":")
-    if not separator or (rest and not rest.startswith(" ")):
+    # YAML separates a key from its value with a space or a tab, so a
+    # document written with the second is legal and this module must not
+    # call it malformed — the same pair the scalar check treats as a
+    # mapping indicator.
+    if not separator or (rest and rest[0] not in " \t"):
         raise ProtocolYamlError(line.number, "expected `key:` or `key: value`")
     key = head.strip()
     if not key or any(c in key for c in "{}[],&*#?|>%@`\"'"):
@@ -350,7 +357,7 @@ def _parse_scalar(token: str, number: int) -> object:
     # refuses, and `a: value:` is the same shape with an empty value. Read
     # as text they are exactly the misreading this module exists to avoid —
     # and the emitter quotes both forms, so nothing it writes lands here.
-    if ": " in token or token.endswith(":"):
+    if ": " in token or ":\t" in token or token.endswith(":"):
         raise ProtocolYamlError(
             number, f"plain scalar carries a mapping indicator: {token!r}"
         )
