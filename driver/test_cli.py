@@ -370,6 +370,75 @@ class CliTest(unittest.TestCase):
                 self.assertIn("gate 'check'", err)
                 self.assertIn("once per run", err)
 
+    def test_resume_refuses_a_class_no_gate_decision_accepted(self) -> None:
+        """§7 and §10: the class in `run.risk` is what the intake gate
+        accepted, and that acceptance is one write — the class, the gate's
+        `done`, and the populated list together. State is loaded, not
+        trusted, so a document that carries the class while the stage's
+        closing gate never decided has the authority of the acceptance
+        without the acceptance, and every check keyed on `run.risk` reads
+        the post-intake shape as established."""
+        self.write_framework()
+        self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        state_path = self.base / "runs" / "2026-08-17-x" / "workflow-state.yaml"
+        original = state_path.read_text(encoding="utf-8").replace(
+            '  protocol: "0.2"\n',
+            '  protocol: "0.2"\n  risk: R1\n  risk_rationale: "small"\n',
+        )
+        for name, document in {
+            # The gate the class came from was never reached.
+            "the gate is skipped": original,
+            "the gate is waiting": original.replace(
+                "  - id: check\n    status: skipped", "  - id: check\n    status: blocked"
+            ),
+            # Decided, and the decision that stands is not an acceptance.
+            "the decision is a revise": original.replace(
+                "  - id: check\n    status: skipped", "  - id: check\n    status: pending"
+            ).replace(
+                "gates: []\n",
+                "gates:\n  - gate: check\n    transport: blocking\n"
+                '    outcome: revise\n    at: "2026-08-16T09:00:00Z"\n',
+            ),
+        }.items():
+            with self.subTest(case=name):
+                state_path.write_text(document, encoding="utf-8")
+                code, out, err = self.invoke(
+                    "resume", "2026-08-17-x", "--config", str(self.config_path)
+                )
+                self.assertEqual(code, 2)
+                self.assertEqual(out, "")
+                self.assertIn("check", err)
+
+    def test_resume_reads_a_class_its_gate_did_accept(self) -> None:
+        """The other side of the same rule: an acceptance on file is what
+        makes the class readable, and a run past its intake gate resumes."""
+        self.write_framework()
+        self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        state_path = self.base / "runs" / "2026-08-17-x" / "workflow-state.yaml"
+        state_path.write_text(
+            state_path.read_text(encoding="utf-8")
+            .replace(
+                '  protocol: "0.2"\n',
+                '  protocol: "0.2"\n  risk: R1\n  risk_rationale: "small"\n',
+            )
+            .replace("  - id: check\n    status: skipped", "  - id: check\n    status: done")
+            .replace(
+                "gates: []\n",
+                "gates:\n  - gate: check\n    transport: blocking\n"
+                '    outcome: accept\n    at: "2026-08-16T09:00:00Z"\n',
+            ),
+            encoding="utf-8",
+        )
+        code, out, err = self.invoke(
+            "resume", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("next is make (pending)", out)
+
     def test_resume_refuses_a_decision_by_a_gate_nothing_declares(self) -> None:
         """§7 makes `gates` the record of the run's own decisions, so an
         entry naming a gate no composed stage declares is instrumentation

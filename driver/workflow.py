@@ -194,6 +194,19 @@ class Workflow:
                     scopes[member.id] = phased
         return scopes
 
+    def entry_gate(self) -> str | None:
+        """The gate the entry stage ends at — the decision §10 has accepting
+        the class `run.risk` carries — or None where it ends at a step.
+
+        Read from the composition rather than by name: which gate closes
+        intake is a fact about the stage the workflow enters at, and an id
+        matched by spelling would be a second vocabulary to keep true.
+        """
+        if not self.stages:
+            return None
+        last = self.stages[0].members[-1]
+        return last.id if last.kind == "gate" else None
+
     def sequence(self) -> tuple[list[str], int]:
         """Every composed member in record order, and how many of them the
         entry stage declares — §10's list is that stage's alone until the

@@ -621,6 +621,33 @@ def check_gates(state: RunState, workflow: Workflow) -> None:
                 f"and records no phase (spec §10)"
             )
     latest: dict[str, GateRecord] = {record.gate: record for record in state.gates}
+    # §7 and §10 make the class one write with the decision that accepted
+    # it: `run.risk` holds what the intake gate accepted, the gate's record
+    # becomes `done`, and the list is populated, together. State is loaded
+    # rather than trusted, so a document carrying the class while that gate
+    # never decided has the authority of the acceptance without it — and
+    # `run.risk` is what every check keyed on the post-intake shape reads,
+    # `check_records` first among them. The two directions are the one rule:
+    # the class stands where the acceptance does, and nowhere else.
+    entry_gate = workflow.entry_gate()
+    if entry_gate is not None:
+        decision = latest.get(entry_gate)
+        accepted = decision is not None and decision.outcome == "accept"
+        if state.risk is not None and not accepted:
+            stands = (
+                f"its latest decision is {decision.outcome!r}"
+                if decision is not None
+                else "no `gates` entry records a decision by it"
+            )
+            raise StateError(
+                f"run state carries risk {state.risk!r} and {stands} at gate "
+                f"{entry_gate!r}, which is what accepts a class (spec §7, §10)"
+            )
+        if accepted and state.risk is None:
+            raise StateError(
+                f"gate {entry_gate!r} records an accept and run state carries "
+                f"no risk — the acceptance is what sets it (spec §7, §10)"
+            )
     for record in state.steps:
         if record.status != "done" or record.id not in scopes:
             continue
