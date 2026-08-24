@@ -104,18 +104,50 @@ class TransitionTest(StateTestCase):
         )
 
     def test_start_marks_the_record_active(self) -> None:
-        record = state.start_step(self.state, "make")
+        record = state.start_step(self.state, self.workflow, "make")
         self.assertEqual(record.status, "active")
 
     def test_a_second_active_record_is_refused(self) -> None:
-        state.start_step(self.state, "make")
-        self.state.steps.append(state.StepRecord(id="other", status="pending"))
+        two_steps = STAGE.replace(
+            "        - step: make\n", "        - step: make\n        - step: also\n"
+        ).replace(
+            "## Gates",
+            "### also (planner)\n\n```yaml\nmetadata:\n  workflow:\n"
+            '    protocol: "0.2"\n    step:\n      role: planner\n      output:\n'
+            '        artifact: "{run}/also.md"\n```\n\n## Gates',
+        )
+        (self.base / "workflows" / "stages" / "demo.md").write_text(
+            two_steps, encoding="utf-8"
+        )
+        workflow = load_workflow(self.base, "demo")
+        _, created = state.create_run(self.runs, "two-steps", workflow, "0.2")
+        state.start_step(created, workflow, "make")
         with self.assertRaises(state.StateError) as caught:
-            state.start_step(self.state, "other")
+            state.start_step(created, workflow, "also")
         self.assertIn("at most one", str(caught.exception))
 
+    def test_only_a_declared_step_starts_and_only_from_pending(self) -> None:
+        """`steps` holds gates too, and a gate has no output to produce:
+        marking one active would have to be undone by a completion that
+        refuses it, after the state was already written."""
+        with self.assertRaises(state.StateError) as caught:
+            state.start_step(self.state, self.workflow, "check")
+        self.assertIn("not a declared step", str(caught.exception))
+        self.assertEqual(self.state.record("check").status, "skipped")
+        for status in ("done", "skipped", "blocked"):
+            with self.subTest(status=status):
+                self.state.record("make").status = status
+                with self.assertRaises(state.StateError) as caught:
+                    state.start_step(self.state, self.workflow, "make")
+                self.assertIn("starts from pending", str(caught.exception))
+        # A resume returns to the record that was running and starts it again.
+        self.state.record("make").status = "active"
+        self.assertEqual(
+            state.start_step(self.state, self.workflow, "make").status, "active"
+        )
+
     def test_complete_manifests_the_declared_output(self) -> None:
-        state.start_step(self.state, "make")
+        state.start_step(self.state, self.workflow, "make")
         state.complete_step(self.state, self.workflow, "make")
         self.assertEqual(self.state.record("make").status, "done")
         self.assertEqual(self.state.artifacts, ["{run}/out.md"])
@@ -127,7 +159,7 @@ class TransitionTest(StateTestCase):
         (self.base / "workflows" / "stages" / "demo.md").write_text(phased, encoding="utf-8")
         workflow = load_workflow(self.base, "demo")
         self.state.phase = 2
-        state.start_step(self.state, "make")
+        state.start_step(self.state, self.workflow, "make")
         state.complete_step(self.state, workflow, "make")
         self.assertEqual(self.state.artifacts, ["{run}/phase-2-out.md"])
 

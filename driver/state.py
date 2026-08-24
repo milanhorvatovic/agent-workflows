@@ -313,17 +313,32 @@ def save(state: RunState, run_dir: Path) -> None:
             raise
 
 
-def start_step(state: RunState, step_id: str) -> StepRecord:
+def start_step(state: RunState, workflow: Workflow, step_id: str) -> StepRecord:
     """Mark one record `active`. At most one may be (§10) — a second active
-    record would make §8.5's resume ambiguous."""
+    record would make §8.5's resume ambiguous.
+
+    Only a declared step starts, and only from a status a start means
+    something in. `steps` holds gates too (§10), and a gate has no role and
+    no output to produce: marking one `active` would have to be undone by a
+    completion that refuses it, after the state was already written. The
+    startable statuses are `pending` and `active` — the second because a
+    resume returns to the record that was running and starts it again —
+    while `done`, `skipped`, and `blocked` each mean something a start
+    would erase: work finished, a route that has not fired, a gate waiting
+    on its outcome.
+    """
+    if workflow.step(step_id) is None:
+        raise StateError(f"{step_id!r} is not a declared step (spec §9.1)")
     for step in state.steps:
         if step.status == "active" and step.id != step_id:
             raise StateError(
                 f"step {step.id!r} is already active — a run has at most one"
             )
     record = state.record(step_id)
-    if record.status == "done":
-        raise StateError(f"step {step_id!r} is already done")
+    if record.status not in ("pending", "active"):
+        raise StateError(
+            f"step {step_id!r} is {record.status}, and a step starts from pending"
+        )
     record.status = "active"
     return record
 
