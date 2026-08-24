@@ -227,6 +227,23 @@ class TransitionTest(StateTestCase):
         state.complete_step(self.state, workflow, "make")
         self.assertEqual(self.state.artifacts, ["{run}/phase-2-out.md"])
 
+    def test_a_shell_style_token_is_text_and_not_the_phase(self) -> None:
+        """`${N}` is shell text, which is why the declaration reader accepts
+        it and reports no unknown placeholder. A raw substitution resolves
+        the `{N}` inside it all the same, so the manifest would name
+        `phase-$1.md` for a step that wrote `phase-${N}.md` — and the same
+        raw rule in the manifest check would agree with itself about it."""
+        literal = STAGE.replace(
+            'artifact: "{run}/out.md"', 'artifact: "{run}/phase-${N}-out.md"'
+        )
+        (self.base / "workflows" / "stages" / "demo.md").write_text(literal, encoding="utf-8")
+        workflow = load_workflow(self.base, "demo")
+        self.state.phase = 2
+        state.start_step(self.state, self.workflow, "make")
+        state.complete_step(self.state, workflow, "make")
+        self.assertEqual(self.state.artifacts, ["{run}/phase-${N}-out.md"])
+        state.check_manifest(self.state, workflow)
+
     def test_completing_a_step_that_is_not_active_is_refused(self) -> None:
         with self.assertRaises(state.StateError):
             state.complete_step(self.state, self.workflow, "make")

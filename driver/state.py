@@ -29,7 +29,7 @@ from pathlib import Path
 
 from . import PROTOCOL, PROTOCOL_VERSION, implements
 from .protocol_yaml import ProtocolYamlError, dumps, loads
-from .workflow import Workflow
+from .workflow import PHASE, PHASE_SET, Workflow
 
 STATE_FILE = "workflow-state.yaml"
 
@@ -499,8 +499,9 @@ def complete_step(state: RunState, workflow: Workflow, step_id: str) -> None:
     if declaration is None:
         raise StateError(f"{step_id!r} is not a declared step (spec §9.1)")
     record.status = "done"
-    artifact = declaration.output_artifact.replace(
-        "{N}", str(state.phase if state.phase is not None else 1)
+    artifact = PHASE.sub(
+        str(state.phase if state.phase is not None else 1),
+        declaration.output_artifact,
     )
     if artifact not in state.artifacts:
         state.artifacts.append(artifact)
@@ -663,7 +664,7 @@ def check_manifest(state: RunState, workflow: Workflow) -> None:
         declaration = workflow.step(record.id)
         if declaration is None:
             continue  # a gate, or a record no step declares
-        produced = declaration.output_artifact.replace("{N}", phase)
+        produced = PHASE.sub(phase, declaration.output_artifact)
         if produced not in manifest:
             raise StateError(
                 f"step {record.id!r} is done and {produced!r} is not in the "
@@ -701,8 +702,9 @@ def route_verdict(state: RunState, workflow: Workflow, step_id: str, verdict: st
     # destination on an output no document says exists. `{N}` resolves from
     # the phase now executing, which is the scope the suite checks too:
     # what an earlier phase owes cannot be read from this document.
-    produced = declaration.output_artifact.replace(
-        "{N}", str(state.phase if state.phase is not None else 1)
+    produced = PHASE.sub(
+        str(state.phase if state.phase is not None else 1),
+        declaration.output_artifact,
     )
     if produced not in state.artifacts:
         raise StateError(
@@ -806,7 +808,7 @@ def _invalidated_by(state: RunState, workflow: Workflow, destination: str) -> se
 
 
 def _phase_free(artifact: str) -> str:
-    return artifact.replace("{N}", "{phase}").replace("{P}", "{phase}")
+    return PHASE_SET.sub("{phase}", PHASE.sub("{phase}", artifact))
 
 
 def _resolve_target(state: RunState, workflow: Workflow, target: str) -> str:

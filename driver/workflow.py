@@ -86,6 +86,13 @@ VERDICTS = ("PASS", "PASS_WITH_CONDITIONS", "FAIL")
 # and a declaration that authors it is addressing what it cannot know.
 PLACEHOLDERS = frozenset({"run", "N", "P", "machine-checks"})
 PLACEHOLDER = re.compile(r"(?<!\$)\{([^{}]*)\}")
+# The two a path resolves by, matched by that same rule. A raw substring
+# substitution would resolve the `{N}` inside a `${N}` the scan above reads
+# as text, so a step declaring `phase-${N}.md` would be manifested under a
+# name it never wrote — and every later check making the same substitution
+# would agree with itself about the corruption.
+PHASE = re.compile(r"(?<!\$)\{N\}")
+PHASE_SET = re.compile(r"(?<!\$)\{P\}")
 
 # The schemas declare every structure below closed, and §9.5 makes unknown
 # keys inside one an authoring error while tolerating unknown siblings of
@@ -179,7 +186,7 @@ class Workflow:
         scopes: dict[str, bool] = {}
         for stage in self.stages:
             phased = any(
-                "{N}" in declaration.output_artifact
+                PHASE.search(declaration.output_artifact) is not None
                 for declaration in stage.steps.values()
             )
             for member in stage.members:
