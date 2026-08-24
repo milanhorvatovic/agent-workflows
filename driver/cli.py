@@ -220,7 +220,9 @@ def _bound_runs(runs_dir: Path) -> int | Path:
     `scandir` reads either. Bound, the refusal is the open — `O_NOFOLLOW`
     faults a link there and nothing can be swapped in afterwards, since what
     is scanned is the directory that was opened rather than the name it had.
-    The descriptor closes with the scan, `scandir` owning what it is given.
+    The descriptor stays the caller's: `scandir` reads one it is given
+    without taking ownership, so exhausting the iterator leaves it open and
+    `_status` closes it in its own `finally`.
     """
     if not run_state._BINDS_TO_DIRECTORY:
         return runs_dir
