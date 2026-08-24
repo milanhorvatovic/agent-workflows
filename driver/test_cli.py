@@ -370,6 +370,31 @@ class CliTest(unittest.TestCase):
                 self.assertIn("gate 'check'", err)
                 self.assertIn("once per run", err)
 
+    def test_resume_refuses_a_decision_by_a_gate_nothing_declares(self) -> None:
+        """§7 makes `gates` the record of the run's own decisions, so an
+        entry naming a gate no composed stage declares is instrumentation
+        nothing wrote — and read as a gate of unknown scope it escapes the
+        phase rule every declared one is held to."""
+        self.write_framework()
+        self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        state_path = self.base / "runs" / "2026-08-17-x" / "workflow-state.yaml"
+        state_path.write_text(
+            state_path.read_text(encoding="utf-8").replace(
+                "gates: []\n",
+                "gates:\n  - gate: phantom\n    transport: blocking\n"
+                '    outcome: accept\n    at: "2026-08-16T09:00:00Z"\n',
+            ),
+            encoding="utf-8",
+        )
+        code, out, err = self.invoke(
+            "resume", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        self.assertEqual(code, 2)
+        self.assertEqual(out, "")
+        self.assertIn("phantom", err)
+
     def test_resume_refuses_a_status_the_member_kind_does_not_own(self) -> None:
         """§10 gives the two working statuses to different kinds: `active`
         is the step currently running, `blocked` a gate waiting on its

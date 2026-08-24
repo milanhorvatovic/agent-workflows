@@ -602,7 +602,18 @@ def check_gates(state: RunState, workflow: Workflow) -> None:
     """
     scopes = workflow.gate_scopes()
     for decision in state.gates:
-        if decision.phase is not None and scopes.get(decision.gate, True) is False:
+        # §7 makes `gates` the record of the run's own decisions, so an
+        # entry naming a gate no composed stage declares is instrumentation
+        # nothing wrote — the same reading `check_records` gives a step id.
+        # Every declared gate is in `scopes`, so an absent one is unknown
+        # rather than unscoped, and letting it default would exempt it from
+        # the phase rule every declared gate is held to.
+        if decision.gate not in scopes:
+            raise StateError(
+                f"gate {decision.gate!r} records a decision and no composed "
+                f"stage declares it (spec §7, §9.4)"
+            )
+        if decision.phase is not None and not scopes[decision.gate]:
             raise StateError(
                 f"gate {decision.gate!r} records phase {decision.phase} and its "
                 f"stage writes no per-phase output, so it decides once per run "
