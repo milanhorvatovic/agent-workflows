@@ -253,6 +253,21 @@ class LoadsTest(unittest.TestCase):
             loads("iterations: " + "9" * 5000 + "\n")
         self.assertIn("outside the subset", str(caught.exception))
 
+    def test_a_key_is_plain_on_the_page_or_it_is_not_a_key(self) -> None:
+        """What YAML forbids at the start of a plain scalar it forbids at
+        the start of a key: `!tag: 1` read as a string key while the
+        emitter wrote tag syntax, and `{"- item": 1}` was written as
+        `- item: 1` — a mapping out, a sequence back."""
+        for key in ("- item", "-", "!tag", "&anchor", "*alias", "%directive"):
+            with self.subTest(key=key):
+                with self.assertRaises(ValueError):
+                    dumps({key: 1})
+        with self.assertRaises(ProtocolYamlError) as caught:
+            loads("!tag: 1\n")
+        self.assertIn("not a plain key", str(caught.exception))
+        # The keys the protocol's own documents use stay writable.
+        self.assertEqual(dumps({"on": 1, "PASS": 2}), "on: 1\nPASS: 2\n")
+
     def test_a_key_may_carry_a_space_on_both_sides(self) -> None:
         """§10's instrumentation is where a plain key with a space in it
         plausibly appears: refused on write, state that loads here could

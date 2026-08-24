@@ -336,7 +336,7 @@ def _split_key(line: _Line) -> tuple[str, str]:
     # one the reader must not accept — otherwise a document loads and the
     # next save refuses it, which is the round trip broken from the inside.
     # A space is different and stays readable: the emitter writes it.
-    if not key or any(c in key for c in "{}[],&*#?|>%@`\"'\t"):
+    if not key or not _is_plain_key(key):
         raise ProtocolYamlError(line.number, f"not a plain key: {head!r}")
     # A key is resolved like any other plain scalar, and a key's type decides
     # the mapping's shape rather than one value inside it: `true:` is a
@@ -481,6 +481,22 @@ def _emit_block(data: object, indent: int) -> list[str]:
     raise TypeError(f"not a collection: {type(data).__name__}")
 
 
+def _is_plain_key(key: str) -> bool:
+    """Whether this text is a plain key on the page, read by both halves.
+
+    A key is written plain and read plain, so what YAML forbids at the start
+    of a plain scalar it forbids here — the tag indicator among them, which
+    made `!tag: 1` read as a string key on one side and emit as tag syntax
+    on the other. A `- ` prefix is the sharper case, being legal in a key's
+    characters and not in its position: `dumps({"- item": 1})` wrote
+    `- item: 1`, which the reader takes as a sequence, so a mapping went out
+    and a list came back.
+    """
+    if key[0] in INDICATORS or key.startswith("- ") or key == "-":
+        return False
+    return not any(character in key for character in "{}[],#?|>\t")
+
+
 def _check_key(key: object) -> None:
     # A space inside a key is content — `token count: 1` is a plain key the
     # reader accepts, and an instrumentation mapping (§10) is where one
@@ -492,7 +508,8 @@ def _check_key(key: object) -> None:
         not isinstance(key, str)
         or not key
         or key != key.strip(WHITESPACE)
-        or any(c in key for c in ":{}[],&*#?|>%@`\"'\t")
+        or ":" in key
+        or not _is_plain_key(key)
     ):
         raise ValueError(f"not a plain key: {key!r}")
     # A key is written plain, so anything the reader forbids raw would be
