@@ -25,6 +25,10 @@ import re
 
 INDENT = 2
 
+# Far above what the protocol's documents nest and far below where the
+# interpreter's own stack gives out.
+MAX_DEPTH = 64
+
 # What YAML separates with, and the whole of it: `str.strip()` would take
 # every Unicode space with it, and a non-breaking or ideographic space is
 # content — trimmed silently, a value comes back shorter than it was
@@ -246,16 +250,28 @@ def _scalar_start(raw: str) -> int:
     return index
 
 
-def _parse_block(lines: list[_Line], start: int, indent: int) -> tuple[object, int]:
+def _parse_block(
+    lines: list[_Line], start: int, indent: int, depth: int = 0
+) -> tuple[object, int]:
+    # Nesting is recursion here, and Python's stack is not a subset rule: a
+    # document nested past it raised `RecursionError` out of the parser and
+    # past every handler that turns malformed input into a reported defect.
+    # The limit is explicit and far above anything the protocol's documents
+    # reach — run state nests four deep, a declaration five — so the depth
+    # that trips it is a document no reader should be asked to carry.
+    if depth > MAX_DEPTH:
+        raise ProtocolYamlError(lines[start].number, f"nested past {MAX_DEPTH} levels")
     line = lines[start]
     if line.indent != indent:
         raise ProtocolYamlError(line.number, f"expected indent {indent}, got {line.indent}")
     if line.content.startswith("- ") or line.content == "-":
-        return _parse_sequence(lines, start, indent)
-    return _parse_mapping(lines, start, indent)
+        return _parse_sequence(lines, start, indent, depth)
+    return _parse_mapping(lines, start, indent, depth)
 
 
-def _parse_mapping(lines: list[_Line], start: int, indent: int) -> tuple[dict, int]:
+def _parse_mapping(
+    lines: list[_Line], start: int, indent: int, depth: int = 0
+) -> tuple[dict, int]:
     mapping: dict[str, object] = {}
     index = start
     while index < len(lines) and lines[index].indent == indent:
@@ -269,7 +285,9 @@ def _parse_mapping(lines: list[_Line], start: int, indent: int) -> tuple[dict, i
             mapping[key] = _parse_scalar(rest, line.number)
             index += 1
         elif index + 1 < len(lines) and lines[index + 1].indent > indent:
-            mapping[key], index = _parse_block(lines, index + 1, lines[index + 1].indent)
+            mapping[key], index = _parse_block(
+                lines, index + 1, lines[index + 1].indent, depth + 1
+            )
         else:
             mapping[key] = None
             index += 1
@@ -278,7 +296,9 @@ def _parse_mapping(lines: list[_Line], start: int, indent: int) -> tuple[dict, i
     return mapping, index
 
 
-def _parse_sequence(lines: list[_Line], start: int, indent: int) -> tuple[list, int]:
+def _parse_sequence(
+    lines: list[_Line], start: int, indent: int, depth: int = 0
+) -> tuple[list, int]:
     sequence: list[object] = []
     index = start
     while index < len(lines) and lines[index].indent == indent:
@@ -289,7 +309,9 @@ def _parse_sequence(lines: list[_Line], start: int, indent: int) -> tuple[list, 
         if not rest:
             # `-` alone: the item is the deeper-indented block that follows.
             if index + 1 < len(lines) and lines[index + 1].indent > indent:
-                item, index = _parse_block(lines, index + 1, lines[index + 1].indent)
+                item, index = _parse_block(
+                    lines, index + 1, lines[index + 1].indent, depth + 1
+                )
                 sequence.append(item)
             else:
                 sequence.append(None)

@@ -173,6 +173,27 @@ class LoadsTest(unittest.TestCase):
         self.assertEqual(loads("a: b\tc\r\nd: e\n"), {"a": "b\tc", "d": "e"})
         self.assertEqual(loads('a: "b\\x00c"\n'), {"a": "b\x00c"})
 
+    def test_rejects_a_document_nested_past_the_limit(self) -> None:
+        """Nesting is recursion here, and Python's stack is not a subset
+        rule: a document nested past it raised `RecursionError` out of the
+        parser, past every handler that turns malformed input into a
+        reported defect."""
+        from driver.protocol_yaml import MAX_DEPTH
+
+        def nest(depth: int) -> str:
+            return (
+                "".join("  " * level + f"k{level}:\n" for level in range(depth))
+                + "  " * depth
+                + "v: 1\n"
+            )
+
+        self.assertIsInstance(loads(nest(MAX_DEPTH - 2)), dict)
+        for depth in (MAX_DEPTH + 5, 5000):
+            with self.subTest(depth=depth):
+                with self.assertRaises(ProtocolYamlError) as caught:
+                    loads(nest(depth))
+                self.assertIn("nested past", str(caught.exception))
+
     def test_rejects_tabs_in_indentation(self) -> None:
         with self.assertRaises(ProtocolYamlError) as caught:
             loads("a:\n\tb: 1\n")
