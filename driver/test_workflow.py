@@ -467,6 +467,10 @@ class SyntheticTreeTest(unittest.TestCase):
             # A comment mentioning the word is a comment, inline as well as
             # on a line of its own.
             "metadata: # {workflow: demo}\n  labels: [one, two]\n",
+            # A descendant deeper than the direct child is somebody else's
+            # key: `metadata.annotations.workflow` declares nothing.
+            "metadata:\n  annotations:\n    workflow: [one, two]\n",
+            "metadata: {annotations: {workflow: [one, two]}}\n",
             "metadata:\n  labels: [one, two]\n  # workflow: not a key\n",
             "metadata:\n  labels: ['workflow: x']\n",
             "metadata:\n  labels: [a, b]\nother:\n  workflow: 'x'\n",

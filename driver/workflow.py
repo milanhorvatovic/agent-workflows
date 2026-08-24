@@ -313,33 +313,72 @@ def _closing_quote(text: str, start: int) -> int | None:
 def _declares_workflow(body: str) -> bool:
     """Whether a block that failed to parse was reaching for a declaration.
 
-    It has to be decided on text, the parse having failed, and the test is
-    nesting rather than co-occurrence: a `workflow` key *under* a
-    first-column `metadata`, which is the shape §9 gives a declaration and
-    the shape the conformance reader filters on. Co-occurrence anywhere in
-    the fence was the last cut of this, and it read an example's
-    `metadata.labels` beside a comment mentioning `workflow:` as a broken
-    declaration. Both spellings count, since a declaration written
-    `metadata: {workflow: …}` is outside this subset and still a
-    declaration — reporting it is the point — and the block form's own
-    nesting is what ends the scan at the next first-column key.
+    It has to be decided on text, the parse having failed, and the question
+    is structural: does a first-column `metadata` have `workflow` as its
+    *direct* child, which is the shape §9 gives a declaration and the one
+    the conformance reader filters on after parsing. A descendant deeper
+    down is somebody else's key — `metadata.annotations.workflow` is an
+    ordinary example — so occurrence anywhere was never the test, and each
+    round that treated it as one traded one misclassification for another.
+
+    Both spellings are read the same way, by depth rather than by pattern:
+    the block form's direct children are the lines at the indent the first
+    one sets, and the flow form's are the keys at one brace deep. Quoted
+    spans are blanked and a trailing comment removed first, since neither
+    is structure.
     """
     for opening in METADATA_KEY.finditer(body):
-        # Quoted spans are values, not structure: `metadata: '{workflow: x}'`
-        # is a string that mentions the word, and reading it as a flow key
-        # would report an example as a broken declaration. They are blanked
-        # before the flow key is looked for, since a scalar cannot hold one.
-        if WORKFLOW_INLINE.search(_without_comment(_blank_quoted(opening.group("rest")))):
+        rest = _without_comment(_blank_quoted(opening.group("rest")))
+        if _flow_has_direct_key(rest, "workflow"):
             return True
-        for line in body[opening.end() :].split("\n")[1:]:
-            if not line.strip():
-                continue
-            if line.lstrip().startswith("#"):
-                continue  # a comment ends nothing, at whatever column
-            if not line[:1].isspace():
-                break  # a first-column key ends what `metadata` contains
-            if WORKFLOW_KEY.match(line):
+        if _block_has_direct_key(body[opening.end() :], "workflow"):
+            return True
+    return False
+
+
+def _flow_has_direct_key(rest: str, name: str) -> bool:
+    """A key of a flow mapping opened on this line, one brace deep."""
+    depth = 0
+    for index, character in enumerate(rest):
+        if character in "{[":
+            depth += 1
+        elif character in "}]":
+            depth -= 1
+        elif depth == 1 and rest.startswith(name, index):
+            # A key may be quoted on either side; the quote is not the
+            # delimiter, and `{'workflow': …}` is the same key as `{workflow: …}`.
+            before = rest[:index].rstrip(WHITESPACE)
+            if before.endswith(("'", '"')):
+                before = before[:-1].rstrip(WHITESPACE)
+            after = rest[index + len(name) :].lstrip(WHITESPACE)
+            if after.startswith(("'", '"')):
+                after = after[1:].lstrip(WHITESPACE)
+            if before and before[-1] in "{," and after.startswith(":"):
                 return True
+    return False
+
+
+def _block_has_direct_key(after: str, name: str) -> bool:
+    """A key of the block mapping that follows, at the indent its first
+    child sets — a deeper one belongs to whatever opened above it."""
+    child_indent: int | None = None
+    for line in after.split("\n")[1:]:
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip(WHITESPACE))
+        if indent == 0:
+            return False  # a first-column key ends what `metadata` contains
+        if child_indent is None:
+            child_indent = indent
+        if indent != child_indent:
+            continue  # deeper: a child of the key above, not of `metadata`
+        key = line.strip()
+        for quote in ("'", '"'):
+            if key.startswith(quote):
+                key = key[1:].partition(quote)[0] + ":"
+                break
+        if key.startswith(name) and key[len(name) :].lstrip(WHITESPACE).startswith(":"):
+            return True
     return False
 
 
