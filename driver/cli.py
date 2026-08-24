@@ -24,7 +24,7 @@ from pathlib import Path
 from . import PROTOCOL
 from . import state as run_state
 from .config import Config, ConfigError, load_config
-from .workflow import WorkflowError, load_workflow
+from .workflow import Workflow, WorkflowError, load_workflow
 
 
 def _has_control_characters(value: str) -> bool:
@@ -159,7 +159,7 @@ def _run(config: Config, workflow_name: str, run_id: str) -> int:
         print(f"driver: {error}", file=sys.stderr)
         return 2
     print(f"created {run_dir}")
-    return _report_position(created)
+    return _report_position(created, workflow)
 
 
 def _resume(config: Config, run_id: str) -> int:
@@ -178,24 +178,37 @@ def _resume(config: Config, run_id: str) -> int:
     # the same document is trusted.
     try:
         workflow = load_workflow(config.framework_dir, loaded.workflow)
+        run_state.check_records(loaded, workflow)
         run_state.check_manifest(loaded, workflow)
     except (WorkflowError, run_state.StateError) as error:
         print(f"driver: {error}", file=sys.stderr)
         return 2
-    return _report_position(loaded)
+    return _report_position(loaded, workflow)
 
 
-def _report_position(loaded: run_state.RunState) -> int:
+def _report_position(loaded: run_state.RunState, workflow: Workflow) -> int:
     position = loaded.position()
     if position is None:
         print(f"run {loaded.run_id}: nothing left to run")
         return 0
     print(f"run {loaded.run_id}: next is {position.id} ({position.status})")
-    print(
-        "driver: cannot execute it yet — the context assembler and "
-        "invocation backend modules have not landed",
-        file=sys.stderr,
-    )
+    # What is missing depends on what the position is. A gate waits on a
+    # human (§7) — blocked where it has been reached and is waiting, pending
+    # where the run has yet to arrive — and no context assembler or backend
+    # can clear that: the gate handler is the module it needs. Which kind a
+    # record is comes from the composition rather than from its status,
+    # since a gate is `pending` before it is reached like any other member.
+    if workflow.member_kind(position.id) == "gate":
+        print(
+            "driver: cannot decide it yet — the gate handler module has not landed",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            "driver: cannot execute it yet — the context assembler and "
+            "invocation backend modules have not landed",
+            file=sys.stderr,
+        )
     return 1
 
 
