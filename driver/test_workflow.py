@@ -160,14 +160,36 @@ class SyntheticTreeTest(unittest.TestCase):
         self.assertIn("under a heading that says 'planner'", str(caught.exception))
 
     def test_a_truncated_heading_declares_no_step(self) -> None:
-        """`### make (` is malformed, not a prefix-match: the contract under
-        it must not associate, so the sequence step has no block."""
+        """`### make (` is malformed, not a prefix-match: it owns the space
+        beneath it without naming anything, so the contract there attributes
+        to no step rather than to whichever heading last parsed."""
         self.write(
             "workflows/stages/demo.md", STAGE.replace("### make (analyst)", "### make (")
         )
         with self.assertRaises(WorkflowError) as caught:
             load_workflow(self.framework, "demo")
-        self.assertIn("step block above the first step heading", str(caught.exception))
+        self.assertIn("does not match", str(caught.exception))
+
+    def test_a_step_block_with_no_heading_at_all_is_an_error(self) -> None:
+        self.write(
+            "workflows/stages/demo.md", STAGE.replace("### make (analyst)\n\n", "")
+        )
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "demo")
+        self.assertIn("above the first step heading", str(caught.exception))
+
+    def test_a_step_block_below_a_closing_h2_is_an_error(self) -> None:
+        """`## Gates` ends the step section above it, so a contract below it
+        belongs to no step however many valid headings precede it."""
+        self.write(
+            "workflows/stages/demo.md",
+            STAGE + "\n```yaml\nmetadata:\n  workflow:\n"
+            '    protocol: "0.2"\n    step:\n      role: analyst\n      output:\n'
+            '        artifact: "{run}/moved.md"\n```\n',
+        )
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "demo")
+        self.assertIn("closed the step section", str(caught.exception))
 
     def test_a_sequence_step_without_a_block_is_an_error(self) -> None:
         self.write(

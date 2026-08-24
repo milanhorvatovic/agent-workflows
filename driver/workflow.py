@@ -42,6 +42,11 @@ MEMBER_ID = re.compile('^[a-z][a-z0-9]*(-[a-z0-9]+)*$')
 STEP_HEADING = re.compile(
     r"^### (?P<id>[a-z][a-z0-9-]*) \((?P<role>[a-z]+)\)[ \t]*$", re.MULTILINE
 )
+# Every heading of each level, whatever it says: a contract belongs to the
+# nearest heading above it, so what closed a step section matters as much as
+# what opened one.
+H3_HEADING = re.compile(r"^### ", re.MULTILINE)
+H2_HEADING = re.compile(r"^## ", re.MULTILINE)
 # One fence model, the conformance suite's: either marker, three or more,
 # up to three spaces of indent, closed by a run at least as long or running
 # to the end of the file. Discovery consumes outermost fences whole, so a
@@ -385,19 +390,41 @@ def _steps(text: str, rel: str) -> dict[str, StepDeclaration]:
     # fenced example, sitting between a real heading and its contract, would
     # otherwise be the nearest heading and bind that contract to `fake`. The
     # mask keeps every offset, so the association below still holds.
+    masked = _mask_fences(text)
     headings = [
-        (m.start(), m.group("id"), m.group("role"))
-        for m in STEP_HEADING.finditer(_mask_fences(text))
+        (m.start(), m.group("id"), m.group("role")) for m in STEP_HEADING.finditer(masked)
     ]
+    h3_offsets = [m.start() for m in H3_HEADING.finditer(masked)]
+    h2_offsets = [m.start() for m in H2_HEADING.finditer(masked)]
     steps: dict[str, StepDeclaration] = {}
     for offset, workflow in _blocks(text, rel):
         declaration = workflow.get("step")
         if not isinstance(declaration, dict):
             continue
-        prior = [(x, role) for start, x, role in headings if start < offset]
-        if not prior:
+        # A contract belongs to the heading nearest above it, and two things
+        # close a step section before the contract is reached: an `## `
+        # heading, which ends the steps the section held, and a `### ` that
+        # is not the declared form, which owns the space beneath it without
+        # naming anything. Binding to the last *valid* heading regardless
+        # would execute a moved or orphaned contract as the step above it —
+        # the association the conformance suite rejects by the same rules.
+        nearest_h3 = max((start for start in h3_offsets if start < offset), default=None)
+        nearest_h2 = max((start for start in h2_offsets if start < offset), default=None)
+        prior = [(start, x, role) for start, x, role in headings if start < offset]
+        nearest_valid = prior[-1][0] if prior else None
+        if nearest_h3 is not None and nearest_h2 is not None and nearest_h2 > nearest_h3:
+            raise WorkflowError(
+                f"{rel}: step block below a `## ` heading that closed the step "
+                f"section above it — it belongs to no step"
+            )
+        if nearest_h3 is None:
             raise WorkflowError(f"{rel}: step block above the first step heading")
-        step_id, heading_role = prior[-1]
+        if nearest_valid is None or nearest_valid < nearest_h3:
+            raise WorkflowError(
+                f"{rel}: step block under a heading that does not match "
+                f"`### <id> (<role>)` — it would attribute to the previous step"
+            )
+        _, step_id, heading_role = prior[-1]
         if step_id in steps:
             raise WorkflowError(f"{rel}: step {step_id!r} declares two step blocks")
         step = _step_declaration(declaration, step_id, rel)
