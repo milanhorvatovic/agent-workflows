@@ -639,6 +639,11 @@ class SyntheticTreeTest(unittest.TestCase):
             "metadata:\n  !!str workflow: [one, two]\n",
             "{!!str metadata: {workflow: [one, two]}}\n",
             "metadata: {!!str workflow: [one, two]}\n",
+            # YAML's explicit key form names the same key: `? metadata` with
+            # the value on the `:` line beneath it, and its flow spelling.
+            "? metadata\n: {workflow: [one, two]}\n",
+            "? metadata\n:\n  workflow: [one, two]\n",
+            "{? metadata: {workflow: [one, two]}}\n",
             # A comment after a real key does not unmake the key.
             "metadata: {workflow: [one, two]} # {workflow: no}\n",
             # The one that carries both: a quoted value mentioning the word

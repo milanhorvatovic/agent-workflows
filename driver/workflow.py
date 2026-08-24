@@ -47,7 +47,16 @@ STEP_HEADING = re.compile(
 # that read only the bare spelling would file the declaration under it as
 # prose. Up to two, the tag and the anchor in either order.
 METADATA_KEY = re.compile(
-    r'^(?:[!&]\S*[ \t]+){0,2}[\'"]?metadata[\'"]?[ \t]*:(?P<rest>.*)$', re.MULTILINE
+    r'^(?:\?[ \t]+)?(?:[!&]\S*[ \t]+){0,2}[\'"]?metadata[\'"]?[ \t]*:(?P<rest>.*)$',
+    re.MULTILINE,
+)
+# YAML's explicit key form spells the same key over two lines — `? metadata`
+# and the value on the `:` line beneath — which resolves to `metadata` in
+# any reader that parses it. The `rest` group is that value, so both forms
+# are read the same way from here on.
+EXPLICIT_KEY = re.compile(
+    r'^\?[ \t]+(?:[!&]\S*[ \t]+){0,2}[\'"]?metadata[\'"]?[ \t]*\n^:(?P<rest>.*)$',
+    re.MULTILINE,
 )
 WORKFLOW_KEY = re.compile(r'^[ \t]+[\'"]?workflow[\'"]?[ \t]*:')
 WORKFLOW_INLINE = re.compile(r'[{,][ \t]*[\'"]?workflow[\'"]?[ \t]*:')
@@ -417,7 +426,9 @@ def _declares_workflow(body: str) -> bool:
     spans are blanked and a trailing comment removed first, since neither
     is structure.
     """
-    for opening in METADATA_KEY.finditer(body):
+    for opening in list(METADATA_KEY.finditer(body)) + list(
+        EXPLICIT_KEY.finditer(body)
+    ):
         rest = _without_comment(_blank_quoted(opening.group("rest")))
         if _flow_has_direct_key(rest, "workflow"):
             return True
@@ -539,6 +550,11 @@ def _flow_key_end(rest: str, name: str) -> int | None:
                 if before[cut + 1 :][:1] not in ("!", "&"):
                     break
                 before = before[: cut + 1].rstrip(WHITESPACE)
+            # `{? workflow: …}` is the explicit key form in flow, and the
+            # indicator stands where the properties do — between the key
+            # and the punctuation that opens its place.
+            if before.endswith("?"):
+                before = before[:-1].rstrip(WHITESPACE)
             after = rest[index + len(name) :].lstrip(WHITESPACE)
             if after.startswith(("'", '"')):
                 after = after[1:].lstrip(WHITESPACE)
