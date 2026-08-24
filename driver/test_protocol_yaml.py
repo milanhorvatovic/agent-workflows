@@ -87,6 +87,15 @@ class LoadsTest(unittest.TestCase):
             },
         )
 
+    def test_trims_only_what_yaml_separates_with(self) -> None:
+        """A non-breaking or ideographic space is content, not separation:
+        trimmed as whitespace, a value comes back shorter than it was
+        written, in a key, a value, or a sequence item alike."""
+        self.assertEqual(loads("a: value\u00a0\n"), {"a": "value\u00a0"})
+        self.assertEqual(loads("k\u00a0: 1\n"), {"k\u00a0": 1})
+        self.assertEqual(loads("a:\n  - item\u3000\n"), {"a": ["item\u3000"]})
+        self.assertEqual(loads(dumps({"a": "value\u00a0"})), {"a": "value\u00a0"})
+
     def test_strips_comments_outside_quotes_only(self) -> None:
         data = loads('a: 1 # trailing\n# full line\nb: "kept # inside"\n')
         self.assertEqual(data, {"a": 1, "b": "kept # inside"})

@@ -25,6 +25,13 @@ import re
 
 INDENT = 2
 
+# What YAML separates with, and the whole of it: `str.strip()` would take
+# every Unicode space with it, and a non-breaking or ideographic space is
+# content — trimmed silently, a value comes back shorter than it was
+# written, which is the quiet reshaping this module refuses everywhere
+# else.
+WHITESPACE = " \t"
+
 # YAML 1.2 core resolution: what any conforming reader applies to a plain
 # scalar, and therefore what decides whether a value this module writes comes
 # back as the type it was given. The subset resolves three of core's kinds —
@@ -152,12 +159,18 @@ def _content_lines(text: str) -> list[_Line]:
         )
     lines: list[_Line] = []
     for number, raw in enumerate(text.splitlines(), start=1):
-        if "\t" in raw[: len(raw) - len(raw.lstrip())]:
+        if "\t" in raw[: len(raw) - len(raw.lstrip(" \t"))]:
             raise ProtocolYamlError(number, "tab in indentation")
         stripped = _strip_comment(raw, number)
-        if not stripped.strip():
+        if not stripped.strip(WHITESPACE):
             continue
-        lines.append(_Line(number, len(stripped) - len(stripped.lstrip()), stripped.strip()))
+        lines.append(
+            _Line(
+                number,
+                len(stripped) - len(stripped.lstrip(WHITESPACE)),
+                stripped.strip(WHITESPACE),
+            )
+        )
     return lines
 
 
@@ -220,7 +233,7 @@ def _scalar_start(raw: str) -> int:
     if marker != -1:
         index += marker + 2
         return index + len(raw[index:]) - len(raw[index:].lstrip(" "))
-    if rest.rstrip().endswith(":"):
+    if rest.rstrip(WHITESPACE).endswith(":"):
         # `key:` alone — the value is the block that follows, and this line
         # carries no scalar for a quote to open.
         return len(raw)
@@ -266,7 +279,7 @@ def _parse_sequence(lines: list[_Line], start: int, indent: int) -> tuple[list, 
         line = lines[index]
         if not (line.content.startswith("- ") or line.content == "-"):
             raise ProtocolYamlError(line.number, "mapping entry inside a sequence")
-        rest = line.content[2:].strip() if line.content != "-" else ""
+        rest = line.content[2:].strip(WHITESPACE) if line.content != "-" else ""
         if not rest:
             # `-` alone: the item is the deeper-indented block that follows.
             if index + 1 < len(lines) and lines[index + 1].indent > indent:
@@ -311,7 +324,7 @@ def _split_key(line: _Line) -> tuple[str, str]:
     # mapping indicator.
     if not separator or (rest and rest[0] not in " \t"):
         raise ProtocolYamlError(line.number, "expected `key:` or `key: value`")
-    key = head.strip()
+    key = head.strip(WHITESPACE)
     # The tab is here and not in the emitter's list alone deliberately: this
     # subset has no quoted-key form, so a key the emitter cannot write is
     # one the reader must not accept — otherwise a document loads and the
@@ -330,7 +343,7 @@ def _split_key(line: _Line) -> tuple[str, str]:
         raise ProtocolYamlError(
             line.number, f"key would resolve as a non-string: {key!r}"
         )
-    return key, rest.strip()
+    return key, rest.strip(WHITESPACE)
 
 
 def _is_mapping_start(rest: str) -> bool:
@@ -343,7 +356,9 @@ def _is_mapping_start(rest: str) -> bool:
     # read without the tab, `- key:\tvalue` falls through to the scalar
     # resolver and is refused as a mapping indicator, which is a document
     # the subset admits reported as one it does not.
-    return bool(separator) and (not tail or tail[0] in " \t") and bool(head.strip())
+    return bool(separator) and (not tail or tail[0] in WHITESPACE) and bool(
+        head.strip(WHITESPACE)
+    )
 
 
 def _parse_scalar(token: str, number: int) -> object:
@@ -449,7 +464,7 @@ def _emit_block(data: object, indent: int) -> list[str]:
         for item in data:
             if isinstance(item, dict) and item:
                 first, *others = _emit_block(item, indent + INDENT)
-                lines.append(f"{pad}- {first.strip()}")
+                lines.append(f"{pad}- {first.strip(WHITESPACE)}")
                 lines += others
             elif isinstance(item, list) and item:
                 lines.append(f"{pad}-")
@@ -470,7 +485,7 @@ def _check_key(key: object) -> None:
     if (
         not isinstance(key, str)
         or not key
-        or key != key.strip()
+        or key != key.strip(WHITESPACE)
         or any(c in key for c in ":{}[],&*#?|>%@`\"'\t")
     ):
         raise ValueError(f"not a plain key: {key!r}")
