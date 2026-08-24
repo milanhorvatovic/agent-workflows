@@ -225,6 +225,14 @@ class LoadsTest(unittest.TestCase):
         self.assertEqual(loads('c:\t"q # x"\n'), {"c": "q # x"})
         self.assertEqual(loads("- key:\tvalue\n"), [{"key": "value"}])
 
+    def test_an_integer_too_long_to_convert_is_a_subset_error(self) -> None:
+        """Python caps `int()` at 4300 digits and YAML puts no ceiling on
+        an integer's length, so a value of exactly this shape must be
+        reported like any other rather than raising past every handler."""
+        with self.assertRaises(ProtocolYamlError) as caught:
+            loads("iterations: " + "9" * 5000 + "\n")
+        self.assertIn("outside the subset", str(caught.exception))
+
     def test_a_key_may_carry_a_space_on_both_sides(self) -> None:
         """§10's instrumentation is where a plain key with a space in it
         plausibly appears: refused on write, state that loads here could
@@ -235,6 +243,10 @@ class LoadsTest(unittest.TestCase):
             with self.subTest(key=key):
                 with self.assertRaises(ValueError):
                     dumps({key: 1})
+        # A tab is the other way round: no quoted-key form exists, so a key
+        # the emitter cannot write is one the reader must not accept.
+        with self.assertRaises(ProtocolYamlError):
+            loads("token\tcount: 1\n")
 
     def test_rejects_a_plain_scalar_carrying_a_mapping_indicator(self) -> None:
         """`a: value: other` is a nested mapping on one line, which YAML

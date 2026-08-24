@@ -312,7 +312,12 @@ def _split_key(line: _Line) -> tuple[str, str]:
     if not separator or (rest and rest[0] not in " \t"):
         raise ProtocolYamlError(line.number, "expected `key:` or `key: value`")
     key = head.strip()
-    if not key or any(c in key for c in "{}[],&*#?|>%@`\"'"):
+    # The tab is here and not in the emitter's list alone deliberately: this
+    # subset has no quoted-key form, so a key the emitter cannot write is
+    # one the reader must not accept — otherwise a document loads and the
+    # next save refuses it, which is the round trip broken from the inside.
+    # A space is different and stays readable: the emitter writes it.
+    if not key or any(c in key for c in "{}[],&*#?|>%@`\"'\t"):
         raise ProtocolYamlError(line.number, f"not a plain key: {head!r}")
     # A key is resolved like any other plain scalar, and a key's type decides
     # the mapping's shape rather than one value inside it: `true:` is a
@@ -370,7 +375,16 @@ def _parse_scalar(token: str, number: int) -> object:
     if CORE_BOOL.match(token):
         return token.lower() == "true"
     if CORE_INT.match(token):
-        return int(token)
+        try:
+            return int(token)
+        except ValueError as error:
+            # Python caps `int()` at 4300 digits, and YAML puts no ceiling
+            # on an integer's length — so a value of exactly this shape can
+            # raise where every malformed one is reported, escaping the
+            # errors that carry a defect to an exit code.
+            raise ProtocolYamlError(
+                number, f"integer outside the subset: {error}"
+            ) from error
     if CORE_UNSUPPORTED.match(token):
         raise ProtocolYamlError(number, f"scalar type outside the subset: {token!r}")
     return token
