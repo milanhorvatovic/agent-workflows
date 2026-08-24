@@ -137,6 +137,23 @@ class Workflow:
             (stage, member) for stage in self.stages for member in stage.members
         )
 
+    def member_kind(self, member_id: str) -> str | None:
+        """`"step"`, `"gate"`, or None where the composition declares
+        neither — what a record is, read from the declaration rather than
+        guessed from the shape of its id."""
+        for stage in self.stages:
+            for member in stage.members:
+                if member.id == member_id:
+                    return member.kind
+        return None
+
+    def sequence(self) -> tuple[list[str], int]:
+        """Every composed member in record order, and how many of them the
+        entry stage declares — §10's list is that stage's alone until the
+        intake gate accepts, and the whole of this afterwards."""
+        order = [member.id for stage in self.stages for member in stage.members]
+        return order, len(self.stages[0].members) if self.stages else 0
+
     def step(self, step_id: str) -> StepDeclaration | None:
         for stage in self.stages:
             if step_id in stage.steps:

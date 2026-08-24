@@ -210,6 +210,58 @@ class CliTest(unittest.TestCase):
         self.assertIn("not in the manifest", err)
         self.assertEqual(out, "")
 
+    def test_resume_refuses_records_the_composition_does_not_declare(self) -> None:
+        """§10 makes declared membership and order what §8.5's resume reads,
+        and the schema cannot constrain either — so a swapped pair changes
+        where a resume lands with nothing to say it did."""
+        self.write_framework()
+        self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        state_path = self.base / "runs" / "2026-08-17-x" / "workflow-state.yaml"
+        original = state_path.read_text(encoding="utf-8")
+        for name, document in {
+            "swapped order": original.replace(
+                "  - id: make\n    status: pending\n  - id: check\n    status: skipped\n",
+                "  - id: check\n    status: skipped\n  - id: make\n    status: pending\n",
+            ),
+            "undeclared id": original.replace("id: make", "id: phantom"),
+        }.items():
+            with self.subTest(case=name):
+                state_path.write_text(document, encoding="utf-8")
+                code, out, err = self.invoke(
+                    "resume", "2026-08-17-x", "--config", str(self.config_path)
+                )
+                self.assertEqual(code, 2)
+                self.assertEqual(out, "")
+                self.assertTrue(
+                    "declare" in err or "recorded after" in err, err
+                )
+
+    def test_a_gate_position_names_the_module_that_clears_it(self) -> None:
+        """A gate waits on a human (§7): no context assembler or backend can
+        clear it, and which kind a record is comes from the composition
+        rather than from its status."""
+        self.write_framework()
+        self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        state_path = self.base / "runs" / "2026-08-17-x" / "workflow-state.yaml"
+        state_path.write_text(
+            state_path.read_text(encoding="utf-8")
+            .replace("  - id: make\n    status: pending", "  - id: make\n    status: done")
+            .replace("status: skipped", "status: blocked")
+            .replace("artifacts: []", 'artifacts:\n  - "{run}/out.md"'),
+            encoding="utf-8",
+        )
+        code, out, err = self.invoke(
+            "resume", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("next is check (blocked)", out)
+        self.assertIn("gate handler", err)
+        self.assertNotIn("invocation backend", err)
+
     def test_resume_without_a_run_id_is_a_usage_error(self) -> None:
         with contextlib.redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit) as caught:

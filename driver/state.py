@@ -506,6 +506,51 @@ def complete_step(state: RunState, workflow: Workflow, step_id: str) -> None:
         state.artifacts.append(artifact)
 
 
+def check_records(state: RunState, workflow: Workflow) -> None:
+    """§10: the populated list follows the composed stages' sequences, which
+    is what makes §8.5's resume mean what the stages declared.
+
+    The schema cannot constrain id order, so a swapped pair changes where a
+    resume lands with nothing to say it did — and an id no stage declares is
+    a record nothing wrote. `run.risk` says which part of the composition a
+    document owes: absent, §10's list is the entry stage's alone, since the
+    acceptance is the write that creates the rest; present, the list is
+    complete and owes every member of every composed stage. The conformance
+    suite holds every shipped document to exactly this.
+    """
+    order, entry_count = workflow.sequence()
+    accepted = state.risk is not None
+    if not accepted:
+        order = order[:entry_count]
+    position = 0
+    for record in state.steps:
+        if record.id not in order:
+            raise StateError(
+                f"step {record.id!r} is not a member "
+                + (
+                    "any composed stage declares"
+                    if accepted
+                    else "the entry stage declares, and no class is accepted yet"
+                )
+                + " (spec §9.4)"
+            )
+        index = order.index(record.id)
+        if index < position:
+            raise StateError(
+                f"step {record.id!r} is recorded after {order[position - 1]!r} and "
+                f"the composed sequences declare it before (spec §10)"
+            )
+        position = index + 1
+    if accepted:
+        recorded = {record.id for record in state.steps}
+        missing = [member for member in order if member not in recorded]
+        if missing:
+            raise StateError(
+                f"the accepted class makes the list complete (spec §10) and these "
+                f"members have no record: {', '.join(missing)}"
+            )
+
+
 def check_manifest(state: RunState, workflow: Workflow) -> None:
     """§8.2: the manifest lists what the run produced, so a `done` step's
     `{N}`-resolved output belongs in it.
