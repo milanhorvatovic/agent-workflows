@@ -262,6 +262,41 @@ class CliTest(unittest.TestCase):
         self.assertIn("gate handler", err)
         self.assertNotIn("invocation backend", err)
 
+    def test_resume_refuses_a_gate_whose_decision_does_not_stand(self) -> None:
+        """§7 and §10: a gate's `steps` entry is `done` only once its
+        decision stands, and `gates` is appended in decision order, so the
+        latest entry is the one that has to — never the best on file."""
+        self.write_framework()
+        self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        state_path = self.base / "runs" / "2026-08-17-x" / "workflow-state.yaml"
+        finished = (
+            state_path.read_text(encoding="utf-8")
+            .replace("  - id: make\n    status: pending", "  - id: make\n    status: done")
+            .replace("status: skipped", "status: done")
+            .replace("artifacts: []", 'artifacts:\n  - "{run}/out.md"')
+        )
+        for name, gates in {
+            "no decision at all": "gates: []\n",
+            "latest outcome is a revise": (
+                "gates:\n  - gate: check\n    transport: blocking\n"
+                '    outcome: accept\n    at: "2026-08-16T09:00:00Z"\n'
+                "  - gate: check\n    transport: blocking\n"
+                '    outcome: revise\n    at: "2026-08-16T10:00:00Z"\n'
+            ),
+        }.items():
+            with self.subTest(case=name):
+                state_path.write_text(
+                    finished.replace("gates: []\n", gates), encoding="utf-8"
+                )
+                code, out, err = self.invoke(
+                    "resume", "2026-08-17-x", "--config", str(self.config_path)
+                )
+                self.assertEqual(code, 2)
+                self.assertEqual(out, "")
+                self.assertIn("gate 'check'", err)
+
     def test_resume_without_a_run_id_is_a_usage_error(self) -> None:
         with contextlib.redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit) as caught:

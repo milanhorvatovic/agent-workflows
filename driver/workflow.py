@@ -147,6 +147,26 @@ class Workflow:
                     return member.kind
         return None
 
+    def gate_scopes(self) -> dict[str, bool]:
+        """Every composed gate, mapped to whether a phase repeats it.
+
+        A stage repeats per phase when its steps write per-phase outputs —
+        `{N}` in a declared output — and the gates it declares repeat with
+        it. Read from the contracts rather than from the records being
+        checked, or omitting a `phase` would decide that the field was
+        never required and bypass the check it exists for.
+        """
+        scopes: dict[str, bool] = {}
+        for stage in self.stages:
+            phased = any(
+                "{N}" in declaration.output_artifact
+                for declaration in stage.steps.values()
+            )
+            for member in stage.members:
+                if member.kind == "gate":
+                    scopes[member.id] = phased
+        return scopes
+
     def sequence(self) -> tuple[list[str], int]:
         """Every composed member in record order, and how many of them the
         entry stage declares — §10's list is that stage's alone until the

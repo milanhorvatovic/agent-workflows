@@ -179,6 +179,7 @@ def _resume(config: Config, run_id: str) -> int:
     try:
         workflow = load_workflow(config.framework_dir, loaded.workflow)
         run_state.check_records(loaded, workflow)
+        run_state.check_gates(loaded, workflow)
         run_state.check_manifest(loaded, workflow)
     except (WorkflowError, run_state.StateError) as error:
         print(f"driver: {error}", file=sys.stderr)

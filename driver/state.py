@@ -551,6 +551,43 @@ def check_records(state: RunState, workflow: Workflow) -> None:
             )
 
 
+def check_gates(state: RunState, workflow: Workflow) -> None:
+    """§5.3, §7, §10: a gate's decision is recorded in `gates`, and its own
+    `steps` entry is `done` only once that decision stands.
+
+    `gates` is appended in decision order, so the last entry naming a gate
+    is its latest — and it is that entry which has to stand, never the best
+    one on file, or a stale accept would vouch for a gate whose newest
+    decision was a revise. Only `done` is checked: `blocked` is a gate still
+    waiting, `pending` one not yet reached, `skipped` one that never decided
+    anything. A gate a phase repeats decides once per phase, so its standing
+    decision is the one taken at the phase now executing.
+    """
+    scopes = workflow.gate_scopes()
+    latest: dict[str, GateRecord] = {record.gate: record for record in state.gates}
+    for record in state.steps:
+        if record.status != "done" or record.id not in scopes:
+            continue
+        decision = latest.get(record.id)
+        if decision is None:
+            raise StateError(
+                f"gate {record.id!r} is done and no `gates` entry records its "
+                f"outcome (spec §7)"
+            )
+        if state.phase is not None and scopes[record.id] and decision.phase != state.phase:
+            says = f"phase {decision.phase}" if decision.phase is not None else "no phase"
+            raise StateError(
+                f"gate {record.id!r} is done at phase {state.phase} and its latest "
+                f"decision records {says} (spec §10)"
+            )
+        if decision.outcome not in ("accept", "reject"):
+            raise StateError(
+                f"gate {record.id!r} is done and its latest outcome is "
+                f"{decision.outcome!r} — a revise returns the gate to `pending`, "
+                f"so only an accept or a reject stands (spec §7)"
+            )
+
+
 def check_manifest(state: RunState, workflow: Workflow) -> None:
     """§8.2: the manifest lists what the run produced, so a `done` step's
     `{N}`-resolved output belongs in it.
