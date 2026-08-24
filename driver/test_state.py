@@ -74,6 +74,15 @@ class CreateRunTest(StateTestCase):
                     state.create_run(self.runs, f"run-{abs(hash(protocol))}", self.workflow, protocol)
                 self.assertIn("this driver implements", str(caught.exception))
 
+    def test_a_trailing_newline_does_not_pass_a_pattern(self) -> None:
+        """`$` matches before a final newline, so every check written with
+        it accepted one — a version, a timestamp, an id carrying a line
+        break that the schema refuses and the next save would write out."""
+        self.assertFalse(state._is_timestamp("2026-08-03T13:40:00Z\n"))
+        with self.assertRaises(state.StateError) as caught:
+            state.create_run(self.runs, "trailing", self.workflow, "0.2\n")
+        self.assertIn("this driver implements", str(caught.exception))
+
     def test_opening_refuses_an_id_that_is_not_a_plain_directory_name(self) -> None:
         """Containment cannot rest on the command surface being the only
         caller: the id joins under the runs directory either way."""
@@ -453,6 +462,16 @@ class LoadValidationTest(StateTestCase):
             # §11 again, on the run's own record of what it executes under:
             # resuming state from a version this driver does not implement
             # is guessing at statuses, edges, and record order.
+            # `$` matches before a final newline, so a version or timestamp
+            # carrying one passed every check written with it.
+            "protocol with a trailing newline": self.BASE.replace(
+                'protocol: "0.2"', 'protocol: "0.2\\n"'
+            ),
+            "gate timestamp with a trailing newline": self.BASE.replace(
+                "gates: []\n",
+                "gates:\n  - gate: intake-approval\n    transport: blocking\n"
+                '    outcome: accept\n    at: "2026-08-16T09:00:00Z\\n"\n',
+            ),
             "newer minor protocol": self.BASE.replace(
                 'protocol: "0.2"', 'protocol: "0.9"'
             ),

@@ -140,7 +140,7 @@ def create_run(
     # document to it, so an unchecked one here creates a durable run this
     # same module refuses to read back — a directory and a state file that
     # exist and cannot be resumed.
-    if not PROTOCOL_VERSION.match(protocol) or not implements(protocol):
+    if not PROTOCOL_VERSION.fullmatch(protocol) or not implements(protocol):
         raise StateError(
             f"cannot create a run under protocol {protocol!r}: this driver "
             f"implements {PROTOCOL} (spec §11)"
@@ -542,7 +542,7 @@ def _is_timestamp(value: object) -> bool:
     bare non-empty string, `not-a-timestamp` would load and `save` would
     write it back, making the driver the author of state the suite it
     ships beside rejects."""
-    match = RFC3339.match(value) if isinstance(value, str) else None
+    match = RFC3339.fullmatch(value) if isinstance(value, str) else None
     if match is None:
         return False
     year, month, day, hour, minute, second = (
@@ -608,7 +608,7 @@ def _validate(data: object, path: Path) -> RunState:
     if not isinstance(workflow, str) or not workflow:
         raise bad("run.workflow is missing")
     protocol = run.get("protocol")
-    if not isinstance(protocol, str) or not PROTOCOL_VERSION.match(protocol):
+    if not isinstance(protocol, str) or not PROTOCOL_VERSION.fullmatch(protocol):
         raise bad(f"run.protocol is not <major>.<minor>: {protocol!r}")
     # The same §11 rule the declarations are held to: a run recorded under a
     # version this driver does not implement is state whose statuses, edges,

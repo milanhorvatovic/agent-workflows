@@ -472,6 +472,18 @@ class SyntheticTreeTest(unittest.TestCase):
                     load_workflow(self.framework, "demo")
                 self.assertIn("not a boolean", str(caught.exception))
 
+    def test_a_member_id_carrying_a_line_break_is_refused(self) -> None:
+        """`$` matches before a final newline, so the schema's pattern read
+        with `match` accepted `"check\\n"` — a record id with a line break
+        in it, which would split the position line the CLI prints."""
+        self.write(
+            "workflows/stages/demo.md",
+            STAGE.replace("- gate: check", '- gate: "check\\n"'),
+        )
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "demo")
+        self.assertIn("not a member id", str(caught.exception))
+
     def test_member_id_is_the_schema_pattern(self) -> None:
         """The literal mirrors the stage schema's member-id pattern — the
         schema is the source of truth, and the pin keeps them together."""

@@ -327,7 +327,7 @@ def _check_protocol(block: dict, rel: str, line: int) -> None:
     structures from a version it does not implement — the rule the package's
     `implements` states once for declarations and run state alike."""
     version = block.get("protocol")
-    if not isinstance(version, str) or not PROTOCOL_VERSION.match(version):
+    if not isinstance(version, str) or not PROTOCOL_VERSION.fullmatch(version):
         raise WorkflowError(
             f"{rel}:{line}: declaration without a protocol version: {version!r}"
         )
@@ -372,7 +372,7 @@ def _members(text: str, rel: str) -> tuple[Member, ...]:
         member_id = entry[kind]
         # The id shape is the schema's: a member wearing something else
         # becomes a record `load` refuses, one run too late to say why.
-        if not isinstance(member_id, str) or not MEMBER_ID.match(member_id):
+        if not isinstance(member_id, str) or not MEMBER_ID.fullmatch(member_id):
             raise WorkflowError(f"{rel}: {kind} id is not a member id: {member_id!r}")
         if any(member.id == member_id for member in members):
             raise WorkflowError(f"{rel}: sequence names {member_id!r} twice")
