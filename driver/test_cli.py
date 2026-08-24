@@ -297,6 +297,49 @@ class CliTest(unittest.TestCase):
                 self.assertEqual(out, "")
                 self.assertIn("gate 'check'", err)
 
+    def test_resume_refuses_a_phase_on_a_gate_that_decides_once_per_run(self) -> None:
+        """§10: a gate a phase repeats names the phase its decision was taken
+        in, and a gate that decides once per run records none. Which kind a
+        gate is comes from its stage's contracts — `demo` writes no `{N}`
+        output, so `check` decides once — and a phase recorded against it
+        stands for a phase of a stage that has none."""
+        self.write_framework()
+        self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        state_path = self.base / "runs" / "2026-08-17-x" / "workflow-state.yaml"
+        original = state_path.read_text(encoding="utf-8").replace(
+            "  - id: make\n    status: pending", "  - id: make\n    status: done"
+        ).replace("artifacts: []", 'artifacts:\n  - "{run}/out.md"')
+        for name, (status, gates) in {
+            "the standing decision": (
+                "done",
+                "gates:\n  - gate: check\n    phase: 1\n    transport: blocking\n"
+                '    outcome: accept\n    at: "2026-08-16T09:00:00Z"\n',
+            ),
+            # Every entry is a decision the gate recorded, so a superseded one
+            # carries the field it was never entitled to just as plainly.
+            "a decision that did not stand": (
+                "pending",
+                "gates:\n  - gate: check\n    phase: 1\n    transport: blocking\n"
+                '    outcome: revise\n    at: "2026-08-16T09:00:00Z"\n',
+            ),
+        }.items():
+            with self.subTest(case=name):
+                state_path.write_text(
+                    original.replace("status: skipped", f"status: {status}").replace(
+                        "gates: []\n", gates
+                    ),
+                    encoding="utf-8",
+                )
+                code, out, err = self.invoke(
+                    "resume", "2026-08-17-x", "--config", str(self.config_path)
+                )
+                self.assertEqual(code, 2)
+                self.assertEqual(out, "")
+                self.assertIn("gate 'check'", err)
+                self.assertIn("once per run", err)
+
     def test_resume_refuses_a_status_the_member_kind_does_not_own(self) -> None:
         """§10 gives the two working statuses to different kinds: `active`
         is the step currently running, `blocked` a gate waiting on its

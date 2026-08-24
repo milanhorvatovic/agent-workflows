@@ -580,8 +580,23 @@ def check_gates(state: RunState, workflow: Workflow) -> None:
     waiting, `pending` one not yet reached, `skipped` one that never decided
     anything. A gate a phase repeats decides once per phase, so its standing
     decision is the one taken at the phase now executing.
+
+    The `phase` field is checked in both directions §10 states it: a gate a
+    phase repeats names the phase its decision was taken in, and a gate that
+    decides once per run records none. The second holds of every entry rather
+    than only the standing one — a superseded decision carries the field it
+    was never entitled to just as plainly — and it holds whatever the run
+    carries, since which kind a gate is comes from its stage's contracts and
+    no re-cut of the phase list changes them.
     """
     scopes = workflow.gate_scopes()
+    for decision in state.gates:
+        if decision.phase is not None and scopes.get(decision.gate, True) is False:
+            raise StateError(
+                f"gate {decision.gate!r} records phase {decision.phase} and its "
+                f"stage writes no per-phase output, so it decides once per run "
+                f"and records no phase (spec §10)"
+            )
     latest: dict[str, GateRecord] = {record.gate: record for record in state.gates}
     for record in state.steps:
         if record.status != "done" or record.id not in scopes:
