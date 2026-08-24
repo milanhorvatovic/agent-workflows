@@ -256,6 +256,19 @@ class TransitionTest(StateTestCase):
         # The skipped conditional gate was routed to, so it re-enters pending.
         self.assertEqual(self.state.record("check").status, "pending")
 
+    def test_a_verdict_routes_only_where_the_manifest_says_it_produced(self) -> None:
+        """`done` is a status; §8.2 makes the manifest the record of what was
+        produced, and the conformance suite holds every shipped document to
+        exactly that. `complete_step` writes both together, so only state
+        loaded from elsewhere can disagree — and routing from it would
+        re-enter the destination on an output no document says exists."""
+        self.complete(self.state, self.workflow, "make")
+        self.state.artifacts.clear()
+        with self.assertRaises(state.StateError) as caught:
+            state.route_verdict(self.state, self.workflow, "make", "PASS")
+        self.assertIn("not in the manifest", str(caught.exception))
+        self.assertEqual(self.state.record("check").status, "skipped")
+
     def test_a_verdict_routes_only_from_a_step_that_produced_its_output(self) -> None:
         """§9.1: the verdict comes from the validation of the step's output,
         so a record that has not produced one has nothing to route — and

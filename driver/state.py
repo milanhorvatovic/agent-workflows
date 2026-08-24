@@ -221,7 +221,7 @@ def _bootstrap(
 # holds open. POSIX can; Windows has no `dir_fd` at all, and there the link
 # checks below are the whole of what the driver can do.
 _BINDS_TO_DIRECTORY = (
-    {os.open, os.rename, os.unlink} <= os.supports_dir_fd
+    {os.open, os.rename, os.unlink, os.mkdir, os.rmdir} <= os.supports_dir_fd
     and hasattr(os, "O_DIRECTORY")
     and hasattr(os, "O_NOFOLLOW")
 )
@@ -526,6 +526,23 @@ def route_verdict(state: RunState, workflow: Workflow, step_id: str, verdict: st
         raise StateError(
             f"step {step_id!r} is {source.status}, and a verdict routes from a "
             f"step that has produced its output (spec §9.1)"
+        )
+    # `done` is a status, and §8.2 makes the manifest the record of what was
+    # produced — the conformance suite holds every shipped document to
+    # exactly this, a done step's `{N}`-resolved output listed in
+    # `artifacts`. `complete_step` writes both together, so state this
+    # driver wrote always agrees; state it merely loaded may not, and
+    # routing from a done record with nothing manifested would re-enter the
+    # destination on an output no document says exists. `{N}` resolves from
+    # the phase now executing, which is the scope the suite checks too:
+    # what an earlier phase owes cannot be read from this document.
+    produced = declaration.output_artifact.replace(
+        "{N}", str(state.phase if state.phase is not None else 1)
+    )
+    if produced not in state.artifacts:
+        raise StateError(
+            f"step {step_id!r} is done and {produced!r} is not in the manifest "
+            f"(spec §8.2)"
         )
     target = declaration.edges.get(verdict)
     if target is None:
