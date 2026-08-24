@@ -574,6 +574,10 @@ class SyntheticTreeTest(unittest.TestCase):
             # key is looked for outside the quotes or not at all.
             "metadata: '{workflow: demo}'\n",
             'metadata: "{workflow: demo}"\n',
+            # A sibling of `metadata` is not a child of it: the lookup for
+            # `workflow` is bounded to `metadata`'s own value, or the next
+            # key's mapping answers for it.
+            "{metadata: {}, example: {workflow: [one, two]}}\n",
             # Node properties may precede a block scalar, and what they
             # precede is still a block scalar — `metadata` is a string, and
             # the `workflow:` indented under it is that string's text.

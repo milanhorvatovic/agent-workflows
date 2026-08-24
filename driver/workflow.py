@@ -447,7 +447,13 @@ def _root_flow_declares(body: str) -> bool:
     if not flat.lstrip(WHITESPACE).startswith("{"):
         return False
     end = _flow_key_end(flat, "metadata")
-    return end is not None and _flow_has_direct_key(flat[end:], "workflow")
+    if end is None:
+        return False
+    # `workflow` is looked for in what `metadata` holds and not in what
+    # follows it: the suffix carries the mapping's later keys too, and
+    # `{metadata: {}, example: {workflow: …}}` would answer for a sibling's
+    # child — a declaration read out of an example that has none.
+    return _flow_has_direct_key(_flow_value(flat[end:]), "workflow")
 
 
 def _without_properties(rest: str) -> str:
@@ -464,6 +470,34 @@ def _without_properties(rest: str) -> str:
         )
         value = value[cut:].lstrip(WHITESPACE)
     return value
+
+
+def _flow_value(rest: str) -> str:
+    """What the key ending at the start of `rest` holds: the balanced span
+    of a collection it opens, or the text up to the comma or brace that ends
+    a scalar at this depth."""
+    after = rest.lstrip(WHITESPACE)
+    # A key may be quoted, and the quote is not the delimiter: `{'metadata':
+    # …}` is the same key, with its closing quote still between the name and
+    # the colon.
+    if after[:1] in ("'", '"'):
+        after = after[1:].lstrip(WHITESPACE)
+    if not after.startswith(":"):
+        return ""
+    after = after[1:].lstrip(WHITESPACE)
+    depth = 0
+    for index, character in enumerate(after):
+        if character in "{[":
+            depth += 1
+        elif character in "}]":
+            if depth == 0:  # the mapping this key belongs to, closing
+                return after[:index]
+            depth -= 1
+            if depth == 0:
+                return after[: index + 1]
+        elif character == "," and depth == 0:
+            return after[:index]
+    return after
 
 
 def _flow_has_direct_key(rest: str, name: str) -> bool:
