@@ -194,6 +194,22 @@ class LoadsTest(unittest.TestCase):
                     loads(nest(depth))
                 self.assertIn("nested past", str(caught.exception))
 
+    def test_the_depth_guard_counts_through_inline_mappings_too(self) -> None:
+        """A sequence entry's inline mapping is parsed by its own call, and
+        that call once started the count again — so alternating the two
+        shapes recursed past the guard and out through `RecursionError`."""
+        from driver.protocol_yaml import MAX_DEPTH
+
+        def nest(depth: int) -> str:
+            lines = ["    " * level + "- k:" for level in range(depth)]
+            lines.append("    " * depth + "- leaf")
+            return "\n".join(lines) + "\n"
+
+        self.assertIsInstance(loads(nest(5)), list)
+        with self.assertRaises(ProtocolYamlError) as caught:
+            loads(nest(MAX_DEPTH + 10))
+        self.assertIn("nested past", str(caught.exception))
+
     def test_rejects_tabs_in_indentation(self) -> None:
         with self.assertRaises(ProtocolYamlError) as caught:
             loads("a:\n\tb: 1\n")

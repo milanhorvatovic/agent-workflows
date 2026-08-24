@@ -330,7 +330,7 @@ def _parse_sequence(
                 else:
                     break
             block = [virtual] + tail[:consumed_from_tail]
-            item, used = _parse_mapping(block, 0, item_indent)
+            item, used = _parse_mapping(block, 0, item_indent, depth + 1)
             if used != len(block):
                 raise ProtocolYamlError(block[used].number, "unexpected indentation in sequence item")
             sequence.append(item)
