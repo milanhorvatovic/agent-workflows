@@ -920,7 +920,10 @@ def _step_declaration(declaration: dict, step_id: str, rel: str) -> StepDeclarat
     # repeats, not a step that fans out, which is why the step schema
     # forbids the placeholder here. Completion resolves `{N}` alone, so an
     # output carrying `{P}` would enter the manifest as the literal it is.
-    if "{P}" in artifact:
+    # Read by the pattern rather than as a substring: `${P}` is shell text
+    # by the rule that makes `${N}` shell text, and a path is not a phase
+    # set for looking like one.
+    if PHASE_SET.search(artifact):
         raise WorkflowError(f"{at}: output artifact carries {{P}}: {artifact!r}")
     # A template is a path or it is absent — and `template: null` is neither:
     # declared and empty, it would read as a step that scaffolds nothing,

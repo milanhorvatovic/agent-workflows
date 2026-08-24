@@ -733,6 +733,18 @@ class SyntheticTreeTest(unittest.TestCase):
                     load_workflow(self.framework, "demo")
                 self.assertIn("placeholder", str(caught.exception))
 
+    def test_a_shell_style_phase_set_token_is_text(self) -> None:
+        """`${P}` is shell text by the same rule that makes `${N}` shell
+        text, and the reader that recognizes placeholders reads past both.
+        The rule against a phase set of outputs is about the placeholder,
+        so a path that merely looks like one is a path."""
+        self.write(
+            "workflows/stages/demo.md",
+            STAGE.replace('artifact: "{run}/out.md"', 'artifact: "{run}/phase-${P}-out.md"'),
+        )
+        workflow = load_workflow(self.framework, "demo")
+        self.assertEqual(workflow.step("make").output_artifact, "{run}/phase-${P}-out.md")
+
     def test_a_required_that_is_not_a_boolean_is_an_error(self) -> None:
         """Absence is the default; a present value that is not a boolean
         would be coerced to required and change what blocks the step."""
