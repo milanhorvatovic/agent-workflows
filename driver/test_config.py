@@ -142,6 +142,26 @@ class ConfigTest(unittest.TestCase):
                         f"{key} must not contain control characters",
                     )
 
+    def test_a_home_that_expands_to_control_characters_is_rejected(self) -> None:
+        """`~` is expanded here, so the environment writes part of the path
+        the guard above exists to hold: a value that is clean in the file
+        reaches the line reporting the created directory carrying whatever
+        `HOME` had in it. What the check covers is what ends up on the path,
+        not only what the config file spelled."""
+        import os
+        import unittest.mock
+
+        for key in ("artifacts_dir", "framework_dir"):
+            with self.subTest(key=key):
+                with unittest.mock.patch.dict(
+                    os.environ,
+                    {"HOME": "/tmp/ho\x1b[2Kme", "USERPROFILE": "/tmp/ho\x1b[2Kme"},
+                ):
+                    self.assert_rejected(
+                        self.variant(**{key: "~/runs"}),
+                        f"{key} must not contain control characters",
+                    )
+
     def test_a_surrogate_in_a_configured_path_is_rejected(self) -> None:
         """JSON decodes `\\ud800` into a lone surrogate, which UTF-8 cannot
         encode — so the path reaches `mkdir` or the line that prints it and
