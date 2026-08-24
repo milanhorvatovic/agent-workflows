@@ -441,10 +441,14 @@ def _root_flow_declares(body: str) -> bool:
     in a value is somebody else's, and `example.labels.metadata.workflow`
     is as deep a descendant written in braces as it is written in lines.
     """
-    flat = " ".join(
-        _without_comment(_blank_quoted(line)) for line in body.split("\n")
+    # The root node takes a tag or an anchor as readily as any other, and
+    # what they annotate is the same mapping: reading the brace without
+    # them would file `!!map {metadata: {workflow: …}}` as prose and compose
+    # around the declaration it carries.
+    flat = _without_properties(
+        " ".join(_without_comment(_blank_quoted(line)) for line in body.split("\n"))
     )
-    if not flat.lstrip(WHITESPACE).startswith("{"):
+    if not flat.startswith("{"):
         return False
     end = _flow_key_end(flat, "metadata")
     if end is None:

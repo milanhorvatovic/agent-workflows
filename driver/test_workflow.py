@@ -628,6 +628,10 @@ class SyntheticTreeTest(unittest.TestCase):
             # that parses it resolves the same `metadata.workflow`.
             "{metadata: {workflow: [one, two]}}\n",
             "{'metadata': {workflow: [one, two]}}\n",
+            # Node properties precede the root node as readily as any other,
+            # and what they annotate is the same mapping.
+            "!!map {metadata: {workflow: [one, two]}}\n",
+            "&saved {metadata: {workflow: [one, two]}}\n",
             # A comment after a real key does not unmake the key.
             "metadata: {workflow: [one, two]} # {workflow: no}\n",
             # The one that carries both: a quoted value mentioning the word
