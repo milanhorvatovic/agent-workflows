@@ -308,6 +308,41 @@ class SyntheticTreeTest(unittest.TestCase):
         workflow = load_workflow(self.framework, "demo")
         self.assertTrue(workflow.step("make").inputs[0].required)
 
+    def test_a_tilde_fenced_declaration_is_read(self) -> None:
+        """§9 places a declaration at a first-column `yaml` fence; which
+        marker writes it is CommonMark's business, not the protocol's."""
+        self.write(
+            "workflows/stages/demo.md",
+            STAGE.replace("```yaml", "~~~yaml").replace("```", "~~~"),
+        )
+        workflow = load_workflow(self.framework, "demo")
+        self.assertEqual(workflow.step("make").role, "analyst")
+
+    def test_a_declaration_inside_a_longer_fence_is_an_example(self) -> None:
+        """Discovery consumes outermost fences whole, so a block shown
+        inside a wrapper is part of the example, never a declaration."""
+        self.write(
+            "workflows/stages/demo.md",
+            STAGE
+            + "\n````md\n```yaml\nmetadata:\n  workflow:\n"
+            '    protocol: "0.2"\n    step:\n      role: planner\n      output:\n'
+            '        artifact: "{run}/x.md"\n```\n````\n',
+        )
+        workflow = load_workflow(self.framework, "demo")
+        self.assertEqual(sorted(workflow.stages[0].steps), ["make"])
+
+    def test_a_heading_inside_an_example_binds_nothing(self) -> None:
+        """Between a real heading and its contract, an example's heading
+        would otherwise be the nearest one and take the contract with it."""
+        self.write(
+            "workflows/stages/demo.md",
+            STAGE.replace(
+                "Prose.\n", "Prose.\n\n```md\n### fake (planner)\n```\n"
+            ),
+        )
+        workflow = load_workflow(self.framework, "demo")
+        self.assertEqual(sorted(workflow.stages[0].steps), ["make"])
+
     def test_a_role_outside_the_protocol_six_is_an_error(self) -> None:
         """The config routes exactly the six roles, so a seventh is a step
         nothing can execute — and the file that declares it is nameable

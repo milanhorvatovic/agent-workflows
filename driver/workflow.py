@@ -38,7 +38,17 @@ STAGE_REFERENCE = re.compile(
 STEP_HEADING = re.compile(
     r"^### (?P<id>[a-z][a-z0-9-]*) \((?P<role>[a-z]+)\)[ \t]*$", re.MULTILINE
 )
-YAML_BLOCK = re.compile(r"^```yaml[ \t]*\n(.*?)^```", re.DOTALL | re.MULTILINE)
+# One fence model, the conformance suite's: either marker, three or more,
+# up to three spaces of indent, closed by a run at least as long or running
+# to the end of the file. Discovery consumes outermost fences whole, so a
+# fence inside a longer wrapper is part of the example that wraps it and
+# never a declaration of its own.
+FENCE = re.compile(
+    r"^(?P<indent> {0,3})"
+    r"(?:(?P<bt>```+)(?P<bti>[^`\n]*)\n(?P<btb>.*?)(?:^ {0,3}(?P=bt)`*[ \t]*$|\Z)"
+    r"|(?P<td>~~~+)(?P<tdi>[^\n]*)\n(?P<tdb>.*?)(?:^ {0,3}(?P=td)~*[ \t]*$|\Z))",
+    re.DOTALL | re.MULTILINE,
+)
 
 VERDICTS = ("PASS", "PASS_WITH_CONDITIONS", "FAIL")
 
@@ -144,37 +154,33 @@ def load_workflow(framework: Path, name: str) -> Workflow:
 def _mask_fences(text: str) -> str:
     """Blank every fenced region, keeping offsets and line numbers intact.
 
-    A composition entry shown inside a code block is a demonstration, not a
-    claim to run the stage — the same reading the conformance suite takes
-    for declarations, and the reason it masks before it scans. What counts
-    as a fence is what CommonMark writes: backticks or tildes, three or
-    more, indented up to three spaces, closed by a run at least as long
-    carrying nothing else, or unclosed and running to the end of the file.
+    What is shown inside a code block is a demonstration, not structure — a
+    composition entry, a step heading, a declaration. Masking is how prose
+    stays prose, and preserving every offset is what lets the scans that
+    follow keep pointing into the raw text.
     """
-    masked: list[str] = []
-    marker: str | None = None
-    for line in text.split("\n"):
-        body = line.lstrip(" ")
-        opener: str | None = None
-        if len(line) - len(body) <= 3:
-            for character in ("`", "~"):
-                if body.startswith(character * 3):
-                    opener = character * (len(body) - len(body.lstrip(character)))
-                    break
-        if marker is None:
-            if opener is None:
-                masked.append(line)
-                continue
-            marker = opener
-        elif (
-            opener is not None
-            and opener[0] == marker[0]
-            and len(opener) >= len(marker)
-            and not body[len(opener) :].strip()
-        ):
-            marker = None
-        masked.append(" " * len(line))
-    return "\n".join(masked)
+
+    def blank(match: re.Match) -> str:
+        return "".join(character if character == "\n" else " " for character in match.group(0))
+
+    return FENCE.sub(blank, text)
+
+
+def _declarations(text: str) -> list[tuple[int, str]]:
+    """Every declaration fence with the offset it starts at: a `yaml` fence
+    of either marker beginning at the first column, which is where §9 places
+    a declaration. An indented fence is an example — a legal top-level
+    indent and a list item's content indent are the same bytes, so masking
+    tolerates CommonMark's three spaces and extraction does not.
+    """
+    found: list[tuple[int, str]] = []
+    for match in FENCE.finditer(text):
+        info = (match.group("bti") or match.group("tdi") or "").strip()
+        if info != "yaml" or match.group("indent"):
+            continue
+        body = match.group("btb") if match.group("bt") else match.group("tdb")
+        found.append((match.start(), body))
+    return found
 
 
 def _check_member_ids(stages: tuple[Stage, ...]) -> None:
@@ -225,19 +231,29 @@ def _blocks(text: str, rel: str) -> list[tuple[int, dict]]:
     text offset it starts at — position is what ties a step block to the
     heading above it."""
     found: list[tuple[int, dict]] = []
-    for match in YAML_BLOCK.finditer(text):
-        line = text.count("\n", 0, match.start()) + 1
+    for offset, body in _declarations(text):
+        line = text.count("\n", 0, offset) + 1
         try:
-            data = loads(match.group(1))
+            data = loads(body)
         except ProtocolYamlError as error:
             raise WorkflowError(f"{rel}:{line}: {error}") from error
         if not isinstance(data, dict):
             continue
         metadata = data.get("metadata")
         workflow = metadata.get("workflow") if isinstance(metadata, dict) else None
-        if isinstance(workflow, dict):
-            _check_protocol(workflow, rel, line)
-            found.append((match.start(), workflow))
+        if workflow is None:
+            # A declaration fence carrying something else — the repository's
+            # own examples do — is not this module's to read.
+            continue
+        if not isinstance(workflow, dict):
+            # Present and not a mapping is malformed, not absent: it has no
+            # version to check and no structures to read, and skipping it
+            # would compose a file one of whose declarations is broken.
+            raise WorkflowError(
+                f"{rel}:{line}: metadata.workflow is not a mapping: {workflow!r}"
+            )
+        _check_protocol(workflow, rel, line)
+        found.append((offset, workflow))
     return found
 
 
@@ -300,8 +316,13 @@ def _members(text: str, rel: str) -> tuple[Member, ...]:
 
 
 def _steps(text: str, rel: str) -> dict[str, StepDeclaration]:
+    # Headings come from the masked text: a `### fake (analyst)` inside a
+    # fenced example, sitting between a real heading and its contract, would
+    # otherwise be the nearest heading and bind that contract to `fake`. The
+    # mask keeps every offset, so the association below still holds.
     headings = [
-        (m.start(), m.group("id"), m.group("role")) for m in STEP_HEADING.finditer(text)
+        (m.start(), m.group("id"), m.group("role"))
+        for m in STEP_HEADING.finditer(_mask_fences(text))
     ]
     steps: dict[str, StepDeclaration] = {}
     for offset, workflow in _blocks(text, rel):
