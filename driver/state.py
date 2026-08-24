@@ -655,6 +655,13 @@ def check_gates(state: RunState, workflow: Workflow) -> None:
                     f"gate {gate_id!r} is to decide again at phase {state.phase} "
                     f"and its latest decision records {says} (spec §10)"
                 )
+    # What is checked here is the decision on file and not the gate's own
+    # record, deliberately. §7 makes that record `done` while the decision
+    # stands, and a re-entry unmakes exactly that without touching `gates`:
+    # a route back into the stage returns the gate to `pending` for it to
+    # decide again, and the accept it made before is still the latest entry
+    # there, `gates` being append-only. Requiring `done` here refused the
+    # state this module's own routing writes.
     entry_gate = workflow.entry_gate()
     if entry_gate is not None:
         decision = latest.get(entry_gate)
@@ -674,22 +681,6 @@ def check_gates(state: RunState, workflow: Workflow) -> None:
                 f"gate {entry_gate!r} records an accept and run state carries "
                 f"no risk — the acceptance is what sets it (spec §7, §10)"
             )
-        # The gate's own record is the third part of that write: §7 makes it
-        # `done` once its decision stands. An acceptance over a record that
-        # is `pending`, `blocked`, or `skipped` returns the resume to a gate
-        # whose decision the same document says already stands — the run
-        # deciding again what the class it carries was decided by.
-        if accepted:
-            record = next(
-                (step for step in state.steps if step.id == entry_gate), None
-            )
-            if record is None or record.status != "done":
-                stands = "no record" if record is None else f"status {record.status!r}"
-                raise StateError(
-                    f"gate {entry_gate!r} records a standing accept and its own "
-                    f"entry has {stands} — the acceptance makes it `done` "
-                    f"(spec §7, §10)"
-                )
     for record in state.steps:
         if record.status != "done" or record.id not in scopes:
             continue

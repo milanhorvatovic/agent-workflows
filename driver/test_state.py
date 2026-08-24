@@ -445,6 +445,42 @@ class TransitionTest(StateTestCase):
         self.assertIn("no runnable step", str(caught.exception))
 
 
+class RoutedStateTest(StateTestCase):
+    def test_what_routing_writes_passes_the_checks_that_read_it(self) -> None:
+        """A re-entry returns a decided gate to `pending` so it decides
+        again, and appends nothing to `gates` — which is append-only, so the
+        accept it made before is still its latest entry. That pairing is
+        what this module writes, and every check that reads state has to
+        accept it: one that asked for `done` beside a standing accept
+        refused the run its own transition had just produced."""
+        state_obj = state.RunState(
+            run_id="2026-08-17-x",
+            workflow="demo",
+            protocol="0.2",
+            risk="R1",
+            risk_rationale="small",
+            steps=[
+                state.StepRecord(id="make", status="done"),
+                state.StepRecord(id="check", status="done"),
+            ],
+            gates=[
+                state.GateRecord(
+                    gate="check",
+                    transport="blocking",
+                    outcome="accept",
+                    at="2026-08-16T09:00:00Z",
+                )
+            ],
+            artifacts=["{run}/out.md"],
+        )
+        state.check_gates(state_obj, self.workflow)
+        state.route_verdict(state_obj, self.workflow, "make", "FAIL")
+        self.assertEqual(state_obj.record("check").status, "pending")
+        self.assertEqual(state_obj.gates[-1].outcome, "accept")
+        state.check_gates(state_obj, self.workflow)
+        state.check_records(state_obj, self.workflow)
+
+
 class GatePhaseTest(StateTestCase):
     """A phased gate's latest decision, in a run that carries a phase.
 
