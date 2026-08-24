@@ -229,6 +229,25 @@ class SyntheticTreeTest(unittest.TestCase):
                     load_workflow(self.framework, "demo")
                 self.assertIn("gate", str(caught.exception))
 
+    def test_a_gate_declared_more_than_once_is_an_error(self) -> None:
+        """Parity compares declarations, so erasing their multiplicity before
+        the comparison lets two `- **check**` bullets answer one sequence
+        entry — a member §9.4 declares twice and population records once. A
+        second `## Gates` section is the same loss by another route: it sits
+        past the boundary the first one's section ends at, so its gates are
+        invisible to parity and to gate scoping alike."""
+        for name, stage in {
+            "declared twice": STAGE.replace(
+                "- **check** — a gate.", "- **check** — a gate.\n- **check** — again."
+            ),
+            "a second section": STAGE + "\n## Gates\n\n- **other** — invisible.\n",
+        }.items():
+            with self.subTest(case=name):
+                self.write("workflows/stages/demo.md", stage)
+                with self.assertRaises(WorkflowError) as caught:
+                    load_workflow(self.framework, "demo")
+                self.assertIn("Gates" if "section" in name else "check", str(caught.exception))
+
     def test_every_atx_heading_form_closes_the_gates_section(self) -> None:
         """The section ends at the next level-2 heading, and CommonMark ends
         that marker with a space, a tab, or the line — a boundary that knew

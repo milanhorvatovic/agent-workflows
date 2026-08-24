@@ -470,7 +470,7 @@ def _load_stage(framework: Path, slug: str) -> Stage:
     # decision nothing describes, and one the stage declares but the sequence
     # omits is a decision population can carry no record for.
     sequenced_gates = {member.id for member in members if member.kind == "gate"}
-    declared_gates = _gates(text)
+    declared_gates = _gates(text, rel)
     for gate_id in sorted(sequenced_gates - declared_gates):
         raise WorkflowError(
             f"{rel}: sequence names gate {gate_id!r}, which the stage does not declare"
@@ -546,8 +546,17 @@ def _check_protocol(block: dict, rel: str, line: int) -> None:
         )
 
 
-def _gates(text: str) -> set[str]:
+def _gates(text: str, rel: str) -> set[str]:
     """Every gate the stage declares, from its `## Gates` section alone.
+
+    Read as a list first and returned as a set only once the list is known
+    to hold no duplicate: a set built straight from the page erases the
+    multiplicity parity exists to compare, and two `- **check**` bullets
+    would answer one sequence entry — a member §9.4 declares twice and
+    population records once. A second `## Gates` section is the same loss
+    by another route, since it sits past the boundary the first section ends
+    at: its gates reach neither parity nor gate scoping, so a sequence that
+    omits them passes on the strength of what nothing read.
 
     Fenced code is masked first, so an example carrying the heading is not a
     second section and its bullets are not gates, and the section ends at the
@@ -558,13 +567,26 @@ def _gates(text: str) -> set[str]:
     gates the sequence rightly omits.
     """
     masked = _mask_fences(text)
+    openings = GATES_HEADING.findall(masked)
+    if len(openings) > 1:
+        raise WorkflowError(
+            f"{rel}: {len(openings)} `## Gates` sections, need 1 — gates past "
+            f"the first are invisible to the sequence checks (spec §9.4)"
+        )
     opening = GATES_HEADING.search(masked)
     if opening is None:
         return set()
     tail = masked[opening.end() :]
     boundary = H2_HEADING.search(tail)
     section = tail if boundary is None else tail[: boundary.start()]
-    return {match.group("id") for match in GATE_BULLET.finditer(section)}
+    declared = [match.group("id") for match in GATE_BULLET.finditer(section)]
+    for gate_id in declared:
+        if declared.count(gate_id) > 1:
+            raise WorkflowError(
+                f"{rel}: gate {gate_id!r} is declared {declared.count(gate_id)} "
+                f"times, and the sequence names each member once (spec §9.4)"
+            )
+    return set(declared)
 
 
 def _members(text: str, rel: str) -> tuple[Member, ...]:
