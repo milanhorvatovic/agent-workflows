@@ -632,6 +632,13 @@ class SyntheticTreeTest(unittest.TestCase):
             # and what they annotate is the same mapping.
             "!!map {metadata: {workflow: [one, two]}}\n",
             "&saved {metadata: {workflow: [one, two]}}\n",
+            # A key is a node too, and one carrying a tag or an anchor
+            # resolves to the same key — at either level, in either form.
+            "!!str metadata:\n  workflow: [one, two]\n",
+            "&saved metadata:\n  workflow: [one, two]\n",
+            "metadata:\n  !!str workflow: [one, two]\n",
+            "{!!str metadata: {workflow: [one, two]}}\n",
+            "metadata: {!!str workflow: [one, two]}\n",
             # A comment after a real key does not unmake the key.
             "metadata: {workflow: [one, two]} # {workflow: no}\n",
             # The one that carries both: a quoted value mentioning the word

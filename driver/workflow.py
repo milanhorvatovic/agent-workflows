@@ -42,7 +42,13 @@ MEMBER_ID = re.compile('^[a-z][a-z0-9]*(-[a-z0-9]+)*$')
 STEP_HEADING = re.compile(
     r"^### (?P<id>[a-z][a-z0-9-]*) \((?P<role>[a-z]+)\)[ \t]*$", re.MULTILINE
 )
-METADATA_KEY = re.compile(r'^[\'"]?metadata[\'"]?[ \t]*:(?P<rest>.*)$', re.MULTILINE)
+# A key is a node, so a tag or an anchor may precede it — `!!str metadata:`
+# resolves to the same key any reader that parses it reports, and a scan
+# that read only the bare spelling would file the declaration under it as
+# prose. Up to two, the tag and the anchor in either order.
+METADATA_KEY = re.compile(
+    r'^(?:[!&]\S*[ \t]+){0,2}[\'"]?metadata[\'"]?[ \t]*:(?P<rest>.*)$', re.MULTILINE
+)
 WORKFLOW_KEY = re.compile(r'^[ \t]+[\'"]?workflow[\'"]?[ \t]*:')
 WORKFLOW_INLINE = re.compile(r'[{,][ \t]*[\'"]?workflow[\'"]?[ \t]*:')
 # Every heading of each level, whatever it says: a contract belongs to the
@@ -525,6 +531,14 @@ def _flow_key_end(rest: str, name: str) -> int | None:
             before = rest[:index].rstrip(WHITESPACE)
             if before.endswith(("'", '"')):
                 before = before[:-1].rstrip(WHITESPACE)
+            # A flow key carries properties as readily as a block one, and
+            # they stand between the key and the `{` or `,` that opens its
+            # place: `{!!str workflow: …}` is that key under a tag.
+            for _ in range(2):
+                cut = max(before.rfind(edge) for edge in (" ", "\t", "{", ","))
+                if before[cut + 1 :][:1] not in ("!", "&"):
+                    break
+                before = before[: cut + 1].rstrip(WHITESPACE)
             after = rest[index + len(name) :].lstrip(WHITESPACE)
             if after.startswith(("'", '"')):
                 after = after[1:].lstrip(WHITESPACE)
@@ -547,7 +561,7 @@ def _block_has_direct_key(after: str, name: str) -> bool:
             child_indent = indent
         if indent != child_indent:
             continue  # deeper: a child of the key above, not of `metadata`
-        key = line.strip()
+        key = _without_properties(line.strip())
         for quote in ("'", '"'):
             if key.startswith(quote):
                 key = key[1:].partition(quote)[0] + ":"
