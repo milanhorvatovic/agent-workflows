@@ -230,6 +230,15 @@ def _parse_scalar(token: str, number: int) -> object:
         return _unquote(token, number)
     if token.startswith(("'", "&", "*", "!", "|", ">", "[", "{")):
         raise ProtocolYamlError(number, f"scalar outside the subset: {token!r}")
+    # A plain scalar carrying a mapping indicator is not a plain scalar:
+    # `a: value: other` is a nested mapping written on one line, which YAML
+    # refuses, and `a: value:` is the same shape with an empty value. Read
+    # as text they are exactly the misreading this module exists to avoid —
+    # and the emitter quotes both forms, so nothing it writes lands here.
+    if ": " in token or token.endswith(":"):
+        raise ProtocolYamlError(
+            number, f"plain scalar carries a mapping indicator: {token!r}"
+        )
     if token in NULLS:
         return None
     if token in BOOLEANS:

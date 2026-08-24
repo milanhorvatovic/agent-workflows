@@ -131,6 +131,18 @@ class LoadsTest(unittest.TestCase):
                 with self.assertRaises(ProtocolYamlError):
                     loads(text)
 
+    def test_rejects_a_plain_scalar_carrying_a_mapping_indicator(self) -> None:
+        """`a: value: other` is a nested mapping on one line, which YAML
+        refuses; read as text it is the misreading this module avoids."""
+        for text in ("a: value: other\n", "a: value:\n", "- item: nested: deep\n"):
+            with self.subTest(text=text):
+                with self.assertRaises(ProtocolYamlError) as caught:
+                    loads(text)
+                self.assertIn("mapping indicator", str(caught.exception))
+        # Quoted, both forms are content and round-trip as themselves.
+        self.assertEqual(loads('a: "value: other"\nb: "note:"\n'),
+                         {"a": "value: other", "b": "note:"})
+
     def test_an_apostrophe_is_a_character_not_a_quote(self) -> None:
         """`don't` is a plain scalar; only a scalar that begins with a
         single quote is the form outside the subset."""
