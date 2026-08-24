@@ -290,11 +290,13 @@ def _blocks(text: str, rel: str) -> list[tuple[int, dict]]:
         if not isinstance(data, dict):
             continue
         metadata = data.get("metadata")
-        workflow = metadata.get("workflow") if isinstance(metadata, dict) else None
-        if workflow is None:
+        if not isinstance(metadata, dict) or "workflow" not in metadata:
             # A declaration fence carrying something else — the repository's
-            # own examples do — is not this module's to read.
+            # own examples do — is not this module's to read. Absence of the
+            # key is what that means; a key that is present decides nothing
+            # by its value, `null` included.
             continue
+        workflow = metadata["workflow"]
         if not isinstance(workflow, dict):
             # Present and not a mapping is malformed, not absent: it has no
             # version to check and no structures to read, and skipping it

@@ -350,6 +350,18 @@ class SyntheticTreeTest(unittest.TestCase):
         workflow = load_workflow(self.framework, "demo")
         self.assertTrue(workflow.step("make").inputs[0].required)
 
+    def test_a_declared_metadata_workflow_is_read_by_presence(self) -> None:
+        """`metadata.workflow: null` is a declaration that says nothing, not
+        a fence carrying something else — read as absence it composes a file
+        one of whose declarations is broken."""
+        self.write(
+            "workflows/stages/demo.md",
+            STAGE + "\n```yaml\nmetadata:\n  workflow: null\n```\n",
+        )
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "demo")
+        self.assertIn("not a mapping", str(caught.exception))
+
     def test_a_tilde_fenced_declaration_is_read(self) -> None:
         """§9 places a declaration at a first-column `yaml` fence; which
         marker writes it is CommonMark's business, not the protocol's."""
