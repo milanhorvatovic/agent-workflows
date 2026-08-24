@@ -501,8 +501,13 @@ class LoadValidationTest(StateTestCase):
                       "2026-08-03T13:40:00.5+02:00", "2026-08-03T23:59:60Z"):
             with self.subTest(accepted=value):
                 self.assertTrue(state._is_timestamp(value))
+        for value in ("2026-08-03T13:40:00+02:00", "2026-08-03T13:40:00-05:30"):
+            with self.subTest(accepted=value):
+                self.assertTrue(state._is_timestamp(value))
         for value in ("2026-08-03", "2026-08-03T13:40:00", "2026-08-03T24:00:00Z",
-                      "2026-02-30T00:00:00Z", "2026-08-03T13:60:00Z", "", None, 42):
+                      "2026-02-30T00:00:00Z", "2026-08-03T13:60:00Z",
+                      "2026-08-03T13:40:00+99:99", "2026-08-03T13:40:00+24:00",
+                      "2026-08-03T13:40:00+02:60", "", None, 42):
             with self.subTest(refused=value):
                 self.assertFalse(state._is_timestamp(value))
 

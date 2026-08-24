@@ -61,7 +61,7 @@ IMPORT_PATH = re.compile('^\\{run\\}(?:/(?!\\.{1,2}(?:/|$))(?!(?:[Cc][Oo][Nn]|[P
 RFC3339 = re.compile(
     r"^([0-9]{4})-([0-9]{2})-([0-9]{2})[Tt]"
     r"([0-9]{2}):([0-9]{2}):([0-9]{2})(?:\.[0-9]+)?"
-    r"(?:[Zz]|[-+][0-9]{2}:[0-9]{2})$"
+    r"(?:[Zz]|[-+]([0-9]{2}):([0-9]{2}))$"
 )
 
 
@@ -480,6 +480,11 @@ def _is_timestamp(value: object) -> bool:
     # and February 30th passes any regex written for it. Second 60 is a leap
     # second, which RFC 3339 allows and the calendar module does not.
     if hour > 23 or minute > 59 or second > 60:
+        return False
+    # An offset is two numbers, not four digits: `+99:99` is the shape and
+    # not the thing, and it names no zone any reader can resolve.
+    offset_hour, offset_minute = match.group(7, 8)
+    if offset_hour is not None and (int(offset_hour) > 23 or int(offset_minute) > 59):
         return False
     try:
         datetime.date(year, month, day)
