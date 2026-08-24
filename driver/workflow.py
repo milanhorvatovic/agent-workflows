@@ -359,9 +359,13 @@ def _check_placeholders(value: str, at: str, what: str) -> None:
         if token in PLACEHOLDERS:
             continue
         known = ", ".join("{" + name + "}" for name in sorted(PLACEHOLDERS))
+        # Quoted, as every other value read from a file is here: the
+        # token is decoded from the declaration and `resume` prints
+        # this error, so a control sequence carried raw would rewrite
+        # the line rather than be reported in it.
         unknown = "{" + token + "}"
         raise WorkflowError(
-            f"{at}: {what} carries unknown placeholder {unknown} "
+            f"{at}: {what} carries unknown placeholder {unknown!r} "
             f"(the spec defines {known})"
         )
 
@@ -686,9 +690,10 @@ def _gates(text: str, rel: str) -> set[str]:
     # asks the sequence for — a gate the run executes straight past.
     for shaped in GATE_SHAPED.finditer(section):
         if not GATE_BULLET.match(section, shaped.start()):
+            bullet = "- **" + shaped.group("raw") + "**"
             raise WorkflowError(
-                f"{rel}: gate bullet '- **{shaped.group('raw')}**' does not match "
-                f"the `- **<id>**` form — ids are lowercase kebab-case (spec §9.4)"
+                f"{rel}: gate bullet {bullet!r} does not match the "
+                f"`- **<id>**` form — ids are lowercase kebab-case (spec §9.4)"
             )
     declared = [match.group("id") for match in GATE_BULLET.finditer(section)]
     for gate_id in declared:

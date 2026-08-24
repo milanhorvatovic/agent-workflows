@@ -244,6 +244,26 @@ class SyntheticTreeTest(unittest.TestCase):
             load_workflow(self.framework, "demo")
         self.assertIn("Extra_Gate", str(caught.exception))
 
+    def test_authored_text_reaches_the_terminal_escaped(self) -> None:
+        """Every value in these errors comes from a file the driver reads,
+        and `resume` prints them: a control sequence carried through raw
+        would rewrite the line rather than be reported in it. The module
+        quotes what it quotes elsewhere for this reason; these two paths
+        report captured text and owe the same."""
+        for name, stage in {
+            "a gate bullet": STAGE.replace(
+                "- **check** — a gate.", "- **check** — a gate.\n- **Bad\x1b[31mid** — a typo."
+            ),
+            "a placeholder": STAGE.replace(
+                'artifact: "{run}/out.md"', 'artifact: "{run}/{Q\\u001b[31m}/out.md"'
+            ),
+        }.items():
+            with self.subTest(field=name):
+                self.write("workflows/stages/demo.md", stage)
+                with self.assertRaises(WorkflowError) as caught:
+                    load_workflow(self.framework, "demo")
+                self.assertNotIn("\x1b", str(caught.exception))
+
     def test_a_gate_declared_more_than_once_is_an_error(self) -> None:
         """Parity compares declarations, so erasing their multiplicity before
         the comparison lets two `- **check**` bullets answer one sequence
