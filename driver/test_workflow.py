@@ -384,6 +384,21 @@ class SyntheticTreeTest(unittest.TestCase):
             load_workflow(self.framework, "demo")
         self.assertIn("not a mapping", str(caught.exception))
 
+    def test_a_declared_structure_is_read_by_presence_too(self) -> None:
+        """A `stage` or `step` that is present and not a mapping is broken,
+        and filtering it out would let the file pass on the strength of
+        another block that happens to be valid."""
+        for structure in ("stage", "step"):
+            with self.subTest(structure=structure):
+                self.write(
+                    "workflows/stages/demo.md",
+                    STAGE + "\n```yaml\nmetadata:\n  workflow:\n"
+                    f'    protocol: "0.2"\n    {structure}: null\n```\n',
+                )
+                with self.assertRaises(WorkflowError) as caught:
+                    load_workflow(self.framework, "demo")
+                self.assertIn(f"{structure} is not a mapping", str(caught.exception))
+
     def test_a_tilde_fenced_declaration_is_read(self) -> None:
         """§9 places a declaration at a first-column `yaml` fence; which
         marker writes it is CommonMark's business, not the protocol's."""

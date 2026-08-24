@@ -339,11 +339,18 @@ def _check_protocol(block: dict, rel: str, line: int) -> None:
 
 
 def _members(text: str, rel: str) -> tuple[Member, ...]:
-    sequences = [
-        workflow["stage"]
-        for _, workflow in _blocks(text, rel)
-        if isinstance(workflow.get("stage"), dict)
-    ]
+    sequences = []
+    for _, workflow in _blocks(text, rel):
+        if "stage" not in workflow:
+            continue
+        # Declared and not a mapping is malformed, and filtering it out
+        # would let a file pass on the strength of another block that
+        # happens to be valid — the declaration is broken either way.
+        if not isinstance(workflow["stage"], dict):
+            raise WorkflowError(
+                f"{rel}: stage is not a mapping: {workflow['stage']!r}"
+            )
+        sequences.append(workflow["stage"])
     if len(sequences) != 1:
         raise WorkflowError(f"{rel}: {len(sequences)} stage sequence blocks, need 1")
     _closed(sequences[0], STAGE_KEYS, rel, "stage")
@@ -398,9 +405,11 @@ def _steps(text: str, rel: str) -> dict[str, StepDeclaration]:
     h2_offsets = [m.start() for m in H2_HEADING.finditer(masked)]
     steps: dict[str, StepDeclaration] = {}
     for offset, workflow in _blocks(text, rel):
-        declaration = workflow.get("step")
-        if not isinstance(declaration, dict):
+        if "step" not in workflow:
             continue
+        declaration = workflow["step"]
+        if not isinstance(declaration, dict):
+            raise WorkflowError(f"{rel}: step is not a mapping: {declaration!r}")
         # A contract belongs to the heading nearest above it, and two things
         # close a step section before the contract is reached: an `## `
         # heading, which ends the steps the section held, and a `### ` that
