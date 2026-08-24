@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from driver.workflow import Workflow, WorkflowError, load_workflow
+from driver.workflow import MEMBER_ID, Workflow, WorkflowError, load_workflow
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -380,6 +380,67 @@ class SyntheticTreeTest(unittest.TestCase):
                 with self.assertRaises(WorkflowError) as caught:
                     load_workflow(self.framework, "demo")
                 self.assertIn("not a boolean", str(caught.exception))
+
+    def test_member_id_is_the_schema_pattern(self) -> None:
+        """The literal mirrors the stage schema's member-id pattern — the
+        schema is the source of truth, and the pin keeps them together."""
+        import json
+
+        schema = json.loads(
+            (REPO / "protocol" / "schemas" / "stage.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(
+            MEMBER_ID.pattern,
+            schema["$defs"]["member"]["properties"]["step"]["pattern"],
+        )
+
+    def test_unknown_keys_inside_a_declared_structure_are_errors(self) -> None:
+        """§9.5: unknown keys inside a declared structure are authoring
+        errors. Each of these typos otherwise reads as a deliberate
+        omission — of conditionality, of routing, of a scaffold."""
+        for name, (before, after) in {
+            "stage": ("      sequence:", "      sequenc: []\n      sequence:"),
+            "member": ("          conditional: true", "          conditionl: true"),
+            "step": ("      role: analyst", "      rol: analyst\n      role: analyst"),
+            "output": (
+                "        template: references/out.template.md",
+                "        templat: references/out.template.md",
+            ),
+            "input": ("          required: false", "          requiredd: false"),
+        }.items():
+            with self.subTest(structure=name):
+                self.write("workflows/stages/demo.md", STAGE.replace(before, after))
+                with self.assertRaises(WorkflowError) as caught:
+                    load_workflow(self.framework, "demo")
+                self.assertIn("unknown keys", str(caught.exception))
+
+    def test_a_member_names_exactly_one_kind(self) -> None:
+        """Presence decides, not truthiness: `gate: null` is a named field
+        with a broken value, and an entry naming both kinds is not one
+        member however either value parses."""
+        for name, replacement in {
+            "both kinds": "        - step: make\n          gate: null",
+            "null value": "        - step: null",
+            "id the schema refuses": "        - step: Make Step",
+        }.items():
+            with self.subTest(case=name):
+                self.write(
+                    "workflows/stages/demo.md",
+                    STAGE.replace("        - step: make", replacement),
+                )
+                with self.assertRaises(WorkflowError):
+                    load_workflow(self.framework, "demo")
+
+    def test_an_empty_template_is_an_error(self) -> None:
+        self.write(
+            "workflows/stages/demo.md",
+            STAGE.replace("template: references/out.template.md", 'template: ""'),
+        )
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "demo")
+        self.assertIn("template is not a path", str(caught.exception))
 
     def test_an_inputs_value_that_is_not_a_list_is_an_error(self) -> None:
         """Read as absence, a malformed `inputs` drops the step's whole

@@ -32,6 +32,10 @@ from .protocol_yaml import ProtocolYamlError, loads
 STAGE_REFERENCE = re.compile(
     r"^[0-9]+\. \[[^\]]*\]\(stages/([a-z][a-z0-9-]*)\.md\)", re.MULTILINE
 )
+# The stage schema's member-id shape, carried verbatim: an id it would
+# reject becomes a run-state record `load` refuses, one run too late to
+# say which declaration wrote it. test_workflow pins the two.
+MEMBER_ID = re.compile('^[a-z][a-z0-9]*(-[a-z0-9]+)*$')
 # The complete form, anchored to line end — a truncated `### thing (`
 # must not declare a step whose contract then associates (the
 # conformance suite holds the same rule).
@@ -51,6 +55,18 @@ FENCE = re.compile(
 )
 
 VERDICTS = ("PASS", "PASS_WITH_CONDITIONS", "FAIL")
+
+# The schemas declare every structure below closed, and §9.5 makes unknown
+# keys inside one an authoring error while tolerating unknown siblings of
+# the structures themselves. A typo is what the rule is for: `conditionl`
+# silently drops a member's conditionality, `onn` drops its routing, and
+# `templat` drops the scaffold a later module would have used — each of
+# them read, without the rule, as a deliberate omission.
+STAGE_KEYS = frozenset({"sequence"})
+MEMBER_KEYS = frozenset({"step", "gate", "conditional"})
+STEP_KEYS = frozenset({"role", "inputs", "output", "on"})
+OUTPUT_KEYS = frozenset({"artifact", "template"})
+INPUT_KEYS = frozenset({"artifact", "required"})
 
 
 class WorkflowError(Exception):
@@ -257,6 +273,13 @@ def _blocks(text: str, rel: str) -> list[tuple[int, dict]]:
     return found
 
 
+def _closed(mapping: dict, allowed: frozenset[str], at: str, what: str) -> None:
+    """§9.5: unknown keys inside a declared structure are authoring errors."""
+    unknown = sorted(set(mapping) - allowed)
+    if unknown:
+        raise WorkflowError(f"{at}: {what} has unknown keys: {', '.join(unknown)}")
+
+
 def _check_protocol(block: dict, rel: str, line: int) -> None:
     """§9: every `metadata.workflow` block declares the protocol version it
     was authored against, and §11 forbids a client silently interpreting
@@ -282,6 +305,7 @@ def _members(text: str, rel: str) -> tuple[Member, ...]:
     ]
     if len(sequences) != 1:
         raise WorkflowError(f"{rel}: {len(sequences)} stage sequence blocks, need 1")
+    _closed(sequences[0], STAGE_KEYS, rel, "stage")
     entries = sequences[0].get("sequence")
     if not isinstance(entries, list) or not entries:
         raise WorkflowError(f"{rel}: stage sequence is empty")
@@ -289,14 +313,19 @@ def _members(text: str, rel: str) -> tuple[Member, ...]:
     for entry in entries:
         if not isinstance(entry, dict):
             raise WorkflowError(f"{rel}: sequence entry is not a mapping: {entry!r}")
-        step = entry.get("step")
-        gate = entry.get("gate")
-        if isinstance(step, str) and gate is None:
-            kind, member_id = "step", step
-        elif isinstance(gate, str) and step is None:
-            kind, member_id = "gate", gate
-        else:
+        _closed(entry, MEMBER_KEYS, rel, "sequence entry")
+        # Presence, not truthiness: `gate: null` is a named field with a
+        # broken value, and reading it as an absent key would let an entry
+        # naming both kinds pass as the one whose value happened to parse.
+        kinds = [kind for kind in ("step", "gate") if kind in entry]
+        if len(kinds) != 1:
             raise WorkflowError(f"{rel}: sequence entry is not one member: {entry!r}")
+        kind = kinds[0]
+        member_id = entry[kind]
+        # The id shape is the schema's: a member wearing something else
+        # becomes a record `load` refuses, one run too late to say why.
+        if not isinstance(member_id, str) or not MEMBER_ID.match(member_id):
+            raise WorkflowError(f"{rel}: {kind} id is not a member id: {member_id!r}")
         if any(member.id == member_id for member in members):
             raise WorkflowError(f"{rel}: sequence names {member_id!r} twice")
         # §9.4 admits `conditional: true` and absence, nothing else — the
@@ -351,6 +380,7 @@ def _steps(text: str, rel: str) -> dict[str, StepDeclaration]:
 
 def _step_declaration(declaration: dict, step_id: str, rel: str) -> StepDeclaration:
     at = f"{rel}: step {step_id!r}"
+    _closed(declaration, STEP_KEYS, at, "step")
     role = declaration.get("role")
     if not isinstance(role, str) or not role:
         raise WorkflowError(f"{at}: missing role")
@@ -361,7 +391,10 @@ def _step_declaration(declaration: dict, step_id: str, rel: str) -> StepDeclarat
     if role not in ROLES:
         raise WorkflowError(f"{at}: {role!r} is not a protocol role")
     output = declaration.get("output")
-    artifact = output.get("artifact") if isinstance(output, dict) else None
+    if not isinstance(output, dict):
+        raise WorkflowError(f"{at}: output is not a mapping: {output!r}")
+    _closed(output, OUTPUT_KEYS, at, "output")
+    artifact = output.get("artifact")
     if not isinstance(artifact, str) or not artifact:
         raise WorkflowError(f"{at}: missing output artifact")
     # §8.1 and §9.1: `{P}` resolves to one path per phase, and a step
@@ -371,9 +404,11 @@ def _step_declaration(declaration: dict, step_id: str, rel: str) -> StepDeclarat
     # output carrying `{P}` would enter the manifest as the literal it is.
     if "{P}" in artifact:
         raise WorkflowError(f"{at}: output artifact carries {{P}}: {artifact!r}")
-    template = output.get("template") if isinstance(output, dict) else None
-    if template is not None and not isinstance(template, str):
-        raise WorkflowError(f"{at}: template is not a string")
+    # A template is a path or it is absent; an empty one is neither, and it
+    # would reach the module that scaffolds from it as a path to nowhere.
+    template = output.get("template")
+    if template is not None and (not isinstance(template, str) or not template):
+        raise WorkflowError(f"{at}: template is not a path: {template!r}")
     inputs: list[InputDeclaration] = []
     # Absence is the only thing that means "no declared inputs". A present
     # `inputs` that is not a list — `false`, `null`, a mapping — is an
@@ -383,7 +418,10 @@ def _step_declaration(declaration: dict, step_id: str, rel: str) -> StepDeclarat
     if not isinstance(declared_inputs, list):
         raise WorkflowError(f"{at}: `inputs` is not a list: {declared_inputs!r}")
     for entry in declared_inputs:
-        input_artifact = entry.get("artifact") if isinstance(entry, dict) else None
+        if not isinstance(entry, dict):
+            raise WorkflowError(f"{at}: input is not a mapping: {entry!r}")
+        _closed(entry, INPUT_KEYS, at, "input")
+        input_artifact = entry.get("artifact")
         if not isinstance(input_artifact, str) or not input_artifact:
             raise WorkflowError(f"{at}: input without an artifact")
         # §9.1 has no default in prose; the schemas require the field only
