@@ -471,6 +471,18 @@ def route_verdict(state: RunState, workflow: Workflow, step_id: str, verdict: st
     declaration = workflow.step(step_id)
     if declaration is None:
         raise StateError(f"no declaration for step {step_id!r}")
+    # §9.1: the verdict that routes a step is produced by the validation of
+    # that step's output, so the step has produced one — a record still
+    # `pending`, `active`, or `skipped` has not, and routing from it would
+    # re-enter the destination on the strength of work that has not
+    # happened. Starting and completing both check their own status; this
+    # is the third transition, and it was the one taking a caller's word.
+    source = state.record(step_id)
+    if source.status != "done":
+        raise StateError(
+            f"step {step_id!r} is {source.status}, and a verdict routes from a "
+            f"step that has produced its output (spec §9.1)"
+        )
     target = declaration.edges.get(verdict)
     if target is None:
         raise StateError(

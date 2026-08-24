@@ -207,13 +207,34 @@ class TransitionTest(StateTestCase):
         self.assertEqual(gate.status, "active")
         self.assertEqual(self.state.artifacts, [])
 
+    def complete(self, state_obj, workflow, step_id: str) -> None:
+        """A verdict routes from a `done` step (§9.1), so the source goes
+        through the transitions that make it one."""
+        state.start_step(state_obj, workflow, step_id)
+        state.complete_step(state_obj, workflow, step_id)
+
     def test_route_follows_the_declared_edge(self) -> None:
+        self.complete(self.state, self.workflow, "make")
         target = state.route_verdict(self.state, self.workflow, "make", "PASS")
         self.assertEqual(target, "check")
         # The skipped conditional gate was routed to, so it re-enters pending.
         self.assertEqual(self.state.record("check").status, "pending")
 
+    def test_a_verdict_routes_only_from_a_step_that_produced_its_output(self) -> None:
+        """§9.1: the verdict comes from the validation of the step's output,
+        so a record that has not produced one has nothing to route — and
+        routing anyway re-enters the destination on work that never
+        happened, past the checks starting and completing both make."""
+        for status in ("pending", "active", "skipped", "blocked"):
+            with self.subTest(status=status):
+                self.state.record("make").status = status
+                with self.assertRaises(state.StateError) as caught:
+                    state.route_verdict(self.state, self.workflow, "make", "PASS")
+                self.assertIn("produced its output", str(caught.exception))
+                self.assertEqual(self.state.record("check").status, "skipped")
+
     def test_route_without_an_edge_escalates(self) -> None:
+        self.complete(self.state, self.workflow, "make")
         with self.assertRaises(state.StateError) as caught:
             state.route_verdict(self.state, self.workflow, "make", "PASS_WITH_CONDITIONS")
         self.assertIn("escalate", str(caught.exception))
@@ -224,6 +245,7 @@ class TransitionTest(StateTestCase):
             stage_edge, encoding="utf-8"
         )
         workflow = load_workflow(self.base, "demo")
+        self.complete(self.state, workflow, "make")
         target = state.route_verdict(self.state, workflow, "make", "PASS")
         self.assertEqual(target, "make")
 
@@ -240,18 +262,39 @@ class TransitionTest(StateTestCase):
         workflow = load_workflow(self.base, "demo")
         _, created = state.create_run(self.runs, "gate-first", workflow, "0.2")
         self.assertEqual([s.id for s in created.steps], ["check", "make"])
+        self.complete(created, workflow, "make")
         target = state.route_verdict(created, workflow, "make", "PASS")
         self.assertEqual(target, "make")
 
     def test_a_stage_target_with_no_runnable_step_escalates(self) -> None:
-        stage_edge = STAGE.replace("        PASS: check\n", "        PASS: demo\n")
+        stage_edge = STAGE.replace("        PASS: check\n", "        PASS: other\n")
         (self.base / "workflows" / "stages" / "demo.md").write_text(
             stage_edge, encoding="utf-8"
         )
-        workflow = load_workflow(self.base, "demo")
-        self.state.record("make").status = "skipped"
+        second = (
+            STAGE.replace("name: demo", "name: other")
+            .replace("- step: make", "- step: build")
+            .replace("- gate: check", "- gate: sign")
+            .replace("### make (analyst)", "### build (analyst)")
+            .replace("PASS: check", "PASS: sign")
+            .replace("FAIL: make", "FAIL: build")
+            .replace("**check**", "**sign**")
+        )
+        (self.base / "workflows" / "stages" / "other.md").write_text(
+            second, encoding="utf-8"
+        )
+        (self.base / "workflows" / "pair.md").write_text(
+            "---\nname: pair\ndescription: Two stages.\n---\n\n"
+            "1. [stages/demo.md](stages/demo.md)\n2. [stages/other.md](stages/other.md)\n",
+            encoding="utf-8",
+        )
+        workflow = load_workflow(self.base, "pair")
+        _, created = state.create_run(self.runs, "pair-run", workflow, "0.2")
+        # Creation bootstraps the entry stage alone (§10), so the targeted
+        # stage's step has no record to resolve to yet.
+        self.complete(created, workflow, "make")
         with self.assertRaises(state.StateError) as caught:
-            state.route_verdict(self.state, workflow, "make", "PASS")
+            state.route_verdict(created, workflow, "make", "PASS")
         self.assertIn("no runnable step", str(caught.exception))
 
 
