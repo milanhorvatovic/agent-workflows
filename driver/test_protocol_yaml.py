@@ -131,6 +131,14 @@ class LoadsTest(unittest.TestCase):
                 with self.assertRaises(ProtocolYamlError):
                     loads(text)
 
+    def test_an_apostrophe_is_a_character_not_a_quote(self) -> None:
+        """`don't` is a plain scalar; only a scalar that begins with a
+        single quote is the form outside the subset."""
+        self.assertEqual(loads("a: don't\nb: it's fine\n"), {"a": "don't", "b": "it's fine"})
+        with self.assertRaises(ProtocolYamlError) as caught:
+            loads("a: 'quoted'\n")
+        self.assertIn("outside the subset", str(caught.exception))
+
     def test_rejects_a_surrogate_escape(self) -> None:
         """Accepted, it would load and validate and then break the next
         save: UTF-8 cannot carry a lone surrogate."""

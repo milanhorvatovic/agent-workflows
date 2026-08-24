@@ -99,7 +99,14 @@ def _content_lines(text: str) -> list[_Line]:
 def _strip_comment(raw: str, number: int) -> str:
     """Drop a trailing comment — a `#` outside quotes, at start or after a
     space, per YAML. Tracking the quote state is what keeps a `#` inside a
-    quoted scalar as content."""
+    quoted scalar as content.
+
+    Only the double quote opens a scalar here. A single quote is a character
+    like any other at this stage — `don't` is a plain scalar YAML reads as
+    the word it is — and the one form that is outside the subset, a scalar
+    that *begins* with a quote, is refused where scalars are resolved rather
+    than wherever an apostrophe appears.
+    """
     in_quotes = False
     index = 0
     while index < len(raw):
@@ -111,8 +118,6 @@ def _strip_comment(raw: str, number: int) -> str:
                 in_quotes = False
         elif character == '"':
             in_quotes = True
-        elif character == "'":
-            raise ProtocolYamlError(number, "single-quoted scalars are outside the subset")
         elif character == "#" and (index == 0 or raw[index - 1] in " \t"):
             return raw[:index]
         index += 1
