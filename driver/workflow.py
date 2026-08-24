@@ -417,8 +417,12 @@ def _declares_workflow(body: str) -> bool:
             return True
         # `metadata: |` or `metadata: >` opens a block scalar, and what is
         # indented under it is that string's content — a conforming reader
-        # sees `metadata` as text and no declaration at all.
-        if rest.lstrip(WHITESPACE)[:1] in ("|", ">"):
+        # sees `metadata` as text and no declaration at all. A tag or an
+        # anchor may stand between the colon and the indicator, and what
+        # they annotate is the same block scalar: reading only the first
+        # token would scan `!!str |`'s text for keys and find the `workflow`
+        # inside a string.
+        if _without_properties(rest)[:1] in ("|", ">"):
             continue
         if _block_has_direct_key(body[opening.end() :], "workflow"):
             return True
@@ -444,6 +448,22 @@ def _root_flow_declares(body: str) -> bool:
         return False
     end = _flow_key_end(flat, "metadata")
     return end is not None and _flow_has_direct_key(flat[end:], "workflow")
+
+
+def _without_properties(rest: str) -> str:
+    """The value with its node properties removed — a tag, an anchor, or
+    both in either order, which YAML lets precede any node and which say
+    nothing about what kind of node follows."""
+    value = rest.lstrip(WHITESPACE)
+    for _ in range(2):  # a tag and an anchor, in either order
+        if value[:1] not in ("!", "&"):
+            break
+        cut = next(
+            (index for index, character in enumerate(value) if character in WHITESPACE),
+            len(value),
+        )
+        value = value[cut:].lstrip(WHITESPACE)
+    return value
 
 
 def _flow_has_direct_key(rest: str, name: str) -> bool:

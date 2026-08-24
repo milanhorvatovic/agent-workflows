@@ -574,6 +574,11 @@ class SyntheticTreeTest(unittest.TestCase):
             # key is looked for outside the quotes or not at all.
             "metadata: '{workflow: demo}'\n",
             'metadata: "{workflow: demo}"\n',
+            # Node properties may precede a block scalar, and what they
+            # precede is still a block scalar — `metadata` is a string, and
+            # the `workflow:` indented under it is that string's text.
+            "metadata: !!str |\n  workflow: [one, two]\n",
+            "metadata: &saved >\n  workflow: [one, two]\n",
             # A flow mapping the document does not open with is somebody
             # else's value: `example.labels.metadata.workflow` is as deep a
             # descendant written in braces as it is written in lines.
