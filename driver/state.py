@@ -501,6 +501,16 @@ def route_verdict(state: RunState, workflow: Workflow, step_id: str, verdict: st
         )
     resolved = _resolve_target(state, workflow, target)
     destination = state.record(resolved)
+    # A `skipped` destination re-enters, which is §9.4's rule for a
+    # conditional member — "populated `skipped` until a route returns to
+    # it". The overlays state the opposite for the other kind of skip:
+    # "an edge or stage id targeting skipped content resolves to the next
+    # non-skipped point in composition order". Both are shipped rules, they
+    # disagree about a conditional target, and run state records no reason
+    # to tell the two kinds apart — so whichever this driver implements is
+    # wrong for the other. It re-enters here and passes over in
+    # `_resolve_target`, matching each rule where that rule is written, and
+    # the disagreement is recorded rather than silently settled.
     if destination.status in ("skipped", "done", "blocked"):
         destination.status = "pending"
     return resolved
