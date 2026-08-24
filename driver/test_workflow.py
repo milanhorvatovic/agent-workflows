@@ -565,6 +565,11 @@ class SyntheticTreeTest(unittest.TestCase):
             # inside a plain scalar is an ordinary character.
             "metadata:\n# a comment\n  workflow: [one, two]\n",
             "metadata: {note: don't, workflow: [one, two]}\n",
+            # The same character after a space is the same character: a
+            # quote opens a scalar at the start of a node and nowhere else,
+            # or everything past this apostrophe — the real key included —
+            # would blank and file the declaration as prose.
+            "metadata: {note: rock 'n roll, workflow: [one, two]}\n",
             # A comment after a real key does not unmake the key.
             "metadata: {workflow: [one, two]} # {workflow: no}\n",
             # The one that carries both: a quoted value mentioning the word

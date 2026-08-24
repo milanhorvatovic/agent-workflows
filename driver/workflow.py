@@ -275,13 +275,24 @@ def _blank_quoted(text: str) -> str:
     Only structure decides whether a block declares, and a quoted scalar is
     not structure however it reads inside. Escapes are honoured so a quote
     within a double-quoted span does not end it early.
+
+    A quote opens a scalar where a node starts and nowhere else, which is
+    after `{`, `[`, `,`, or `:` with nothing but whitespace between — never
+    after whitespace alone, which is inside a plain scalar as often as
+    before one. Reading it as an opener there blanks the rest of the line
+    for want of a partner, so `{note: rock 'n roll, workflow: …}` lost the
+    key this scan exists to find and filed a broken declaration as prose.
     """
     out: list[str] = []
     index = 0
+    at_node_start = True
     while index < len(text):
         character = text[index]
-        opens = index == 0 or text[index - 1] in "{[,:" + WHITESPACE
-        if character not in "\"'" or not opens:
+        if character not in "\"'" or not at_node_start:
+            if character in "{[,:":
+                at_node_start = True
+            elif character not in WHITESPACE:
+                at_node_start = False
             out.append(character)
             index += 1
             continue
@@ -299,6 +310,10 @@ def _blank_quoted(text: str) -> str:
             out.append(span)
         else:
             out.append(" " * len(span))
+        # The span was a node, so what follows it is not the start of one
+        # until a structural character says so — the `:` of a quoted key
+        # among them, which the loop reads next.
+        at_node_start = False
         index = end + 1
     return "".join(out)
 
