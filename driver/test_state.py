@@ -163,6 +163,20 @@ class CreateRunTest(StateTestCase):
         # And the document it would have replaced is still the one on disk.
         self.assertEqual((run_dir / state.STATE_FILE).read_text(encoding="utf-8"), before)
 
+    def test_a_state_is_not_written_into_another_run_s_directory(self) -> None:
+        """The id is the run's identity (§8.1), and `open_run` refuses a
+        document that names a different run than the directory holding it.
+        The write had no such rule, so a record carried to the wrong
+        directory published a file that its own loader then refuses —
+        corrupting the run it was written over."""
+        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2")
+        other, _ = state.create_run(self.runs, "2026-08-18-y", self.workflow, "0.2")
+        untouched = (other / state.STATE_FILE).read_text(encoding="utf-8")
+        with self.assertRaises(state.StateError) as caught:
+            state.save(created, other)
+        self.assertIn("2026-08-18-y", str(caught.exception))
+        self.assertEqual((other / state.STATE_FILE).read_text(encoding="utf-8"), untouched)
+
     def test_a_value_the_subset_cannot_write_is_reported_as_state(self) -> None:
         """Every defect this module meets leaves it as a StateError, which
         is what carries one to an exit code rather than a traceback. A
@@ -1574,7 +1588,8 @@ class LoadValidationTest(StateTestCase):
         )
 
     def test_imports_load_validate_and_round_trip(self) -> None:
-        run_dir = self.runs / "with-imports"
+        # Named for the run the document names, which the write requires.
+        run_dir = self.runs / "demo-run"
         run_dir.mkdir(parents=True)
         (run_dir / state.STATE_FILE).write_text(
             self.BASE.replace(
@@ -1663,7 +1678,12 @@ class LoadValidationTest(StateTestCase):
         )
         self.assertTrue(fixtures)
         for path in fixtures:
-            run_dir = self.runs / f"fixture-{path.stem}"
+            # Named for the run the document names: the id is the run's
+            # identity, and a write into any other directory is refused.
+            import re as _re
+
+            declared = _re.search(r"^  id: (.+)$", path.read_text(encoding="utf-8"), _re.M)
+            run_dir = self.runs / declared.group(1).strip()
             run_dir.mkdir(parents=True)
             (run_dir / state.STATE_FILE).write_text(
                 path.read_text(encoding="utf-8"), encoding="utf-8"

@@ -552,6 +552,15 @@ def save(state: RunState, run_dir: Path, runs: int | None = None) -> None:
             {"artifact": record.artifact, "from": record.from_run, "at": record.at}
             for record in state.imports
         ]
+    # The id is the run's identity (§8.1), and `open_run` refuses a document
+    # naming a different run than the directory holding it. The write owes
+    # the same: a record carried to the wrong directory publishes a file
+    # its own loader then refuses, over a run that was fine until this.
+    if state.run_id != run_dir.name:
+        raise StateError(
+            f"state names run {state.run_id!r} and the directory is "
+            f"{run_dir.name!r} — the id is the run's identity (spec §8.1)"
+        )
     # One writer and one round trip: what this module publishes is what it
     # can read back. The record it serializes is mutable and the handlers
     # to come hold one, so a field put wrong in memory would be written out
