@@ -30,7 +30,7 @@ from pathlib import Path
 
 from . import PROTOCOL, PROTOCOL_VERSION, implements
 from .protocol_yaml import ProtocolYamlError, dumps, loads
-from .workflow import PHASE, PHASE_SET, PHASE_TOKEN, Workflow
+from .workflow import PHASE, PHASE_SET, Workflow
 
 STATE_FILE = "workflow-state.yaml"
 
@@ -1029,24 +1029,21 @@ def _import_skipped(state: RunState, workflow: Workflow) -> set[str]:
     A member the class or a condition left out produced nothing and derives
     from nothing; one skipped by import has an artifact in the run and a
     lineage behind it. The two wear the same status, so what tells them
-    apart is the manifest of imports — matched against the family the
-    declaration names rather than the text it is written as, since an
-    import records the one path it copied and `{run}/phase-{N}-plan.md` is
-    not the string `{run}/phase-1-plan.md`.
+    apart is the manifest of imports — matched against the artifact the
+    declaration resolves to here, `{N}` taking the phase now executing as
+    it does everywhere else. Not the family: at phase 2 an import of
+    `{run}/phase-1-plan.md` names a file this phase has yet to write, and
+    reading it as this phase's would hand any `skipped` producer of that
+    family to the walk, whatever its skip was waiting for.
     """
-    imports = [record.artifact for record in (state.imports or ())]
+    imports = set(record.artifact for record in (state.imports or ()))
     if not imports:
         return set()
+    phase = str(state.phase if state.phase is not None else 1)
     produced: set[str] = set()
     for stage in workflow.stages:
         for step_id, declaration in stage.steps.items():
-            family = re.compile(
-                "[0-9]+".join(
-                    re.escape(part)
-                    for part in PHASE_TOKEN.split(declaration.output_artifact)
-                )
-            )
-            if any(family.fullmatch(path) for path in imports):
+            if PHASE.sub(phase, declaration.output_artifact) in imports:
                 produced.add(step_id)
     return {
         step.id

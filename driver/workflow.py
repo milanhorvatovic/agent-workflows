@@ -121,10 +121,6 @@ PLACEHOLDER = re.compile(r"(?<!\$)\{([^{}]*)\}")
 # would agree with itself about the corruption.
 PHASE = re.compile(r"(?<!\$)\{N\}")
 PHASE_SET = re.compile(r"(?<!\$)\{P\}")
-# Either of them, for reading a declared path as the family it names: an
-# import records the one path it copied, and what says whether a step
-# produced it is the family its declaration describes.
-PHASE_TOKEN = re.compile(r"(?<!\$)\{[NP]\}")
 
 # The schemas declare every structure below closed, and §9.5 makes unknown
 # keys inside one an authoring error while tolerating unknown siblings of
@@ -538,7 +534,13 @@ def _root_flow_declares(body: str, anchors: list[tuple[int, str, str, str]]) -> 
     # below compares text: what each one names is put in its place first,
     # read as the value it holds where it is a key and as the structure it
     # is where it is a value.
-    flat = _resolve_flow_aliases(flat, anchors, len(body))
+    # Nothing outside this text can be behind an alias inside it: the scan
+    # covers the document whole, so the anchors it meets on the way are the
+    # only ones an alias here can name. Reaching past them read an anchor
+    # defined *after* an alias as the node it names, which YAML has no
+    # forward reference for — and an example carrying one was reported as a
+    # declaration, stopping composition over a file that declares nothing.
+    flat = _resolve_flow_aliases(flat, anchors, 0)
     end = _flow_key_end(flat, "metadata")
     if end is None:
         return False

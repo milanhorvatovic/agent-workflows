@@ -804,6 +804,46 @@ class ImportInvalidationTest(StateTestCase):
         )
         self.assertEqual(state._import_skipped(state_obj, workflow), {"make"})
 
+    def test_an_import_from_an_earlier_phase_is_not_this_phase_s(self) -> None:
+        """A family is not a path: the artifact a phase produces is the one
+        `{N}` resolves to in it, and an import of the phase before names a
+        file this phase has yet to write. Read as the family, a member
+        skipped for any other reason joined the walk and was reset to
+        `pending` — the run then executing it ahead of whatever its own
+        skip was waiting for."""
+        phased = STAGE.replace(
+            'artifact: "{run}/out.md"', 'artifact: "{run}/phase-{N}-out.md"'
+        )
+        (self.base / "workflows" / "stages" / "demo.md").write_text(phased, encoding="utf-8")
+        workflow = load_workflow(self.base, "demo")
+
+        def at(phase: int, imported: str) -> set[str]:
+            return state._import_skipped(
+                state.RunState(
+                    run_id="2026-08-17-x",
+                    workflow="demo",
+                    protocol="0.2",
+                    phase=phase,
+                    steps=[
+                        state.StepRecord(id="make", status="skipped"),
+                        state.StepRecord(id="check", status="skipped"),
+                    ],
+                    gates=[],
+                    artifacts=[imported],
+                    imports=[
+                        state.ImportRecord(
+                            artifact=imported,
+                            from_run="2026-08-01-source",
+                            at="2026-08-16T09:00:00Z",
+                        )
+                    ],
+                ),
+                workflow,
+            )
+
+        self.assertEqual(at(2, "{run}/phase-1-out.md"), set())
+        self.assertEqual(at(2, "{run}/phase-2-out.md"), {"make"})
+
 
 class CrossStageInvalidationTest(StateTestCase):
     def build(self) -> object:
