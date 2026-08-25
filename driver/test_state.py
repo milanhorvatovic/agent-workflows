@@ -148,6 +148,18 @@ class CreateRunTest(StateTestCase):
             state._remove_run(self.runs / "2026-08-19-x", runs)
         self.assertTrue(victim.is_file())
 
+    def test_a_value_the_subset_cannot_write_is_reported_as_state(self) -> None:
+        """Every defect this module meets leaves it as a StateError, which
+        is what carries one to an exit code rather than a traceback. A
+        value the YAML subset does not carry reached the writer and left it
+        as whatever the writer raised."""
+        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2")
+        created.instrumentation = {"duration": 1.5}
+        created.has_instrumentation = True
+        with self.assertRaises(state.StateError) as caught:
+            state.save(created, run_dir)
+        self.assertIn("subset", str(caught.exception))
+
     def test_creating_refuses_a_protocol_it_cannot_load_back(self) -> None:
         """The version is written into the document and `load` holds every
         document to it, so an unchecked one leaves a run that exists and

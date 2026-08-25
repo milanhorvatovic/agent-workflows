@@ -539,7 +539,15 @@ def save(state: RunState, run_dir: Path, runs: int | None = None) -> None:
             {"artifact": record.artifact, "from": record.from_run, "at": record.at}
             for record in state.imports
         ]
-    text = dumps(document)
+    try:
+        text = dumps(document)
+    except (TypeError, ValueError) as error:
+        # Every defect this module meets leaves it as a StateError, which
+        # is what carries one to an exit code rather than a traceback. The
+        # writer refuses a value the subset does not carry — `instrumentation`
+        # is an open mapping to the schema and this codec reads and writes
+        # what the protocol's own documents use, so the two can disagree.
+        raise StateError(f"cannot write this run's state: {error}") from error
     with _run_directory(run_dir, runs) as directory:
         if directory is None:
             handle, temp_name = tempfile.mkstemp(
@@ -1110,15 +1118,11 @@ def _resolve_target(state: RunState, workflow: Workflow, target: str) -> str:
             # would stop the run at a decision nothing has yet produced work
             # for, where the rule sends it to the work itself.
             #
-            # Only what the class excluded is passed over. Three things
-            # wear `skipped` and run state records no reason to tell them
-            # apart, but the declarations do: a conditional member is one
-            # the sequence says so about, an imported derivation is one the
-            # manifest of imports names, and a member that is neither was
-            # left out by the class. The first two are where the stage's
-            # work begins if they are first — §9.1 names the stage's first
-            # step, and a route re-enters a conditional member (§10) or an
-            # imported one (§8.6) rather than stepping over it.
+            # Every `skipped` record is passed over, which is wider than the
+            # rule's words: a class exclusion, a conditional whose route has
+            # not fired, and a step whose output the run imported (§8.6) all
+            # wear that one status, and run state records no reason to tell
+            # them apart.
             # Resolution continues past the stage where the stage itself is
             # skipped whole: the overlays say "an edge or stage id targeting
             # skipped content resolves to the next non-skipped point in
