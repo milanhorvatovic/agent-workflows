@@ -1111,10 +1111,49 @@ class AcceptedClassTest(StateTestCase):
             state.check_gates(carrying("skipped"), self.workflow)
         self.assertIn("check", str(caught.exception))
         # What a re-entry leaves is still read: the gate decides again, and
-        # the class it accepted stands until it does.
-        for status in ("done", "pending", "blocked"):
+        # the class it accepted stands until it does. A gate that is still
+        # `done` is a different shape — the work before it in its stage is
+        # behind it too — so that case is built where it belongs.
+        for status in ("pending", "blocked"):
             with self.subTest(status=status):
                 state.check_gates(carrying(status), self.workflow)
+        decided = carrying("done")
+        decided.record("make").status = "done"
+        state.check_gates(decided, self.workflow)
+
+    def test_a_gate_decides_after_the_work_before_it(self) -> None:
+        """A gate is a member of its stage's sequence and decides where it
+        stands: `done` with earlier work still to run is a decision taken
+        about something that had not happened. No transition writes it —
+        the gate is reached after that work, and a route back into the work
+        returns the gate to `pending` with it — so a document carrying it
+        would have `resume` run the earlier step under a class the same
+        document says was accepted afterward."""
+        for status in ("pending", "active", "blocked"):
+            with self.subTest(status=status):
+                state_obj = state.RunState(
+                    run_id="2026-08-17-x",
+                    workflow="demo",
+                    protocol="0.2",
+                    risk="R1",
+                    risk_rationale="small",
+                    steps=[
+                        state.StepRecord(id="make", status=status),
+                        state.StepRecord(id="check", status="done"),
+                    ],
+                    gates=[
+                        state.GateRecord(
+                            gate="check",
+                            transport="blocking",
+                            outcome="accept",
+                            at="2026-08-16T09:00:00Z",
+                        )
+                    ],
+                    artifacts=[],
+                )
+                with self.assertRaises(state.StateError) as caught:
+                    state.check_gates(state_obj, self.workflow)
+                self.assertIn("make", str(caught.exception))
 
 
 class RoutedStateTest(StateTestCase):

@@ -413,7 +413,13 @@ class CliTest(unittest.TestCase):
 
     def test_resume_reads_a_class_its_gate_did_accept(self) -> None:
         """The other side of the same rule: an acceptance on file is what
-        makes the class readable, and a run past its intake gate resumes."""
+        makes the class readable, and a run past its intake gate resumes.
+
+        Past it in both senses — the gate decides where it stands in its
+        stage, so the step ahead of it is behind it too. A document with
+        the gate `done` over work still to run is one no transition writes,
+        and this one built it until the check for that landed.
+        """
         self.write_framework()
         self.invoke(
             "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
@@ -425,7 +431,9 @@ class CliTest(unittest.TestCase):
                 '  protocol: "0.2"\n',
                 '  protocol: "0.2"\n  risk: R1\n  risk_rationale: "small"\n',
             )
+            .replace("  - id: make\n    status: pending", "  - id: make\n    status: done")
             .replace("  - id: check\n    status: skipped", "  - id: check\n    status: done")
+            .replace("artifacts: []", 'artifacts:\n  - "{run}/out.md"')
             .replace(
                 "gates: []\n",
                 "gates:\n  - gate: check\n    transport: blocking\n"
@@ -436,8 +444,9 @@ class CliTest(unittest.TestCase):
         code, out, err = self.invoke(
             "resume", "2026-08-17-x", "--config", str(self.config_path)
         )
-        self.assertEqual(code, 1)
-        self.assertIn("next is make (pending)", out)
+        self.assertEqual(code, 0)
+        self.assertIn("nothing left to run", out)
+        self.assertEqual(err, "")
 
     def test_resume_refuses_a_decision_by_a_gate_nothing_declares(self) -> None:
         """§7 makes `gates` the record of the run's own decisions, so an

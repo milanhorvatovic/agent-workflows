@@ -904,6 +904,29 @@ def check_gates(state: RunState, workflow: Workflow) -> None:
                 f"gate {record.id!r} is done at phase {state.phase} and its latest "
                 f"decision records {says} (spec §10)"
             )
+        # A gate is a member of its stage's sequence and decides where it
+        # stands: `done` with earlier work in that stage still to run is a
+        # decision taken about something that had not happened. No
+        # transition writes it — the gate is reached after that work, and a
+        # route back into the work returns the gate to `pending` with it
+        # (§7, §10) — so a document carrying it would have a resume run the
+        # earlier step under a decision the same document says came after.
+        for stage in workflow.stages:
+            ids = [member.id for member in stage.members]
+            if record.id not in ids:
+                continue
+            earlier = [
+                step.id
+                for step in state.steps
+                if step.id in ids[: ids.index(record.id)]
+                and step.status not in ("done", "skipped")
+            ]
+            if earlier:
+                raise StateError(
+                    f"gate {record.id!r} is done and these stand before it in "
+                    f"{stage.name!r}, neither done nor skipped: "
+                    f"{', '.join(earlier)} (spec §7, §10)"
+                )
         if decision.outcome not in ("accept", "reject"):
             raise StateError(
                 f"gate {record.id!r} is done and its latest outcome is "
