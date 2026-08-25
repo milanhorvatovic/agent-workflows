@@ -367,9 +367,15 @@ def _parse_sequence(
                 index += 1
             continue
         if _is_mapping_start(rest):
-            # `- key: value`: the dash line opens a mapping whose further keys
-            # are indented past the dash, aligned with the inline key.
-            item_indent = indent + 2
+            # `- key: value`: the dash line opens a mapping whose further
+            # keys are indented past the dash, aligned with the inline key
+            # — so where that key stands is what the mapping is indented
+            # from. Read off the separation this item was written with,
+            # which is a space, several, or a tab: fixed at two columns, an
+            # item written with more had its continuation read as
+            # indentation nothing opened.
+            after = line.content[1:]
+            item_indent = indent + 1 + len(after) - len(after.lstrip(WHITESPACE))
             virtual = _Line(line.number, item_indent, rest)
             tail = lines[index + 1 :]
             consumed_from_tail = 0

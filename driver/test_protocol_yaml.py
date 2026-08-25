@@ -351,6 +351,20 @@ class LoadsTest(unittest.TestCase):
         self.assertEqual(loads("a:\n  -\tone\n  - two\n"), {"a": ["one", "two"]})
         self.assertEqual(loads(dumps(["item"])), ["item"])
 
+    def test_an_inline_mapping_is_indented_where_its_key_stands(self) -> None:
+        """The separation after `-` is whatever YAML allows, and the keys
+        under it align with the key it carries — so where that key stands
+        is where the mapping is indented from. Fixed at two columns, an
+        item written with more separation had its continuation read as
+        indentation nothing opened."""
+        for text in (
+            "- key: value\n  other: 1\n",
+            "-   key: value\n    other: 1\n",
+            "-\tkey: value\n  other: 1\n",
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(loads(text), [{"key": "value", "other": 1}])
+
     def test_a_carriage_return_ends_a_line_for_the_line_number_too(self) -> None:
         """The reader takes CR as a line break — `splitlines` does — so the
         diagnostics have to count it as one: a document written with them
