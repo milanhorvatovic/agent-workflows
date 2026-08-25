@@ -1250,6 +1250,26 @@ class ManifestTest(StateTestCase):
             state.check_manifest(created, self.workflow)
         self.assertIn("forged.md", str(caught.exception))
 
+    def test_one_declaration_names_one_phase(self) -> None:
+        """Every `{N}` in a declaration is the same executing phase, so a
+        family that captured each occurrence on its own would answer for
+        paths completion can never write — one phase in the directory and
+        another in the file, or the zero no phase is numbered with."""
+        twice = STAGE.replace(
+            'artifact: "{run}/out.md"', 'artifact: "{run}/phase-{N}/report-{N}.md"'
+        )
+        (self.base / "workflows" / "stages" / "intake.md").write_text(twice, encoding="utf-8")
+        workflow = load_workflow(self.base, "demo")
+        _, created = state.create_run(self.runs, "twice", workflow, "0.2")
+        created.artifacts.append("{run}/phase-1/report-1.md")
+        state.check_manifest(created, workflow)
+        for forged in ("{run}/phase-1/report-2.md", "{run}/phase-0/report-0.md"):
+            with self.subTest(artifact=forged):
+                created.artifacts.append(forged)
+                with self.assertRaises(state.StateError):
+                    state.check_manifest(created, workflow)
+                created.artifacts.remove(forged)
+
     def test_every_phase_of_a_family_belongs_to_it(self) -> None:
         """A run that has passed through phases holds each phase's own
         artifact, and every one of them is the output its declaration

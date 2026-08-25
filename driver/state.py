@@ -990,12 +990,9 @@ def check_manifest(state: RunState, workflow: Workflow) -> None:
     # run that has passed through phases holds each phase's own artifact,
     # and every one of them is that declaration's output.
     families = [
-        re.compile("[0-9]+".join(re.escape(part) for part in PHASE_TOKEN.split(output)))
-        for output in (
-            declaration.output_artifact
-            for stage in workflow.stages
-            for declaration in stage.steps.values()
-        )
+        _family(declaration.output_artifact)
+        for stage in workflow.stages
+        for declaration in stage.steps.values()
     ]
     for artifact in state.artifacts:
         if not any(family.fullmatch(artifact) for family in families):
@@ -1213,6 +1210,25 @@ def _import_skipped(state: RunState, workflow: Workflow) -> set[str]:
         for step in state.steps
         if step.status == "skipped" and step.id in produced
     }
+
+
+def _family(output: str) -> re.Pattern:
+    """The paths one declaration names, over every phase.
+
+    Every `{N}` in a declaration is the same executing phase, so the first
+    occurrence captures and the rest refer back to it — a fresh group each
+    time would match paths completion can never write, one phase in the
+    directory and another in the file. Phases are numbered from 1, so zero
+    is not one of them. Named rather than numbered, because a numeric
+    reference merges with a digit that starts the next literal: a template
+    ending `{N}0` would build a reference to group ten. The conformance
+    suite builds the same expression for the same reasons.
+    """
+    parts = [re.escape(part) for part in PHASE_TOKEN.split(output)]
+    expression = parts[0]
+    for index, part in enumerate(parts[1:]):
+        expression += ("(?P<phase>[1-9][0-9]*)" if index == 0 else "(?P=phase)") + part
+    return re.compile(expression)
 
 
 def _phase_free(artifact: str) -> str:
