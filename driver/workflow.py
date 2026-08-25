@@ -469,6 +469,9 @@ def _declares_workflow(body: str) -> bool:
     ):
         rest = _without_comment(_blank_quoted(opening.group("rest")))
         rest = _resolved(rest, anchors, opening.start())
+        # A key inside the value reaches through an alias as readily as the
+        # key above it: `metadata: {*w: […]}` names whatever `&w` holds.
+        rest = _resolve_flow_aliases(rest, anchors, opening.start())
         if _flow_has_direct_key(rest, "workflow"):
             return True
         # `metadata: |` or `metadata: >` opens a block scalar, and what is
@@ -480,7 +483,9 @@ def _declares_workflow(body: str) -> bool:
         # inside a string.
         if _without_properties(rest)[:1] in ("|", ">"):
             continue
-        if _block_has_direct_key(body[opening.end() :], "workflow"):
+        if _block_has_direct_key(
+            body[opening.end() :], "workflow", anchors, opening.end()
+        ):
             return True
     return _root_flow_declares(body, anchors)
 
@@ -847,11 +852,28 @@ def _flow_key_end(rest: str, name: str) -> int | None:
     return None
 
 
-def _block_has_direct_key(after: str, name: str) -> bool:
+def _block_has_direct_key(
+    after: str,
+    name: str,
+    anchors: list[tuple[int, str, str, str]] | None = None,
+    base: int = 0,
+) -> bool:
     """A key of the block mapping that follows, at the indent its first
-    child sets — a deeper one belongs to whatever opened above it."""
+    child sets — a deeper one belongs to whatever opened above it.
+
+    A child is named the same ways the key above it is: plainly, quoted,
+    under node properties, through the explicit indicator, or by an alias
+    to an anchor defined earlier — which is why the anchors and the offset
+    this text starts at are read here too.
+    """
     child_indent: int | None = None
-    for line in after.split("\n")[1:]:
+    lines = after.split("\n")
+    offsets = []
+    running = base
+    for line in lines:
+        offsets.append(running)
+        running += len(line) + 1
+    for number, line in enumerate(lines[1:], start=1):
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         indent = len(line) - len(line.lstrip(WHITESPACE))
@@ -869,7 +891,27 @@ def _block_has_direct_key(after: str, name: str) -> bool:
         explicit = key.startswith("?") and key[1:2] in tuple(WHITESPACE) + ("",)
         if explicit:
             key = key[1:].lstrip(WHITESPACE)
+        # And the indicator may stand alone, its key on the line indented
+        # beneath it: `?` then `workflow` then the `:` line naming what it
+        # holds is the same child written across three lines.
+        if explicit and not key:
+            for following in lines[number + 1 :]:
+                if not following.strip():
+                    continue
+                if len(following) - len(following.lstrip(WHITESPACE)) <= child_indent:
+                    break
+                if _key_name(following.strip(), anchors, offsets[number]) == name:
+                    return True
+                break
+            continue
         key = _without_properties(key)
+        # An alias names its anchor's value, and a key is where that value
+        # is a key: `*w: […]` under `metadata` is the child `&w` holds.
+        alias = ALIAS_NAME.fullmatch(key.split(":")[0].strip(WHITESPACE))
+        if alias is not None and anchors is not None:
+            held = _anchored(anchors, alias.group("name"), offsets[number], as_value=True)
+            if held is not None:
+                key = held.strip(WHITESPACE) + key[len(key.split(":")[0]) :]
         quoted = key[:1] in ("'", '"')
         if quoted:
             closing = _closing_quote(key, 0)

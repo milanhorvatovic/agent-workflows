@@ -695,6 +695,13 @@ class SyntheticTreeTest(unittest.TestCase):
             # The explicit indicator may stand alone, its key on the line
             # beneath it and the value under the `:` line after that.
             "?\n  metadata\n:\n  workflow: [one, two]\n",
+            # The same indicator standing alone under `metadata`, its key
+            # indented beneath it and the value on the `:` line after.
+            "metadata:\n  ?\n    workflow\n  : [one, two]\n",
+            # A direct child may arrive through an alias as readily as the
+            # key above it, in block and in an inline flow value alike.
+            "anchor: &w workflow\nmetadata:\n  *w: [one, two]\n",
+            "anchor: &w workflow\nmetadata: {*w: [one, two]}\n",
             '{"met\\u0061data": {workflow: [one, two]}}\n',
             'metadata:\n  "work\\u0066low": [one, two]\n',
             "metadata: {!!str workflow: [one, two]}\n",
