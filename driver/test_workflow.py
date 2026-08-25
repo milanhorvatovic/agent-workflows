@@ -450,6 +450,18 @@ class SyntheticTreeTest(unittest.TestCase):
         self.assertIn("workflows/demo.md", str(caught.exception))
         self.assertIn("this driver implements", str(caught.exception))
 
+    def test_a_version_that_is_not_one_is_implemented_by_nothing(self) -> None:
+        """`implements` is exported and answers about a version, so a value
+        that is not one is not a version it implements: read as components,
+        an empty string and a bare `0` normalize to the same zero the major
+        does and came back true."""
+        from driver import implements
+
+        for value in ("", ".", "0", "0.", ".2", "0.2.0", "x.y", " 0.2", "0.2\n"):
+            with self.subTest(value=value):
+                self.assertFalse(implements(value))
+        self.assertTrue(implements("0.2"))
+
     def test_a_version_is_compared_without_converting_it(self) -> None:
         """The schema puts no ceiling on a component's digits and Python
         caps `int()` at 4300 of them, so a version this shape but absurdly
@@ -593,6 +605,9 @@ class SyntheticTreeTest(unittest.TestCase):
             # nothing, so the alias below it still names what the real
             # anchor holds.
             "anchor: &m other\nnote: x &m metadata\n*m:\n  workflow: [one, two]\n",
+            # The same break without the backslash folds to a space, so
+            # this key is `meta data` and names no declaration.
+            '"meta\n  data":\n  workflow: [one, two]\n',
             # A flow mapping the document does not open with is somebody
             # else's value: `example.labels.metadata.workflow` is as deep a
             # descendant written in braces as it is written in lines.

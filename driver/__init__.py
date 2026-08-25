@@ -31,6 +31,13 @@ def implements(version: str) -> bool:
     the load fails on the declaration it is missing, which says more than
     its version number would.
     """
+    # A value that is not a version is not one this driver implements.
+    # Read as components, `""`, `"."`, and `"0"` all normalize to the zero
+    # the major already is, so each came back true — and this helper is
+    # exported, answering for callers that do not prevalidate as the
+    # driver's own do.
+    if not PROTOCOL_VERSION.fullmatch(version):
+        return False
     major, minor = _components(version)
     implemented_major, implemented_minor = _components(PROTOCOL)
     return major == implemented_major and minor <= implemented_minor
