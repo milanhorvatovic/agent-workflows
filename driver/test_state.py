@@ -67,6 +67,29 @@ class CreateRunTest(StateTestCase):
         self.assertTrue((run_dir / state.STATE_FILE).is_file())
         self.assertEqual(created.run_id, "2026-08-19-x")
 
+    def test_a_save_that_fails_after_publishing_leaves_the_id_usable(self) -> None:
+        """The retry guarantee has to cover every way the write can fail,
+        and syncing the directory is one that happens after the state file
+        is already there — cleanup that only removes an empty directory
+        leaves that one behind, and the id it names is taken for good by a
+        call that reported failure."""
+        import errno
+        import unittest.mock
+
+        real = os.fsync
+
+        def fsync(descriptor):
+            if stat.S_ISDIR(os.fstat(descriptor).st_mode):
+                raise OSError(errno.EIO, os.strerror(errno.EIO))
+            return real(descriptor)
+
+        with unittest.mock.patch.object(os, "fsync", fsync):
+            with self.assertRaises(OSError):
+                state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.2")
+        self.assertFalse((self.runs / "2026-08-19-x").exists())
+        run_dir, created = state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.2")
+        self.assertTrue((run_dir / state.STATE_FILE).is_file())
+
     def test_creating_refuses_a_protocol_it_cannot_load_back(self) -> None:
         """The version is written into the document and `load` holds every
         document to it, so an unchecked one leaves a run that exists and
@@ -107,13 +130,16 @@ class CreateRunTest(StateTestCase):
             os.mkfifo(run_dir / state.STATE_FILE)
         except (AttributeError, OSError) as error:  # pragma: no cover
             self.skipTest(f"FIFOs unavailable: {error}")
-        signal.signal(signal.SIGALRM, self._alarm)
+        # The handler is process-wide, so it is put back: left installed,
+        # every later test inherits an alarm that fails them.
+        previous = signal.signal(signal.SIGALRM, self._alarm)
         signal.alarm(5)
         try:
             with self.assertRaises(state.StateError) as caught:
                 state.load(run_dir)
         finally:
             signal.alarm(0)
+            signal.signal(signal.SIGALRM, previous)
         self.assertIn("not a regular file", str(caught.exception))
 
     @staticmethod
