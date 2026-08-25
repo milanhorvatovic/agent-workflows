@@ -713,6 +713,10 @@ class SyntheticTreeTest(unittest.TestCase):
             # The same indicator standing alone under `metadata`, its key
             # indented beneath it and the value on the `:` line after.
             "metadata:\n  ?\n    workflow\n  : [one, two]\n",
+            # A double-quoted scalar may span lines, and a backslash at the
+            # break joins them with nothing between: this key is
+            # `metadata`, spelled across two lines.
+            '"meta\\\n  data":\n  workflow: [one, two]\n',
             # A direct child may arrive through an alias as readily as the
             # key above it, in block and in an inline flow value alike.
             "anchor: &w workflow\nmetadata:\n  *w: [one, two]\n",

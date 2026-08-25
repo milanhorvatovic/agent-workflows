@@ -454,6 +454,11 @@ def _declares_workflow(body: str) -> bool:
     # the mark as the first characters of whatever follows: neither the
     # first-column key nor the root brace is where it looks.
     body = body[1:] if body.startswith("\ufeff") else body
+    # A double-quoted scalar may span lines, and this scan reads line by
+    # line: `"meta\\` on one and `data":` on the next is one key, and read
+    # as two lines it is neither. The spans are folded first, so what
+    # follows sees the key the document names.
+    body = _fold_quoted(body)
     # An alias is the node its anchor holds, and both are outside this
     # subset — which is why the block failed to parse and why the scan has
     # to read them anyway: `&m metadata` makes `*m:` the key `metadata`,
@@ -603,6 +608,50 @@ def _anchors(body: str) -> list[tuple[int, str, str, str]]:
             )
         offset += len(line) + 1
     return found
+
+
+def _fold_quoted(body: str) -> str:
+    """Every double-quoted scalar that spans lines, joined the way YAML
+    folds it: a break inside one becomes a single space, and a backslash
+    before that break removes it entirely. Leading whitespace on the
+    continuation is separation rather than content either way.
+
+    Only what a quote leaves open — every other line is untouched, so the
+    indentation the block scans read is the document's own.
+    """
+    lines = body.split("\n")
+    folded: list[str] = []
+    for line in lines:
+        if folded and _opens_quote(folded[-1]):
+            joined = folded.pop()
+            if joined.endswith("\\"):
+                folded.append(joined[:-1] + line.lstrip(WHITESPACE))
+            else:
+                folded.append(joined + " " + line.lstrip(WHITESPACE))
+            continue
+        folded.append(line)
+    return "\n".join(folded)
+
+
+def _opens_quote(line: str) -> bool:
+    """Whether a double-quoted scalar opens on this line and stays open."""
+    at_node_start = True
+    index = 0
+    while index < len(line):
+        character = line[index]
+        if character == '"' and at_node_start:
+            closing = _closing_quote(line, index)
+            if closing is None:
+                return True
+            index = closing + 1
+            at_node_start = False
+            continue
+        if character in "{[,:-":
+            at_node_start = True
+        elif character not in WHITESPACE:
+            at_node_start = False
+        index += 1
+    return False
 
 
 def _anchors_on(line: str) -> list[tuple[re.Match, int]]:
