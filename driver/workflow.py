@@ -47,7 +47,8 @@ STEP_HEADING = re.compile(
 # that read only the bare spelling would file the declaration under it as
 # prose. Up to two, the tag and the anchor in either order.
 METADATA_KEY = re.compile(
-    r'^(?:\?[ \t]+)?(?:[!&]\S*[ \t]+){0,2}[\'"]?metadata[\'"]?[ \t]*:(?P<rest>.*)$',
+    r'^(?:---[ \t]+)?(?:\?[ \t]+)?(?:[!&]\S*[ \t]+){0,2}'
+    r'[\'"]?metadata[\'"]?[ \t]*:(?P<rest>.*)$',
     re.MULTILINE,
 )
 # YAML's explicit key form spells the same key over two lines — `? metadata`
@@ -462,8 +463,12 @@ def _root_flow_declares(body: str) -> bool:
     # what they annotate is the same mapping: reading the brace without
     # them would file `!!map {metadata: {workflow: …}}` as prose and compose
     # around the declaration it carries.
+    # `---` opens the document that follows it, on its own line or ahead of
+    # the root on the same one, and what follows is the root this reads.
     flat = _without_properties(
-        " ".join(_without_comment(_blank_quoted(line)) for line in body.split("\n"))
+        _without_marker(
+            " ".join(_without_comment(_blank_quoted(line)) for line in body.split("\n"))
+        )
     )
     if not flat.startswith("{"):
         return False
@@ -475,6 +480,16 @@ def _root_flow_declares(body: str) -> bool:
     # `{metadata: {}, example: {workflow: …}}` would answer for a sibling's
     # child — a declaration read out of an example that has none.
     return _flow_has_direct_key(_flow_value(flat[end:]), "workflow")
+
+
+def _without_marker(text: str) -> str:
+    """The text past a document-start marker, which opens what follows it
+    rather than being part of it. `---` alone is the marker; `----` is a
+    scalar that begins with dashes."""
+    value = text.lstrip(WHITESPACE)
+    if value.startswith("---") and value[3:4] in tuple(WHITESPACE) + ("",):
+        return value[3:].lstrip(WHITESPACE)
+    return value
 
 
 def _without_properties(rest: str) -> str:

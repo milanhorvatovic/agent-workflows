@@ -638,6 +638,11 @@ class SyntheticTreeTest(unittest.TestCase):
             "&saved metadata:\n  workflow: [one, two]\n",
             "metadata:\n  !!str workflow: [one, two]\n",
             "{!!str metadata: {workflow: [one, two]}}\n",
+            # The document-start marker opens the document it precedes, and
+            # what follows it is that document's root.
+            "--- {metadata: {workflow: [one, two]}}\n",
+            "---\n{metadata: {workflow: [one, two]}}\n",
+            "--- !!map {metadata: {workflow: [one, two]}}\n",
             "metadata: {!!str workflow: [one, two]}\n",
             # YAML's explicit key form names the same key: `? metadata` with
             # the value on the `:` line beneath it, and its flow spelling.
