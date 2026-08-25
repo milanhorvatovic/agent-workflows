@@ -777,6 +777,10 @@ class SyntheticTreeTest(unittest.TestCase):
             # The explicit indicator may stand alone, its key on the line
             # beneath it and the value under the `:` line after that.
             "?\n  metadata\n:\n  workflow: [one, two]\n",
+            # The explicit key may be a block scalar, whose content is the
+            # key it names — outside this subset, and a declaration.
+            "? |-\n  metadata\n:\n  workflow: [one, two]\n",
+            "? >-\n  metadata\n:\n  workflow: [one, two]\n",
             # The same indicator standing alone under `metadata`, its key
             # indented beneath it and the value on the `:` line after.
             "metadata:\n  ?\n    workflow\n  : [one, two]\n",
