@@ -11,11 +11,11 @@ from driver.workflow import MEMBER_ID, Workflow, WorkflowError, load_workflow
 REPO = Path(__file__).resolve().parent.parent
 
 STAGE = """---
-name: demo
+name: intake
 description: A stage.
 ---
 
-# Stage: demo
+# Stage: intake
 
 ```yaml
 metadata:
@@ -63,9 +63,9 @@ description: A workflow.
 
 # Workflow: demo
 
-1. [stages/demo.md](stages/demo.md)
+1. [stages/intake.md](stages/intake.md)
 
-Prose that mentions [the stage](stages/demo.md) again.
+Prose that mentions [the stage](stages/intake.md) again.
 """
 
 
@@ -75,7 +75,7 @@ class SyntheticTreeTest(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.framework = Path(tmp.name)
         self.write("workflows/demo.md", WORKFLOW)
-        self.write("workflows/stages/demo.md", STAGE)
+        self.write("workflows/stages/intake.md", STAGE)
 
     def write(self, relative: str, content: str) -> None:
         path = self.framework / relative
@@ -106,7 +106,7 @@ class SyntheticTreeTest(unittest.TestCase):
         """A link in a sentence or an example is prose about a stage, not a
         claim to run it — a workflow discussing one it does not compose
         would otherwise execute it."""
-        self.write("workflows/stages/other.md", STAGE.replace("name: demo", "name: other"))
+        self.write("workflows/stages/other.md", STAGE.replace("name: intake", "name: other"))
         for name, mention in {
             "sentence": "A later run may execute [it](stages/other.md) instead.\n",
             "bullet": "- [stages/other.md](stages/other.md) — discussed, not composed\n",
@@ -120,7 +120,7 @@ class SyntheticTreeTest(unittest.TestCase):
             with self.subTest(mention=name):
                 self.write("workflows/demo.md", WORKFLOW + "\n" + mention)
                 workflow = load_workflow(self.framework, "demo")
-                self.assertEqual([stage.name for stage in workflow.stages], ["demo"])
+                self.assertEqual([stage.name for stage in workflow.stages], ["intake"])
 
     def test_missing_workflow_is_an_error(self) -> None:
         with self.assertRaises(WorkflowError) as caught:
@@ -130,7 +130,7 @@ class SyntheticTreeTest(unittest.TestCase):
     def test_an_undecodable_file_is_an_error_not_a_traceback(self) -> None:
         """A file that is not UTF-8 is malformed input, and malformed input
         leaves this module as a WorkflowError like every other kind."""
-        for relative in ("workflows/demo.md", "workflows/stages/demo.md"):
+        for relative in ("workflows/demo.md", "workflows/stages/intake.md"):
             with self.subTest(file=relative):
                 (self.framework / relative).write_bytes(b"# stage \xff\xfe\n")
                 with self.assertRaises(WorkflowError) as caught:
@@ -152,7 +152,7 @@ class SyntheticTreeTest(unittest.TestCase):
         """A heading naming one role over a contract declaring another would
         run the step as a role its own stage does not name."""
         self.write(
-            "workflows/stages/demo.md",
+            "workflows/stages/intake.md",
             STAGE.replace("### make (analyst)", "### make (planner)"),
         )
         with self.assertRaises(WorkflowError) as caught:
@@ -164,7 +164,7 @@ class SyntheticTreeTest(unittest.TestCase):
         beneath it without naming anything, so the contract there attributes
         to no step rather than to whichever heading last parsed."""
         self.write(
-            "workflows/stages/demo.md", STAGE.replace("### make (analyst)", "### make (")
+            "workflows/stages/intake.md", STAGE.replace("### make (analyst)", "### make (")
         )
         with self.assertRaises(WorkflowError) as caught:
             load_workflow(self.framework, "demo")
@@ -172,7 +172,7 @@ class SyntheticTreeTest(unittest.TestCase):
 
     def test_a_step_block_with_no_heading_at_all_is_an_error(self) -> None:
         self.write(
-            "workflows/stages/demo.md", STAGE.replace("### make (analyst)\n\n", "")
+            "workflows/stages/intake.md", STAGE.replace("### make (analyst)\n\n", "")
         )
         with self.assertRaises(WorkflowError) as caught:
             load_workflow(self.framework, "demo")
@@ -191,7 +191,7 @@ class SyntheticTreeTest(unittest.TestCase):
         }.items():
             with self.subTest(heading=heading):
                 self.write(
-                    "workflows/stages/demo.md",
+                    "workflows/stages/intake.md",
                     STAGE + f"\n{heading}\n\n```yaml\nmetadata:\n  workflow:\n"
                     '    protocol: "0.2"\n    step:\n      role: analyst\n'
                     '      output:\n        artifact: "{run}/moved.md"\n```\n',
@@ -204,7 +204,7 @@ class SyntheticTreeTest(unittest.TestCase):
         """`## Gates` ends the step section above it, so a contract below it
         belongs to no step however many valid headings precede it."""
         self.write(
-            "workflows/stages/demo.md",
+            "workflows/stages/intake.md",
             STAGE + "\n```yaml\nmetadata:\n  workflow:\n"
             '    protocol: "0.2"\n    step:\n      role: analyst\n      output:\n'
             '        artifact: "{run}/moved.md"\n```\n',
@@ -224,7 +224,7 @@ class SyntheticTreeTest(unittest.TestCase):
             ),
         }.items():
             with self.subTest(case=name):
-                self.write("workflows/stages/demo.md", stage)
+                self.write("workflows/stages/intake.md", stage)
                 with self.assertRaises(WorkflowError) as caught:
                     load_workflow(self.framework, "demo")
                 self.assertIn("gate", str(caught.exception))
@@ -235,7 +235,7 @@ class SyntheticTreeTest(unittest.TestCase):
         is a gate the stage describes that parity never asks the sequence
         for — a human decision the run would execute straight past."""
         self.write(
-            "workflows/stages/demo.md",
+            "workflows/stages/intake.md",
             STAGE.replace(
                 "- **check** — a gate.", "- **check** — a gate.\n- **Extra_Gate** — a typo."
             ),
@@ -259,7 +259,7 @@ class SyntheticTreeTest(unittest.TestCase):
             ),
         }.items():
             with self.subTest(field=name):
-                self.write("workflows/stages/demo.md", stage)
+                self.write("workflows/stages/intake.md", stage)
                 with self.assertRaises(WorkflowError) as caught:
                     load_workflow(self.framework, "demo")
                 self.assertNotIn("\x1b", str(caught.exception))
@@ -278,7 +278,7 @@ class SyntheticTreeTest(unittest.TestCase):
             "a second section": STAGE + "\n## Gates\n\n- **other** — invisible.\n",
         }.items():
             with self.subTest(case=name):
-                self.write("workflows/stages/demo.md", stage)
+                self.write("workflows/stages/intake.md", stage)
                 with self.assertRaises(WorkflowError) as caught:
                     load_workflow(self.framework, "demo")
                 self.assertIn("Gates" if "section" in name else "check", str(caught.exception))
@@ -291,7 +291,7 @@ class SyntheticTreeTest(unittest.TestCase):
         for heading in ("##\tNotes", "##"):
             with self.subTest(heading=heading):
                 self.write(
-                    "workflows/stages/demo.md",
+                    "workflows/stages/intake.md",
                     STAGE + f"\n{heading}\n\n- **stray** — prose, not a gate.\n",
                 )
                 workflow = load_workflow(self.framework, "demo")
@@ -304,14 +304,14 @@ class SyntheticTreeTest(unittest.TestCase):
         headless = STAGE.replace(
             "## Gates", "### spare (analyst)\n\nProse with no contract.\n\n## Gates"
         )
-        self.write("workflows/stages/demo.md", headless)
+        self.write("workflows/stages/intake.md", headless)
         with self.assertRaises(WorkflowError) as caught:
             load_workflow(self.framework, "demo")
         self.assertIn("declares no contract block", str(caught.exception))
 
     def test_a_sequence_step_without_a_block_is_an_error(self) -> None:
         self.write(
-            "workflows/stages/demo.md",
+            "workflows/stages/intake.md",
             STAGE.replace("- step: make", "- step: make\n        - step: phantom"),
         )
         with self.assertRaises(WorkflowError) as caught:
@@ -325,21 +325,21 @@ class SyntheticTreeTest(unittest.TestCase):
             '    protocol: "0.2"\n    step:\n      role: analyst\n      output:\n'
             '        artifact: "{run}/x.md"\n```\n\n## Gates',
         )
-        self.write("workflows/stages/demo.md", extra)
+        self.write("workflows/stages/intake.md", extra)
         with self.assertRaises(WorkflowError) as caught:
             load_workflow(self.framework, "demo")
         self.assertIn("'extra' is not in the sequence", str(caught.exception))
 
     def test_a_stage_without_a_sequence_is_an_error(self) -> None:
         headless = STAGE.replace("    stage:\n      sequence:\n        - step: make\n        - gate: check\n          conditional: true\n", "    trigger:\n      kind: manual\n")
-        self.write("workflows/stages/demo.md", headless)
+        self.write("workflows/stages/intake.md", headless)
         with self.assertRaises(WorkflowError) as caught:
             load_workflow(self.framework, "demo")
         self.assertIn("stage sequence blocks", str(caught.exception))
 
     def test_a_duplicate_member_is_an_error(self) -> None:
         self.write(
-            "workflows/stages/demo.md",
+            "workflows/stages/intake.md",
             STAGE.replace("- step: make", "- step: make\n        - step: make"),
         )
         with self.assertRaises(WorkflowError) as caught:
@@ -353,22 +353,22 @@ class SyntheticTreeTest(unittest.TestCase):
         self.write(
             "workflows/pair.md",
             "---\nname: pair\ndescription: Two stages.\n---\n\n"
-            "1. [stages/demo.md](stages/demo.md)\n2. [stages/other.md](stages/other.md)\n",
+            "1. [stages/intake.md](stages/intake.md)\n2. [stages/other.md](stages/other.md)\n",
         )
 
     def test_two_stages_sharing_a_member_id_is_an_error(self) -> None:
         """The workflow concatenates its stages' sequences into one record
         list, so a shared id is a duplicate record the moment both compose."""
-        self.compose_two_stages(STAGE.replace("name: demo", "name: other"))
+        self.compose_two_stages(STAGE.replace("name: intake", "name: other"))
         with self.assertRaises(WorkflowError) as caught:
             load_workflow(self.framework, "pair")
-        self.assertIn("declared by stages 'demo' and 'other'", str(caught.exception))
+        self.assertIn("declared by stages 'intake' and 'other'", str(caught.exception))
 
     def test_an_edge_target_nothing_declares_is_an_error(self) -> None:
         """Unchecked, a mistyped target loads, writes a durable run, and
         fails at the first verdict that tries to route."""
         self.write(
-            "workflows/stages/demo.md", STAGE.replace("PASS: check", "PASS: chek")
+            "workflows/stages/intake.md", STAGE.replace("PASS: check", "PASS: chek")
         )
         with self.assertRaises(WorkflowError) as caught:
             load_workflow(self.framework, "demo")
@@ -378,7 +378,7 @@ class SyntheticTreeTest(unittest.TestCase):
         """Which ids exist is a property of the composition: a stage's steps
         routinely route into the stage that follows."""
         self.compose_two_stages(
-            STAGE.replace("name: demo", "name: other")
+            STAGE.replace("name: intake", "name: other")
             .replace("- step: make", "- step: build")
             .replace("- gate: check", "- gate: sign")
             .replace("### make (analyst)", "### build (analyst)")
@@ -386,7 +386,7 @@ class SyntheticTreeTest(unittest.TestCase):
             .replace("FAIL: make", "FAIL: build")
             .replace("**check**", "**sign**")
         )
-        self.write("workflows/stages/demo.md", STAGE.replace("PASS: check", "PASS: build"))
+        self.write("workflows/stages/intake.md", STAGE.replace("PASS: check", "PASS: build"))
         workflow = load_workflow(self.framework, "pair")
         self.assertEqual(workflow.step("make").edges["PASS"], "build")
 
@@ -401,19 +401,51 @@ class SyntheticTreeTest(unittest.TestCase):
             "```\n\n## Gates\n\n- **sign** — a gate.\n"
         )
         self.compose_two_stages(gates_only)
-        self.write("workflows/stages/demo.md", STAGE.replace("PASS: check", "PASS: other"))
+        self.write("workflows/stages/intake.md", STAGE.replace("PASS: check", "PASS: other"))
         with self.assertRaises(WorkflowError) as caught:
             load_workflow(self.framework, "pair")
         self.assertIn("no step to resolve to", str(caught.exception))
+
+    def test_a_workflow_entered_anywhere_but_intake_is_an_error(self) -> None:
+        """§5: "`intake` is the entry stage of every workflow". Creation
+        bootstraps the first composed stage's records as the ones §10 has
+        before an acceptance, and the acceptance that populates the rest is
+        intake's own — so a workflow entered elsewhere writes a run whose
+        list nothing completes, and a resume reports it finished with every
+        later stage never populated."""
+        # Distinct members, so the only thing wrong with this composition
+        # is which stage it enters at.
+        other = (
+            STAGE.replace("name: intake", "name: other")
+            .replace("- step: make", "- step: alpha")
+            .replace("- gate: check", "- gate: beta")
+            .replace("### make (analyst)", "### alpha (analyst)")
+            .replace("PASS: check", "PASS: beta")
+            .replace("FAIL: make", "FAIL: alpha")
+            .replace('artifact: "{run}/out.md"', 'artifact: "{run}/alpha.md"')
+            .replace("- **check** — a gate.", "- **beta** — a gate.")
+        )
+        self.write("workflows/stages/other.md", other)
+        self.write(
+            "workflows/demo.md",
+            WORKFLOW.replace(
+                "1. [stages/intake.md](stages/intake.md)",
+                "1. [stages/other.md](stages/other.md)\n"
+                "2. [stages/intake.md](stages/intake.md)",
+            ),
+        )
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "demo")
+        self.assertIn("entry stage", str(caught.exception))
 
     def test_a_member_wearing_a_stage_id_is_an_error(self) -> None:
         """§9.1's targets are untyped strings: a member named for a stage
         makes every edge naming it ambiguous."""
         self.compose_two_stages(
-            STAGE.replace("name: demo", "name: other")
-            .replace("- step: make", "- step: demo")
-            .replace("### make (analyst)", "### demo (analyst)")
-            .replace("FAIL: make", "FAIL: demo")
+            STAGE.replace("name: intake", "name: other")
+            .replace("- step: make", "- step: intake")
+            .replace("### make (analyst)", "### intake (analyst)")
+            .replace("FAIL: make", "FAIL: intake")
         )
         with self.assertRaises(WorkflowError) as caught:
             load_workflow(self.framework, "pair")
@@ -430,7 +462,7 @@ class SyntheticTreeTest(unittest.TestCase):
         }.items():
             with self.subTest(case=name):
                 self.write(
-                    "workflows/stages/demo.md",
+                    "workflows/stages/intake.md",
                     STAGE.replace('    protocol: "0.2"\n    stage:', replacement, 1),
                 )
                 with self.assertRaises(WorkflowError):
@@ -473,7 +505,7 @@ class SyntheticTreeTest(unittest.TestCase):
         self.assertTrue(implements("0." + "0" * 5000 + "2"))
         self.assertTrue(implements("0.02"))
         self.write(
-            "workflows/stages/demo.md",
+            "workflows/stages/intake.md",
             STAGE.replace('protocol: "0.2"', 'protocol: "0.%s"' % ("1" * 5000), 1),
         )
         with self.assertRaises(WorkflowError) as caught:
@@ -485,9 +517,9 @@ class SyntheticTreeTest(unittest.TestCase):
         earlier minor is not that, and where its shapes differ the load
         fails on the declaration it is missing rather than on its version."""
         self.write(
-            "workflows/stages/demo.md", STAGE.replace('protocol: "0.2"', 'protocol: "0.1"')
+            "workflows/stages/intake.md", STAGE.replace('protocol: "0.2"', 'protocol: "0.1"')
         )
-        self.assertEqual(load_workflow(self.framework, "demo").stages[0].name, "demo")
+        self.assertEqual(load_workflow(self.framework, "demo").stages[0].name, "intake")
 
     def test_a_conditional_that_is_not_true_is_an_error(self) -> None:
         """`conditional` is `const: true` in the schema: read as merely
@@ -496,7 +528,7 @@ class SyntheticTreeTest(unittest.TestCase):
         for value in ("false", "null", '"true"'):
             with self.subTest(value=value):
                 self.write(
-                    "workflows/stages/demo.md",
+                    "workflows/stages/intake.md",
                     STAGE.replace("conditional: true", f"conditional: {value}"),
                 )
                 with self.assertRaises(WorkflowError) as caught:
@@ -505,7 +537,7 @@ class SyntheticTreeTest(unittest.TestCase):
 
     def test_an_edge_set_without_fail_is_an_error(self) -> None:
         self.write(
-            "workflows/stages/demo.md",
+            "workflows/stages/intake.md",
             STAGE.replace("        FAIL: make\n", ""),
         )
         with self.assertRaises(WorkflowError) as caught:
@@ -514,7 +546,7 @@ class SyntheticTreeTest(unittest.TestCase):
 
     def test_an_input_defaults_to_required_when_unstated(self) -> None:
         self.write(
-            "workflows/stages/demo.md",
+            "workflows/stages/intake.md",
             STAGE.replace('          required: false\n', ""),
         )
         workflow = load_workflow(self.framework, "demo")
@@ -525,7 +557,7 @@ class SyntheticTreeTest(unittest.TestCase):
         a fence carrying something else — read as absence it composes a file
         one of whose declarations is broken."""
         self.write(
-            "workflows/stages/demo.md",
+            "workflows/stages/intake.md",
             STAGE + "\n```yaml\nmetadata:\n  workflow: null\n```\n",
         )
         with self.assertRaises(WorkflowError) as caught:
@@ -539,7 +571,7 @@ class SyntheticTreeTest(unittest.TestCase):
         for structure in ("stage", "step"):
             with self.subTest(structure=structure):
                 self.write(
-                    "workflows/stages/demo.md",
+                    "workflows/stages/intake.md",
                     STAGE + "\n```yaml\nmetadata:\n  workflow:\n"
                     f'    protocol: "0.2"\n    {structure}: null\n```\n',
                 )
@@ -551,7 +583,7 @@ class SyntheticTreeTest(unittest.TestCase):
         """§9 places a declaration at a first-column `yaml` fence; which
         marker writes it is CommonMark's business, not the protocol's."""
         self.write(
-            "workflows/stages/demo.md",
+            "workflows/stages/intake.md",
             STAGE.replace("```yaml", "~~~yaml").replace("```", "~~~"),
         )
         workflow = load_workflow(self.framework, "demo")
@@ -645,7 +677,7 @@ class SyntheticTreeTest(unittest.TestCase):
         ):
             with self.subTest(example=example.splitlines()[0]):
                 self.write(
-                    "workflows/stages/demo.md", STAGE + f"\n```yaml\n{example}```\n"
+                    "workflows/stages/intake.md", STAGE + f"\n```yaml\n{example}```\n"
                 )
                 workflow = load_workflow(self.framework, "demo")
                 self.assertEqual(workflow.stages[0].member_ids(), ("make", "check"))
@@ -708,6 +740,10 @@ class SyntheticTreeTest(unittest.TestCase):
             # after it opens no scalar either — the declaration below is a
             # declaration and not a string's continuation.
             'note: x- "unterminated\nmetadata:\n  workflow: [one]\n',
+            # An anchor may hold a block mapping, and an alias to it gives
+            # `metadata` those keys: what the anchor holds is read as the
+            # block it is, not only as a value on one line.
+            "anchor: &w\n  workflow: [one]\nmetadata: *w\n",
             # An anchor holding a quoted scalar inside a flow mapping is
             # the same anchor: what it holds is `metadata`, and the alias
             # names that key.
@@ -774,7 +810,7 @@ class SyntheticTreeTest(unittest.TestCase):
         ):
             with self.subTest(spelling=spelling.splitlines()[0]):
                 self.write(
-                    "workflows/stages/demo.md", STAGE + f"\n```yaml\n{spelling}```\n"
+                    "workflows/stages/intake.md", STAGE + f"\n```yaml\n{spelling}```\n"
                 )
                 with self.assertRaises(WorkflowError) as caught:
                     load_workflow(self.framework, "demo")
@@ -782,13 +818,13 @@ class SyntheticTreeTest(unittest.TestCase):
                 # flow collection, a single-quoted key — and what matters is
                 # that the block is reported against its file rather than
                 # skipped as prose.
-                self.assertIn("workflows/stages/demo.md", str(caught.exception))
+                self.assertIn("workflows/stages/intake.md", str(caught.exception))
 
     def test_a_declaration_inside_a_longer_fence_is_an_example(self) -> None:
         """Discovery consumes outermost fences whole, so a block shown
         inside a wrapper is part of the example, never a declaration."""
         self.write(
-            "workflows/stages/demo.md",
+            "workflows/stages/intake.md",
             STAGE
             + "\n````md\n```yaml\nmetadata:\n  workflow:\n"
             '    protocol: "0.2"\n    step:\n      role: planner\n      output:\n'
@@ -801,7 +837,7 @@ class SyntheticTreeTest(unittest.TestCase):
         """Between a real heading and its contract, an example's heading
         would otherwise be the nearest one and take the contract with it."""
         self.write(
-            "workflows/stages/demo.md",
+            "workflows/stages/intake.md",
             STAGE.replace(
                 "Prose.\n", "Prose.\n\n```md\n### fake (planner)\n```\n"
             ),
@@ -814,7 +850,7 @@ class SyntheticTreeTest(unittest.TestCase):
         nothing can execute — and the file that declares it is nameable
         here, where a run directory does not exist yet."""
         self.write(
-            "workflows/stages/demo.md",
+            "workflows/stages/intake.md",
             STAGE.replace("### make (analyst)", "### make (auditor)").replace(
                 "role: analyst", "role: auditor"
             ),
@@ -827,7 +863,7 @@ class SyntheticTreeTest(unittest.TestCase):
         """`{P}` is one path per phase; a step produces one artifact, so the
         placeholder would enter the manifest as the literal it is."""
         self.write(
-            "workflows/stages/demo.md",
+            "workflows/stages/intake.md",
             STAGE.replace('artifact: "{run}/out.md"', 'artifact: "{run}/phase-{P}-out.md"'),
         )
         with self.assertRaises(WorkflowError) as caught:
@@ -858,7 +894,7 @@ class SyntheticTreeTest(unittest.TestCase):
             ),
         }.items():
             with self.subTest(field=name):
-                self.write("workflows/stages/demo.md", stage)
+                self.write("workflows/stages/intake.md", stage)
                 with self.assertRaises(WorkflowError) as caught:
                     load_workflow(self.framework, "demo")
                 self.assertIn("placeholder", str(caught.exception))
@@ -869,7 +905,7 @@ class SyntheticTreeTest(unittest.TestCase):
         The rule against a phase set of outputs is about the placeholder,
         so a path that merely looks like one is a path."""
         self.write(
-            "workflows/stages/demo.md",
+            "workflows/stages/intake.md",
             STAGE.replace('artifact: "{run}/out.md"', 'artifact: "{run}/phase-${P}-out.md"'),
         )
         workflow = load_workflow(self.framework, "demo")
@@ -881,7 +917,7 @@ class SyntheticTreeTest(unittest.TestCase):
         for value in ('"false"', "0", "null"):
             with self.subTest(value=value):
                 self.write(
-                    "workflows/stages/demo.md",
+                    "workflows/stages/intake.md",
                     STAGE.replace("required: false", f"required: {value}"),
                 )
                 with self.assertRaises(WorkflowError) as caught:
@@ -893,7 +929,7 @@ class SyntheticTreeTest(unittest.TestCase):
         with `match` accepted `"check\\n"` — a record id with a line break
         in it, which would split the position line the CLI prints."""
         self.write(
-            "workflows/stages/demo.md",
+            "workflows/stages/intake.md",
             STAGE.replace("- gate: check", '- gate: "check\\n"'),
         )
         with self.assertRaises(WorkflowError) as caught:
@@ -930,7 +966,7 @@ class SyntheticTreeTest(unittest.TestCase):
             "input": ("          required: false", "          requiredd: false"),
         }.items():
             with self.subTest(structure=name):
-                self.write("workflows/stages/demo.md", STAGE.replace(before, after))
+                self.write("workflows/stages/intake.md", STAGE.replace(before, after))
                 with self.assertRaises(WorkflowError) as caught:
                     load_workflow(self.framework, "demo")
                 self.assertIn("unknown keys", str(caught.exception))
@@ -946,7 +982,7 @@ class SyntheticTreeTest(unittest.TestCase):
         }.items():
             with self.subTest(case=name):
                 self.write(
-                    "workflows/stages/demo.md",
+                    "workflows/stages/intake.md",
                     STAGE.replace("        - step: make", replacement),
                 )
                 with self.assertRaises(WorkflowError):
@@ -967,13 +1003,13 @@ class SyntheticTreeTest(unittest.TestCase):
             ),
         }.items():
             with self.subTest(field=name):
-                self.write("workflows/stages/demo.md", STAGE.replace(before, after))
+                self.write("workflows/stages/intake.md", STAGE.replace(before, after))
                 with self.assertRaises(WorkflowError):
                     load_workflow(self.framework, "demo")
 
     def test_an_empty_template_is_an_error(self) -> None:
         self.write(
-            "workflows/stages/demo.md",
+            "workflows/stages/intake.md",
             STAGE.replace("template: references/out.template.md", 'template: ""'),
         )
         with self.assertRaises(WorkflowError) as caught:
@@ -986,7 +1022,7 @@ class SyntheticTreeTest(unittest.TestCase):
         for value in ("false", "null", "{}"):
             with self.subTest(value=value):
                 self.write(
-                    "workflows/stages/demo.md",
+                    "workflows/stages/intake.md",
                     STAGE.replace(
                         '      inputs:\n        - artifact: "{run}/in.md"\n'
                         "          required: false\n",

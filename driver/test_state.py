@@ -23,7 +23,7 @@ class StateTestCase(unittest.TestCase):
         self.base = Path(tmp.name)
         (self.base / "workflows" / "stages").mkdir(parents=True)
         (self.base / "workflows" / "demo.md").write_text(WORKFLOW, encoding="utf-8")
-        (self.base / "workflows" / "stages" / "demo.md").write_text(
+        (self.base / "workflows" / "stages" / "intake.md").write_text(
             STAGE, encoding="utf-8"
         )
         self.workflow = load_workflow(self.base, "demo")
@@ -277,7 +277,7 @@ class TransitionTest(StateTestCase):
             '    protocol: "0.2"\n    step:\n      role: planner\n      output:\n'
             '        artifact: "{run}/also.md"\n```\n\n## Gates',
         )
-        (self.base / "workflows" / "stages" / "demo.md").write_text(
+        (self.base / "workflows" / "stages" / "intake.md").write_text(
             two_steps, encoding="utf-8"
         )
         workflow = load_workflow(self.base, "demo")
@@ -317,7 +317,7 @@ class TransitionTest(StateTestCase):
 
     def test_complete_resolves_the_phase_placeholder(self) -> None:
         phased = STAGE.replace('artifact: "{run}/out.md"', 'artifact: "{run}/phase-{N}-out.md"')
-        (self.base / "workflows" / "stages" / "demo.md").write_text(phased, encoding="utf-8")
+        (self.base / "workflows" / "stages" / "intake.md").write_text(phased, encoding="utf-8")
         workflow = load_workflow(self.base, "demo")
         self.state.phase = 2
         state.start_step(self.state, self.workflow, "make")
@@ -333,7 +333,7 @@ class TransitionTest(StateTestCase):
         literal = STAGE.replace(
             'artifact: "{run}/out.md"', 'artifact: "{run}/phase-${N}-out.md"'
         )
-        (self.base / "workflows" / "stages" / "demo.md").write_text(literal, encoding="utf-8")
+        (self.base / "workflows" / "stages" / "intake.md").write_text(literal, encoding="utf-8")
         workflow = load_workflow(self.base, "demo")
         self.state.phase = 2
         state.start_step(self.state, self.workflow, "make")
@@ -396,7 +396,7 @@ class TransitionTest(StateTestCase):
             '    protocol: "0.2"\n    step:\n      role: reviewer\n      output:\n'
             '        artifact: "{run}/last.md"\n```\n\n## Gates',
         )
-        (self.base / "workflows" / "stages" / "demo.md").write_text(three, encoding="utf-8")
+        (self.base / "workflows" / "stages" / "intake.md").write_text(three, encoding="utf-8")
         workflow = load_workflow(self.base, "demo")
         _, created = state.create_run(self.runs, "overlay", workflow, "0.2")
         created.record("spare").status = "skipped"  # the class left it out
@@ -432,7 +432,7 @@ class TransitionTest(StateTestCase):
             '    protocol: "0.2"\n    step:\n      role: planner\n'
             '      output:\n        artifact: "{run}/apart.md"\n```\n\n## Gates',
         )
-        (self.base / "workflows" / "stages" / "demo.md").write_text(
+        (self.base / "workflows" / "stages" / "intake.md").write_text(
             stage, encoding="utf-8"
         )
         return load_workflow(self.base, "demo")
@@ -530,8 +530,8 @@ class TransitionTest(StateTestCase):
         self.assertIn("escalate", str(caught.exception))
 
     def test_route_to_a_stage_id_resolves_to_its_first_runnable_step(self) -> None:
-        stage_edge = STAGE.replace("        PASS: check\n", "        PASS: demo\n")
-        (self.base / "workflows" / "stages" / "demo.md").write_text(
+        stage_edge = STAGE.replace("        PASS: check\n", "        PASS: intake\n")
+        (self.base / "workflows" / "stages" / "intake.md").write_text(
             stage_edge, encoding="utf-8"
         )
         workflow = load_workflow(self.base, "demo")
@@ -545,8 +545,8 @@ class TransitionTest(StateTestCase):
         gate_first = STAGE.replace(
             "        - step: make\n        - gate: check\n          conditional: true\n",
             "        - gate: check\n        - step: make\n",
-        ).replace("        PASS: check\n", "        PASS: demo\n")
-        (self.base / "workflows" / "stages" / "demo.md").write_text(
+        ).replace("        PASS: check\n", "        PASS: intake\n")
+        (self.base / "workflows" / "stages" / "intake.md").write_text(
             gate_first, encoding="utf-8"
         )
         workflow = load_workflow(self.base, "demo")
@@ -562,11 +562,11 @@ class TransitionTest(StateTestCase):
 
     def test_a_stage_target_with_no_runnable_step_escalates(self) -> None:
         stage_edge = STAGE.replace("        PASS: check\n", "        PASS: other\n")
-        (self.base / "workflows" / "stages" / "demo.md").write_text(
+        (self.base / "workflows" / "stages" / "intake.md").write_text(
             stage_edge, encoding="utf-8"
         )
         second = (
-            STAGE.replace("name: demo", "name: other")
+            STAGE.replace("name: intake", "name: other")
             .replace("- step: make", "- step: build")
             .replace("- gate: check", "- gate: sign")
             .replace("### make (analyst)", "### build (analyst)")
@@ -579,7 +579,7 @@ class TransitionTest(StateTestCase):
         )
         (self.base / "workflows" / "pair.md").write_text(
             "---\nname: pair\ndescription: Two stages.\n---\n\n"
-            "1. [stages/demo.md](stages/demo.md)\n2. [stages/other.md](stages/other.md)\n",
+            "1. [stages/intake.md](stages/intake.md)\n2. [stages/other.md](stages/other.md)\n",
             encoding="utf-8",
         )
         workflow = load_workflow(self.base, "pair")
@@ -736,7 +736,7 @@ class StartPositionTest(StateTestCase):
             '    protocol: "0.2"\n    step:\n      role: planner\n      output:\n'
             '        artifact: "{run}/also.md"\n```\n\n## Gates',
         )
-        (self.base / "workflows" / "stages" / "demo.md").write_text(two, encoding="utf-8")
+        (self.base / "workflows" / "stages" / "intake.md").write_text(two, encoding="utf-8")
         return load_workflow(self.base, "demo")
 
     def test_a_step_starts_only_where_the_run_stands(self) -> None:
@@ -780,7 +780,7 @@ class ImportInvalidationTest(StateTestCase):
             + reader("other", "reviewer", "{run}/other.md")
             + "## Gates",
         )
-        (self.base / "workflows" / "stages" / "demo.md").write_text(two, encoding="utf-8")
+        (self.base / "workflows" / "stages" / "intake.md").write_text(two, encoding="utf-8")
         return load_workflow(self.base, "demo")
 
     def test_a_derivation_that_was_imported_re_enters_with_its_input(self) -> None:
@@ -899,7 +899,7 @@ class ImportInvalidationTest(StateTestCase):
         phased = STAGE.replace(
             'artifact: "{run}/out.md"', 'artifact: "{run}/phase-{N}-out.md"'
         )
-        (self.base / "workflows" / "stages" / "demo.md").write_text(phased, encoding="utf-8")
+        (self.base / "workflows" / "stages" / "intake.md").write_text(phased, encoding="utf-8")
         workflow = load_workflow(self.base, "demo")
         state_obj = state.RunState(
             run_id="2026-08-17-x",
@@ -931,7 +931,7 @@ class ImportInvalidationTest(StateTestCase):
         phased = STAGE.replace(
             'artifact: "{run}/out.md"', 'artifact: "{run}/phase-{N}-out.md"'
         )
-        (self.base / "workflows" / "stages" / "demo.md").write_text(phased, encoding="utf-8")
+        (self.base / "workflows" / "stages" / "intake.md").write_text(phased, encoding="utf-8")
         workflow = load_workflow(self.base, "demo")
 
         def at(phase: int, imported: str) -> set[str]:
@@ -967,7 +967,7 @@ class CrossStageInvalidationTest(StateTestCase):
         """Two stages, the second reading what the first produced and its
         own gate standing after the step that reads it."""
         second = (
-            STAGE.replace("name: demo", "name: second")
+            STAGE.replace("name: intake", "name: second")
             .replace("- step: make", "- step: build")
             .replace("- gate: check\n          conditional: true", "- gate: approve")
             .replace("### make (analyst)", "### build (implementer)")
@@ -1163,7 +1163,7 @@ class GatePhaseTest(StateTestCase):
 
     def build(self) -> object:
         phased = (
-            STAGE.replace("name: demo", "name: phased")
+            STAGE.replace("name: intake", "name: phased")
             .replace("- step: make", "- step: build")
             .replace("- gate: check\n          conditional: true", "- gate: approve")
             .replace("### make (analyst)", "### build (implementer)")

@@ -62,7 +62,7 @@ class CliTest(unittest.TestCase):
         stages = self.base / "workflows" / "stages"
         stages.mkdir(parents=True)
         (self.base / "workflows" / "demo.md").write_text(WORKFLOW, encoding="utf-8")
-        (stages / "demo.md").write_text(STAGE, encoding="utf-8")
+        (stages / "intake.md").write_text(STAGE, encoding="utf-8")
 
     def test_run_creates_the_run_and_stops_at_execution(self) -> None:
         self.write_framework()

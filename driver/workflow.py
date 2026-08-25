@@ -278,6 +278,17 @@ def load_workflow(framework: Path, name: str) -> Workflow:
             slugs.append(match.group(1))
     if not slugs:
         raise WorkflowError(f"workflow {name!r} composes no stages")
+    # §5: "`intake` is the entry stage of every workflow". Creation
+    # bootstraps the first composed stage's records as the ones §10 has a
+    # run carry before an acceptance, and the acceptance that populates the
+    # rest is intake's own — so a workflow entered anywhere else writes a
+    # run whose list nothing completes, and a resume reports it finished
+    # with every later stage never populated.
+    if slugs[0] != "intake":
+        raise WorkflowError(
+            f"workflow {name!r} enters at stage {slugs[0]!r}, and `intake` is "
+            f"the entry stage of every workflow (spec §5)"
+        )
     stages = tuple(_load_stage(framework, slug) for slug in slugs)
     _check_member_ids(stages)
     _check_edges(stages)
@@ -498,6 +509,14 @@ def _declares_workflow(body: str) -> bool:
         # inside a string.
         if _without_properties(rest)[:1] in ("|", ">"):
             continue
+        # An anchor may hold a block mapping, and an alias to it gives
+        # `metadata` those keys: `&w` over an indented `workflow:` is that
+        # mapping, and `metadata: *w` names it. What `_resolved` returned is
+        # then the block itself rather than a value on one line, and the
+        # scan below reads the lines after `metadata`, which are somebody
+        # else's.
+        if "\n" in rest and _block_has_direct_key(rest, "workflow", anchors, 0):
+            return True
         if _block_has_direct_key(
             body[opening.end() :], "workflow", anchors, opening.end()
         ):
