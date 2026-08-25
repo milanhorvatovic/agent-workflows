@@ -63,9 +63,12 @@ METADATA_KEY = re.compile(
 # any reader that parses it. The `rest` group is that value, so both forms
 # are read the same way from here on.
 EXPLICIT_KEY = re.compile(
-    r'^\?[ \t]+(?:[!&]\S*[ \t]+){0,2}'
+    # The indicator may stand alone, its key on the line beneath it: the
+    # key is a node like any other and takes its own line as readily as it
+    # shares one.
+    r'^\?(?:[ \t]+|[ \t]*\n[ \t]+)(?:[!&]\S*[ \t]+){0,2}'
     + KEY_TOKEN
-    + r'[ \t]*\n^:(?P<rest>.*)$',
+    + r'[ \t]*\n[ \t]*:(?P<rest>.*)$',
     re.MULTILINE,
 )
 WORKFLOW_KEY = re.compile(r'^[ \t]+[\'"]?workflow[\'"]?[ \t]*:')

@@ -648,6 +648,9 @@ class SyntheticTreeTest(unittest.TestCase):
             'metadata: {"work\\u0066low": [one, two]}\n',
             '"met\\u0061data":\n  workflow: [one, two]\n',
             '? "met\\u0061data"\n: {workflow: [one, two]}\n',
+            # The explicit indicator may stand alone, its key on the line
+            # beneath it and the value under the `:` line after that.
+            "?\n  metadata\n:\n  workflow: [one, two]\n",
             '{"met\\u0061data": {workflow: [one, two]}}\n',
             'metadata:\n  "work\\u0066low": [one, two]\n',
             "metadata: {!!str workflow: [one, two]}\n",
