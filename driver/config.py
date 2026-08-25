@@ -3,7 +3,9 @@
 The config carries what the driver needs before any run exists: the
 consuming project's artifact root (`artifacts_dir` — `{artifacts}` in
 protocol/spec.md §8.1, which names resolving it as project configuration),
-the harness command lines the driver can invoke (`backends`), and which
+the framework root where the protocol content lives (`framework_dir` —
+`workflows/` and `workflows/stages/`, resolved by the same rules), the
+harness command lines the driver can invoke (`backends`), and which
 backend — optionally which model — each protocol role executes on
 (`roles`). Validation is strict and happens entirely at load time, so a
 typo fails the invocation instead of the fifth step of a run.
@@ -22,8 +24,9 @@ from pathlib import Path, PureWindowsPath
 ROLES = ("analyst", "planner", "implementer", "reviewer", "validator", "arbiter")
 
 DEFAULT_ARTIFACTS_DIR = "."
+DEFAULT_FRAMEWORK_DIR = "."
 
-TOP_LEVEL_KEYS = frozenset({"artifacts_dir", "backends", "roles"})
+TOP_LEVEL_KEYS = frozenset({"artifacts_dir", "framework_dir", "backends", "roles"})
 BACKEND_KEYS = frozenset({"command"})
 ROLE_KEYS = frozenset({"backend", "model"})
 
@@ -55,6 +58,7 @@ class RoleRoute:
 @dataclass(frozen=True)
 class Config:
     artifacts_dir: Path
+    framework_dir: Path
     backends: dict[str, Backend]
     roles: dict[str, RoleRoute]
 
@@ -86,26 +90,57 @@ def load_config(path: Path) -> Config:
         raise ConfigError(f"unknown keys: {', '.join(unknown)}")
     backends = _parse_backends(data)
     return Config(
-        artifacts_dir=_parse_artifacts_dir(data, path),
+        artifacts_dir=_parse_directory(data, "artifacts_dir", DEFAULT_ARTIFACTS_DIR, path),
+        framework_dir=_parse_directory(data, "framework_dir", DEFAULT_FRAMEWORK_DIR, path),
         backends=backends,
         roles=_parse_roles(data, backends),
     )
 
 
-def _parse_artifacts_dir(data: dict, config_path: Path) -> Path:
-    value = data.get("artifacts_dir", DEFAULT_ARTIFACTS_DIR)
+def _check_printable(value: str, key: str) -> None:
+    """A configured path carries nothing a terminal or a filesystem call
+    would take as something other than text.
+
+    JSON strings may carry NUL, but no filesystem call accepts one — it
+    raises ValueError at use, far from the config that caused it. The rest
+    of the control characters are refused for the reason the run-id guard
+    refuses them: these two paths are printed — `run` reports the directory
+    it created — so a newline in one splits the line that reports it and an
+    escape sequence rewrites it, which is the output contract `status`
+    already keeps for the names it lists. A lone surrogate — which JSON
+    decodes from `\\ud800` and UTF-8 cannot encode — would instead reach
+    `mkdir` or that same line and raise there, turning the config defect
+    this function exists to report into a traceback. The YAML writer
+    refuses the same character for the same reason.
+    """
+    if any(
+        character < " " or "\x7f" <= character <= "\x9f" or character in "\u2028\u2029"
+        for character in value
+    ):
+        raise ConfigError(f"{key} must not contain control characters")
+    if any(0xD800 <= ord(character) <= 0xDFFF for character in value):
+        raise ConfigError(f"{key} must not contain surrogates")
+
+
+def _parse_directory(data: dict, key: str, default: str, config_path: Path) -> Path:
+    """One rule for both configured directories — the artifact root (spec
+    §8.1's `{artifacts}`) and the framework root where `workflows/` lives.
+    Resolving either is project configuration; the rules are identical."""
+    value = data.get(key, default)
     if not isinstance(value, str) or not value.strip():
-        raise ConfigError("artifacts_dir must be a non-empty string")
-    # JSON strings may carry NUL, but no filesystem call accepts one — it
-    # raises ValueError at use, far from the config that caused it.
-    if "\x00" in value:
-        raise ConfigError("artifacts_dir must not contain NUL")
+        raise ConfigError(f"{key} must be a non-empty string")
+    _check_printable(value, key)
     # JSON has no shell, so a leading ~ arrives literally; expand it rather
     # than creating a directory named `~` under the project.
     try:
         expanded = Path(value).expanduser()
     except RuntimeError as error:
-        raise ConfigError(f"artifacts_dir: {error}") from error
+        raise ConfigError(f"{key}: {error}") from error
+    # Expansion writes part of the path from the environment, so the guard
+    # above is applied again to what came back: `~/runs` is clean in the
+    # file and carries whatever `HOME` held by the time it is printed. What
+    # the rule covers is the path, not the spelling the config used for it.
+    _check_printable(str(expanded), key)
     # A partially anchored Windows form — drive-relative "D:artifacts" or
     # root-relative "\artifacts" — is not absolute, yet joining it on a
     # Windows host discards the config-file anchor. Rejected on every
@@ -113,12 +148,18 @@ def _parse_artifacts_dir(data: dict, config_path: Path) -> Path:
     # everywhere.
     windows_form = PureWindowsPath(expanded)
     if not expanded.is_absolute() and (windows_form.drive or windows_form.root):
-        raise ConfigError("artifacts_dir must be fully absolute or fully relative")
-    # A relative artifacts_dir anchors at the config file's directory, not
-    # the process working directory: the config sits in the consuming
-    # project, and artifacts must land there no matter where the driver is
-    # invoked from. The `/` operator keeps an absolute value as-is.
-    return config_path.resolve().parent / expanded
+        raise ConfigError(f"{key} must be fully absolute or fully relative")
+    # A relative value anchors at the config file's directory, not the
+    # process working directory: the config sits in the consuming project,
+    # and both roots must land there no matter where the driver is invoked
+    # from. The `/` operator keeps an absolute value as-is.
+    anchored = config_path.resolve().parent / expanded
+    # That directory writes part of the path too, and `run` prints what the
+    # value resolves to rather than what it said. The rule is about the
+    # path the driver ends up with, so it is applied to the path the driver
+    # ends up with — as written, as expanded, and now as anchored.
+    _check_printable(str(anchored), f"the path {key} resolves to")
+    return anchored
 
 
 def _parse_backends(data: dict) -> dict[str, Backend]:

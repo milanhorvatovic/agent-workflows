@@ -85,6 +85,21 @@ class ConfigTest(unittest.TestCase):
         loaded = self.load(self.variant(artifacts_dir="~/awf-artifacts"))
         self.assertEqual(loaded.artifacts_dir, Path.home() / "awf-artifacts")
 
+    def test_framework_dir_defaults_to_the_config_directory(self) -> None:
+        loaded = self.load(VALID)
+        self.assertEqual(loaded.framework_dir, self.base.resolve())
+
+    def test_relative_framework_dir_anchors_at_the_config_directory(self) -> None:
+        """The same rules as artifacts_dir, by the same code — one anchoring
+        rule for both configured roots."""
+        loaded = self.load(self.variant(framework_dir="agent-workflows"))
+        self.assertEqual(loaded.framework_dir, self.base.resolve() / "agent-workflows")
+
+    def test_partially_anchored_windows_framework_dir_is_rejected(self) -> None:
+        with self.assertRaises(config_module.ConfigError) as caught:
+            self.load(self.variant(framework_dir="D:framework"))
+        self.assertIn("framework_dir", str(caught.exception))
+
     def test_runs_dir_derives_the_spec_runs_segment(self) -> None:
         loaded = self.load(self.variant(artifacts_dir="artifacts"))
         self.assertEqual(loaded.runs_dir, self.base.resolve() / "artifacts" / "runs")
@@ -115,10 +130,65 @@ class ConfigTest(unittest.TestCase):
             self.variant(artifacts_dir="  "), "artifacts_dir must be a non-empty string"
         )
 
-    def test_nul_in_artifacts_dir_is_rejected(self) -> None:
-        self.assert_rejected(
-            self.variant(artifacts_dir="artifacts\x00"), "artifacts_dir must not contain NUL"
-        )
+    def test_control_characters_in_a_configured_path_are_rejected(self) -> None:
+        """NUL because no filesystem call accepts one, and the rest because
+        both paths are printed — `run` reports the directory it created, so
+        a newline there splits the line reporting it."""
+        for key in ("artifacts_dir", "framework_dir"):
+            for value in ("a\x00b", "a\nb", "a\x1b[2Kb", "a\x85b", "a\u2028b"):
+                with self.subTest(key=key, value=value):
+                    self.assert_rejected(
+                        self.variant(**{key: value}),
+                        f"{key} must not contain control characters",
+                    )
+
+    def test_a_home_that_expands_to_control_characters_is_rejected(self) -> None:
+        """`~` is expanded here, so the environment writes part of the path
+        the guard above exists to hold: a value that is clean in the file
+        reaches the line reporting the created directory carrying whatever
+        `HOME` had in it. What the check covers is what ends up on the path,
+        not only what the config file spelled."""
+        import os
+        import unittest.mock
+
+        for key in ("artifacts_dir", "framework_dir"):
+            with self.subTest(key=key):
+                with unittest.mock.patch.dict(
+                    os.environ,
+                    {"HOME": "/tmp/ho\x1b[2Kme", "USERPROFILE": "/tmp/ho\x1b[2Kme"},
+                ):
+                    self.assert_rejected(
+                        self.variant(**{key: "~/runs"}),
+                        f"{key} must not contain control characters",
+                    )
+
+    def test_a_config_directory_carrying_control_characters_is_rejected(self) -> None:
+        """A relative value anchors at the config file's own directory, so
+        that directory writes part of the path too — and `run` prints what
+        it resolves to. The rule is about the path the driver ends up with,
+        which is the third place the same value passes through: as written,
+        as expanded, and as anchored."""
+        odd = self.base / "we\x1b[2Kird"
+        try:
+            odd.mkdir()
+        except OSError as error:  # pragma: no cover
+            self.skipTest(f"control characters unusable in a path: {error}")
+        path = odd / "driver.json"
+        path.write_text(json.dumps(VALID), encoding="utf-8")
+        with self.assertRaises(ConfigError) as caught:
+            load_config(path)
+        self.assertIn("control characters", str(caught.exception))
+
+    def test_a_surrogate_in_a_configured_path_is_rejected(self) -> None:
+        """JSON decodes `\\ud800` into a lone surrogate, which UTF-8 cannot
+        encode — so the path reaches `mkdir` or the line that prints it and
+        raises there, turning a config defect into a traceback."""
+        for key in ("artifacts_dir", "framework_dir"):
+            with self.subTest(key=key):
+                text = json.dumps(self.variant(**{key: "artifacts"})).replace(
+                    '"artifacts"', '"art\\ud800ifacts"'
+                )
+                self.assert_rejected(text, f"{key} must not contain surrogates")
 
     def test_partially_anchored_windows_artifacts_dir_is_rejected(self) -> None:
         for value in ("D:artifacts", "\\artifacts"):
