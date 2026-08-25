@@ -354,10 +354,13 @@ def _blank_quoted(text: str) -> str:
         # A quoted span followed by `:` is a key, and a key is structure: a
         # declaration may be written `metadata: {"workflow": …}`, and
         # blanking that span would lose the very thing this scan looks for
-        # and file a malformed declaration as prose.
+        # and file a malformed declaration as prose. It is written back
+        # decoded and unquoted — the key a reader resolves rather than the
+        # characters that spell it, since `"workflow"` names the same
+        # key and the scan downstream compares text.
         after = text[end + 1 :]
         if after.lstrip(" \t").startswith(":"):
-            out.append(span)
+            out.append(_decoded(span))
         else:
             out.append(" " * len(span))
         # The span was a node, so what follows it is not the start of one
@@ -482,6 +485,37 @@ def _root_flow_declares(body: str) -> bool:
     return _flow_has_direct_key(_flow_value(flat[end:]), "workflow")
 
 
+ESCAPE = re.compile(r"\\(?:x([0-9A-Fa-f]{2})|u([0-9A-Fa-f]{4})|U([0-9A-Fa-f]{8})|(.))")
+
+
+def _decoded(span: str) -> str:
+    """A quoted scalar's value: the text a reader resolves, without the
+    quotes that carried it.
+
+    A key is the value of its node, not the characters spelling it, and
+    `"work\\u0066low"` is `workflow` to everything that parses the document.
+    Compared raw, the scan that decides whether a block was reaching for a
+    declaration answers about the spelling instead — and files the one it
+    could not read as prose. Only what YAML's own escapes decode to; an
+    unknown escape stands for the character it precedes, which is what a
+    reader that rejects the document would have reported rather than read.
+    """
+    body = span[1:-1]
+    if span.startswith("'"):
+        return body.replace("''", "'")
+
+    def one(match: re.Match) -> str:
+        hex_digits = match.group(1) or match.group(2) or match.group(3)
+        if hex_digits is not None:
+            code = int(hex_digits, 16)
+            return chr(code) if code <= 0x10FFFF else match.group(0)
+        return {"n": "\n", "t": "\t", "r": "\r", "0": "\x00"}.get(
+            match.group(4), match.group(4)
+        )
+
+    return ESCAPE.sub(one, body)
+
+
 def _without_marker(text: str) -> str:
     """The text past a document-start marker, which opens what follows it
     rather than being part of it. `---` alone is the marker; `----` is a
@@ -603,7 +637,12 @@ def _block_has_direct_key(after: str, name: str) -> bool:
         key = _without_properties(key)
         for quote in ("'", '"'):
             if key.startswith(quote):
-                key = key[1:].partition(quote)[0] + ":"
+                closing = _closing_quote(key, 0)
+                if closing is None:
+                    break
+                # Decoded, as the flow scan reads a quoted key: the value
+                # is the key, and `"workflow"` spells the same one.
+                key = _decoded(key[: closing + 1]) + key[closing + 1 :]
                 break
         if key.startswith(name):
             after = key[len(name) :].lstrip(WHITESPACE)

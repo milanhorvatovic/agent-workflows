@@ -643,6 +643,11 @@ class SyntheticTreeTest(unittest.TestCase):
             "--- {metadata: {workflow: [one, two]}}\n",
             "---\n{metadata: {workflow: [one, two]}}\n",
             "--- !!map {metadata: {workflow: [one, two]}}\n",
+            # A quoted key is decoded before it is a key: `"work\\u0066low"`
+            # is the same key spelled with an escape, at either level.
+            'metadata: {"work\\u0066low": [one, two]}\n',
+            '{"met\\u0061data": {workflow: [one, two]}}\n',
+            'metadata:\n  "work\\u0066low": [one, two]\n',
             "metadata: {!!str workflow: [one, two]}\n",
             # YAML's explicit key form names the same key: `? metadata` with
             # the value on the `:` line beneath it, and its flow spelling.
