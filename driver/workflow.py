@@ -877,27 +877,35 @@ def _resolve_flow_aliases(
     out: list[str] = []
     index = 0
     at_node_start = True
-    local: dict[str, tuple[str, str]] = {}
+    # An alias names the anchor nearest ahead of it, and the definitions
+    # this text carries are in that same list: `_anchors` read them from
+    # the document, where a quoted scalar is still quoted, so what they
+    # hold is what the anchor holds — this text has had those spans blanked
+    # and would record an empty value for one, shadowing the reading that
+    # is right. What the walk tracks is how many of them it has passed, so
+    # an alias here resolves against the ones behind it and no others.
+    passed = before
     while index < len(flat):
         character = flat[index]
         if character == "&" and at_node_start:
             defined = ANCHOR_NAME.match(flat, index)
             if defined is not None:
-                node = _flow_node(defined.group("value").lstrip(WHITESPACE))
-                value = node
-                if value[:1] in ("'", '"') and _closing_quote(value, 0) == len(value) - 1:
-                    value = _decoded(value)
-                local[defined.group("name")] = (node, value)
+                following = next(
+                    (
+                        offset
+                        for offset, name, _, _ in anchors
+                        if offset >= passed and name == defined.group("name")
+                    ),
+                    None,
+                )
+                if following is not None:
+                    passed = following + 1
         if character == "*" and at_node_start:
             match = ALIAS_NAME.match(flat, index)
             if match is not None:
                 rest = flat[match.end() :].lstrip(WHITESPACE)
-                as_value = rest.startswith(":")
-                nearest = local.get(match.group("name"))
-                held = (
-                    nearest[1 if as_value else 0]
-                    if nearest is not None
-                    else _anchored(anchors, match.group("name"), before, as_value=as_value)
+                held = _anchored(
+                    anchors, match.group("name"), passed, as_value=rest.startswith(":")
                 )
                 if held is not None:
                     out.append(held)

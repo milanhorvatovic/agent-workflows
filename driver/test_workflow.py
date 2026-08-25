@@ -708,6 +708,10 @@ class SyntheticTreeTest(unittest.TestCase):
             # after it opens no scalar either — the declaration below is a
             # declaration and not a string's continuation.
             'note: x- "unterminated\nmetadata:\n  workflow: [one]\n',
+            # An anchor holding a quoted scalar inside a flow mapping is
+            # the same anchor: what it holds is `metadata`, and the alias
+            # names that key.
+            '{label: &m "metadata", *m: {workflow: [one]}}\n',
             # An anchor defined inside the value an alias stands in is
             # ahead of that alias, and a later definition of the same name
             # is behind it.
