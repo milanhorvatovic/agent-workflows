@@ -531,6 +531,22 @@ class DumpsTest(unittest.TestCase):
     def test_empty_collections_dump_as_flow_empties(self) -> None:
         self.assertEqual(dumps({"a": [], "b": {}}), "a: []\nb: {}\n")
 
+    def test_refuses_to_write_deeper_than_it_reads(self) -> None:
+        """The reader stops at a depth far below where the interpreter's
+        own stack gives out, and the writer knew no such bound — so a
+        document it emitted could not be read back, which for run state is
+        a save that persists what the next resume refuses."""
+        deep: object = "leaf"
+        for _ in range(70):
+            deep = {"a": deep}
+        with self.assertRaises(ValueError) as caught:
+            dumps(deep)
+        self.assertIn("nested too deeply", str(caught.exception))
+        shallow: object = "leaf"
+        for _ in range(30):
+            shallow = {"a": shallow}
+        self.assertEqual(loads(dumps(shallow)), shallow)
+
     def test_refuses_to_write_what_it_could_not_read_back(self) -> None:
         """A key is written plain and a lone surrogate cannot be encoded at
         all: accepted here, each reaches the save that writes the file — a

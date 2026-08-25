@@ -525,7 +525,12 @@ def _unquote(token: str, number: int) -> str:
     return "".join(out)
 
 
-def _emit_block(data: object, indent: int) -> list[str]:
+def _emit_block(data: object, indent: int, depth: int = 0) -> list[str]:
+    # The bound the reader keeps, kept on the way out: a document emitted
+    # past it could not be read back, which for run state is a save that
+    # persists what the next resume refuses.
+    if depth > MAX_DEPTH:
+        raise ValueError(f"nested too deeply to read back (over {MAX_DEPTH} levels)")
     pad = " " * indent
     lines: list[str] = []
     if isinstance(data, dict):
@@ -533,19 +538,19 @@ def _emit_block(data: object, indent: int) -> list[str]:
             _check_key(key)
             if isinstance(value, (dict, list)) and value:
                 lines.append(f"{pad}{key}:")
-                lines += _emit_block(value, indent + INDENT)
+                lines += _emit_block(value, indent + INDENT, depth + 1)
             else:
                 lines.append(f"{pad}{key}: {_emit_scalar(value)}")
         return lines
     if isinstance(data, list):
         for item in data:
             if isinstance(item, dict) and item:
-                first, *others = _emit_block(item, indent + INDENT)
+                first, *others = _emit_block(item, indent + INDENT, depth + 1)
                 lines.append(f"{pad}- {first.strip(WHITESPACE)}")
                 lines += others
             elif isinstance(item, list) and item:
                 lines.append(f"{pad}-")
-                lines += _emit_block(item, indent + INDENT)
+                lines += _emit_block(item, indent + INDENT, depth + 1)
             else:
                 lines.append(f"{pad}- {_emit_scalar(item)}")
         return lines
