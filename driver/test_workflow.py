@@ -438,6 +438,22 @@ class SyntheticTreeTest(unittest.TestCase):
             load_workflow(self.framework, "demo")
         self.assertIn("entry stage", str(caught.exception))
 
+    def test_an_intake_that_ends_at_a_step_is_an_error(self) -> None:
+        """Creation populates the entry stage's records alone, and §7 makes
+        the acceptance at intake's own gate the write that creates the
+        rest. An intake ending at a step has no such decision to reach: the
+        run walks its bootstrap list to the end and reports itself finished
+        with every later stage never populated."""
+        self.write(
+            "workflows/stages/intake.md",
+            STAGE.replace(
+                "        - gate: check\n          conditional: true\n", ""
+            ).replace("- **check** — a gate.", "").replace("PASS: check", "PASS: make"),
+        )
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "demo")
+        self.assertIn("gate", str(caught.exception))
+
     def test_a_member_wearing_a_stage_id_is_an_error(self) -> None:
         """§9.1's targets are untyped strings: a member named for a stage
         makes every edge naming it ambiguous."""

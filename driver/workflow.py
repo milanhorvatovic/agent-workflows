@@ -294,6 +294,17 @@ def load_workflow(framework: Path, name: str) -> Workflow:
             f"the entry stage of every workflow (spec §5)"
         )
     stages = tuple(_load_stage(framework, slug) for slug in slugs)
+    # And ends at a gate. Creation populates the entry stage's records
+    # alone, and §7 makes the acceptance at intake's own gate the write
+    # that creates the rest — an intake ending at a step has no such
+    # decision to reach, so the run walks its bootstrap list to the end and
+    # reports itself finished with every later stage never populated.
+    if stages[0].members[-1].kind != "gate":
+        raise WorkflowError(
+            f"workflow {name!r} enters at an `intake` ending with step "
+            f"{stages[0].members[-1].id!r}, and the acceptance that populates "
+            f"the rest of the run is its closing gate's (spec §5, §7)"
+        )
     _check_member_ids(stages)
     _check_edges(stages)
     return Workflow(name=name, stages=stages)
