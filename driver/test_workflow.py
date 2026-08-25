@@ -587,6 +587,12 @@ class SyntheticTreeTest(unittest.TestCase):
             # else's value: `example.labels.metadata.workflow` is as deep a
             # descendant written in braces as it is written in lines.
             "example:\n  labels: {metadata: {workflow: x}}\n",
+            # `\e` is ESC and `\f` is a form feed, not backslashes to drop:
+            # dropped, they spell the very keys this scan looks for, and an
+            # example carrying one would be reported as a declaration that
+            # no reader resolves.
+            '{"m\\etadata": {workflow: [one, two]}}\n',
+            'metadata: {"work\\flow": [one, two]}\n',
             # A single-quoted scalar escapes its quote by doubling it, so
             # the pair is a character in the value and not the end of it —
             # closing at the first would expose the rest of a scalar as

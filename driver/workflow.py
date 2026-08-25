@@ -497,6 +497,14 @@ def _root_flow_declares(body: str) -> bool:
 
 
 ESCAPE = re.compile(r"\\(?:x([0-9A-Fa-f]{2})|u([0-9A-Fa-f]{4})|U([0-9A-Fa-f]{8})|(.))")
+# YAML 1.2's double-quoted escapes, whole: what each names is a character
+# the key carries, and what is not here names nothing.
+YAML_ESCAPES = {
+    "0": "\x00", "a": "\x07", "b": "\x08", "t": "\t", "\t": "\t",
+    "n": "\n", "v": "\x0b", "f": "\x0c", "r": "\r", "e": "\x1b",
+    " ": " ", '"': '"', "/": "/", "\\": "\\",
+    "N": "\x85", "_": "\xa0", "L": "\u2028", "P": "\u2029",
+}
 
 
 def _key_name(token: str) -> str:
@@ -527,9 +535,12 @@ def _decoded(span: str) -> str:
         if hex_digits is not None:
             code = int(hex_digits, 16)
             return chr(code) if code <= 0x10FFFF else match.group(0)
-        return {"n": "\n", "t": "\t", "r": "\r", "0": "\x00"}.get(
-            match.group(4), match.group(4)
-        )
+        # Unknown stays whole. `\e` is ESC and `\f` is a form feed, so
+        # dropping a backslash the table does not name would spell the very
+        # keys this scan looks for out of text that says something else —
+        # and a reader rejecting the document would report it rather than
+        # resolve it either way.
+        return YAML_ESCAPES.get(match.group(4), match.group(0))
 
     return ESCAPE.sub(one, body)
 
