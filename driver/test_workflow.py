@@ -650,6 +650,11 @@ class SyntheticTreeTest(unittest.TestCase):
             "&saved metadata:\n  workflow: [one, two]\n",
             "metadata:\n  !!str workflow: [one, two]\n",
             "{!!str metadata: {workflow: [one, two]}}\n",
+            # An alias names what its anchor holds: the key `*m` is
+            # `metadata` where `&m metadata` said so, and a value `*w` is
+            # the mapping the anchor carries.
+            "anchor: &m metadata\n*m:\n  workflow: [one, two]\n",
+            "anchor: &w {workflow: [one, two]}\nmetadata: *w\n",
             # A stream mark stands ahead of the document it opens, and the
             # reader that parses past it resolves the same two keys.
             "\ufeff{metadata: {workflow: [one, two]}}\n",

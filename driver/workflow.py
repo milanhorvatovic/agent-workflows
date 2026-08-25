@@ -454,9 +454,19 @@ def _declares_workflow(body: str) -> bool:
     # the mark as the first characters of whatever follows: neither the
     # first-column key nor the root brace is where it looks.
     body = body[1:] if body.startswith("\ufeff") else body
+    # An alias is the node its anchor holds, and both are outside this
+    # subset — which is why the block failed to parse and why the scan has
+    # to read them anyway: `&m metadata` makes `*m:` the key `metadata`,
+    # and `&w {workflow: …}` makes `metadata: *w` a declaration. What an
+    # anchor holds is taken as the text it was written with, so an alias
+    # reads as whatever that text reads as.
+    anchors = _anchors(body)
     openings = list(METADATA_KEY.finditer(body)) + list(EXPLICIT_KEY.finditer(body))
-    for opening in (m for m in openings if _key_name(m.group("key")) == "metadata"):
+    for opening in (
+        m for m in openings if _key_name(m.group("key"), anchors) == "metadata"
+    ):
         rest = _without_comment(_blank_quoted(opening.group("rest")))
+        rest = _resolved(rest, anchors)
         if _flow_has_direct_key(rest, "workflow"):
             return True
         # `metadata: |` or `metadata: >` opens a block scalar, and what is
@@ -523,11 +533,50 @@ YAML_ESCAPES = {
 }
 
 
-def _key_name(token: str) -> str:
-    """What a captured key names: its resolved value, quoted or not."""
+ANCHOR = re.compile(r"(?:^|[ \t:\[{,])&(?P<name>[^\s\[\]{},]+)(?P<value>[ \t]*.*)$", re.MULTILINE)
+ALIAS = re.compile(r"^\*(?P<name>[^\s\[\]{},]+)$")
+
+
+def _anchors(body: str) -> dict[str, str]:
+    """Every anchor the block defines, mapped to the text it holds — the
+    rest of its own line, and the lines indented under it where that is
+    where its node continues."""
+    found: dict[str, str] = {}
+    lines = body.split("\n")
+    for number, line in enumerate(lines):
+        match = ANCHOR.search(line)
+        if match is None:
+            continue
+        held = match.group("value").strip(WHITESPACE)
+        indent = len(line) - len(line.lstrip(WHITESPACE))
+        for following in lines[number + 1 :]:
+            if not following.strip():
+                continue
+            if len(following) - len(following.lstrip(WHITESPACE)) <= indent:
+                break
+            held += "\n" + following
+        found[match.group("name")] = held
+    return found
+
+
+def _resolved(text: str, anchors: dict[str, str]) -> str:
+    """An alias standing alone as a value, replaced by what it names."""
+    alias = ALIAS.match(text.strip(WHITESPACE))
+    if alias is None:
+        return text
+    return anchors.get(alias.group("name"), text)
+
+
+def _key_name(token: str, anchors: dict[str, str] | None = None) -> str:
+    """What a captured key names: its resolved value, quoted, aliased, or
+    plain."""
     if token[:1] in ("'", '"') and _closing_quote(token, 0) == len(token) - 1:
         return _decoded(token)
-    return token.rstrip(WHITESPACE)
+    token = token.rstrip(WHITESPACE)
+    alias = ALIAS.match(token)
+    if alias is not None and anchors is not None:
+        return anchors.get(alias.group("name"), token).strip(WHITESPACE)
+    return token
 
 
 def _decoded(span: str) -> str:
