@@ -342,6 +342,16 @@ class LoadsTest(unittest.TestCase):
             loads("a: 'quoted'\n")
         self.assertIn("outside the subset", str(caught.exception))
 
+    def test_a_leading_byte_order_mark_is_the_stream_s_and_not_a_key_s(self) -> None:
+        """A YAML stream may begin with U+FEFF, and every conforming reader
+        takes it as the encoding marker it is. Read as content it becomes
+        part of the first key, so a state file another tool wrote would
+        carry `\\ufeffrun` here and resume on a document nothing recognizes."""
+        self.assertEqual(loads("﻿run: 1\n"), {"run": 1})
+        # Only the stream's own: one inside the document is content, and
+        # content this subset does not carry.
+        self.assertEqual(loads('a: "x﻿y"\n'), {"a": "x﻿y"})
+
     def test_rejects_a_surrogate_escape(self) -> None:
         """Accepted, it would load and validate and then break the next
         save: UTF-8 cannot carry a lone surrogate."""

@@ -164,6 +164,13 @@ def _content_lines(text: str) -> list[_Line]:
     # shape rather than one that is refused. Tab, newline, and carriage
     # return are the three YAML does allow, and the emitter escapes every
     # character named here, so nothing the driver writes lands on this.
+    # A stream may open with U+FEFF, which marks its encoding rather than
+    # its content: every conforming reader drops it, and one that keeps it
+    # reads `\ufeffrun` where the document says `run` — a state file
+    # another tool wrote, resumed against keys nothing recognizes. Only the
+    # stream's own: one anywhere else is content.
+    if text.startswith("\ufeff"):
+        text = text[1:]
     found = RAW_FORBIDDEN.search(text)
     if found is not None:
         raise ProtocolYamlError(
