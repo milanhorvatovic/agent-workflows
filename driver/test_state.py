@@ -481,6 +481,33 @@ class DurabilityTest(StateTestCase):
         self.assertIn("fsync", order[-1])
         self.assertEqual(state.load(run_dir), created)
 
+    def test_creation_persists_the_entry_that_names_the_run(self) -> None:
+        """The state file's own durability says nothing about the directory
+        holding it: a parent that never recorded the new entry loses the
+        whole run, which `create_run` has already reported as made."""
+        import unittest.mock
+
+        real = os.fsync
+        synced: set[tuple[int, int]] = set()
+
+        def fsync(descriptor):
+            # Identified while it is open: what a descriptor names is not
+            # readable once the call that owned it has returned.
+            try:
+                info = os.fstat(descriptor)
+                synced.add((info.st_ino, info.st_dev))
+            except OSError:
+                pass
+            return real(descriptor)
+
+        with unittest.mock.patch.object(os, "fsync", fsync):
+            run_dir, _ = state.create_run(
+                self.runs, "2026-08-17-x", self.workflow, "0.2"
+            )
+        runs = os.stat(self.runs)
+        self.assertIn((runs.st_ino, runs.st_dev), synced)
+        self.assertTrue((run_dir / state.STATE_FILE).is_file())
+
 
 class RoutedStateTest(StateTestCase):
     def test_what_routing_writes_passes_the_checks_that_read_it(self) -> None:

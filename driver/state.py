@@ -179,7 +179,18 @@ def create_run(
                 os.mkdir(run_id, dir_fd=runs)
         except FileExistsError:
             raise StateError(f"run {run_id!r} already exists") from None
-        return _bootstrap(run_dir, run_id, workflow, protocol, runs)
+        created = _bootstrap(run_dir, run_id, workflow, protocol, runs)
+        # The state file's own durability says nothing about the directory
+        # holding it: `_bootstrap` syncs the file and the run directory,
+        # and the entry naming that run lives one level up. Unsynced, a
+        # power loss takes the whole run with it — after this call has
+        # already reported it made.
+        if runs is None:
+            _sync_directory(runs_dir)
+        else:
+            with contextlib.suppress(OSError):
+                os.fsync(runs)
+        return created
 
 
 def _bootstrap(
