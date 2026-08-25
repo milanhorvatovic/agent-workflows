@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import signal
+import stat
 import tempfile
 import unittest
 from pathlib import Path
@@ -483,6 +484,36 @@ class DurabilityTest(StateTestCase):
             state.save(created, run_dir)
         self.assertEqual(order[:2], ["fsync-file", "publish"])
         self.assertIn("fsync", order[-1])
+        self.assertEqual(state.load(run_dir), created)
+
+    def test_a_directory_sync_that_fails_is_not_a_save_that_succeeded(self) -> None:
+        """An `EIO` from `fsync` says the write did not reach the device,
+        which is the whole of what this ordering promises — swallowed, the
+        save returns as though it had. A refusal that means the operation
+        does not apply to a directory here is the other thing entirely, and
+        is what the platforms without it report."""
+        import errno
+        import unittest.mock
+
+        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2")
+        real = os.fsync
+
+        def failing(code):
+            def fsync(descriptor):
+                if stat.S_ISDIR(os.fstat(descriptor).st_mode):
+                    raise OSError(code, os.strerror(code))
+                return real(descriptor)
+
+            return fsync
+
+        with unittest.mock.patch.object(os, "fsync", failing(errno.EIO)):
+            with self.assertRaises(OSError) as caught:
+                state.save(created, run_dir)
+        self.assertEqual(caught.exception.errno, errno.EIO)
+        # Unsupported is not failed: a filesystem that has no sync for a
+        # directory has not lost anything.
+        with unittest.mock.patch.object(os, "fsync", failing(errno.EINVAL)):
+            state.save(created, run_dir)
         self.assertEqual(state.load(run_dir), created)
 
     def test_creation_persists_the_entry_that_names_the_run(self) -> None:

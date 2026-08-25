@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime
+import errno
 import os
 import re
 import stat
@@ -194,8 +195,7 @@ def create_run(
         if runs is None:
             _sync_directory(runs_dir)
         else:
-            with contextlib.suppress(OSError):
-                os.fsync(runs)
+            _sync_descriptor(runs)
         for path in fresh:
             _sync_directory(path.parent)
         return created
@@ -434,18 +434,44 @@ def _sync(stream) -> None:
     os.fsync(stream.fileno())
 
 
+# What `fsync` reports when a directory is not something it applies to,
+# rather than when the sync failed. The first is a platform saying it has
+# no such operation — nothing was lost — and the second is a device saying
+# the write did not land, which is the whole of what the ordering promises.
+_UNSUPPORTED = frozenset(
+    code
+    for code in (
+        getattr(errno, "EINVAL", None),
+        getattr(errno, "ENOTSUP", None),
+        getattr(errno, "EOPNOTSUPP", None),
+        getattr(errno, "ENOSYS", None),
+    )
+    if code is not None
+)
+
+
+def _sync_descriptor(descriptor: int) -> None:
+    """Sync it, and let a real failure through. `EIO` says the write did
+    not reach the device, and swallowing it returns a save that promised
+    durability and did not deliver it."""
+    try:
+        os.fsync(descriptor)
+    except OSError as error:
+        if error.errno not in _UNSUPPORTED:
+            raise
+
+
 def _sync_directory(path: Path) -> None:
-    """The directory entry the rename created. POSIX only: Windows has no
-    handle for a directory's own metadata, and its `replace` is ordered
-    against the file data by the filesystem instead."""
+    """The directory entry the rename created. Opening it is the part that
+    is allowed to fail quietly: Windows has no handle for a directory's own
+    metadata, and its `replace` is ordered against the file data by the
+    filesystem instead. Once it is open, a failure to sync is a failure."""
     try:
         descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
     except OSError:
         return
     try:
-        os.fsync(descriptor)
-    except OSError:
-        pass
+        _sync_descriptor(descriptor)
     finally:
         os.close(descriptor)
 
@@ -480,7 +506,11 @@ def save(state: RunState, run_dir: Path, runs: int | None = None) -> None:
                 os.replace(temp_name, run_dir / STATE_FILE)
                 _sync_directory(run_dir)
             except BaseException:
-                os.unlink(temp_name)
+                # The temp name is gone once the replace has run, so the
+                # cleanup for a failure after it must not raise over the
+                # failure it is cleaning up after.
+                with contextlib.suppress(OSError):
+                    os.unlink(temp_name)
                 raise
             return
         # The same write, bound to the directory this run already holds
@@ -505,8 +535,7 @@ def save(state: RunState, run_dir: Path, runs: int | None = None) -> None:
             # The directory this run already holds open is the one the
             # rename published into, so the entry is synced through it
             # rather than through a second open of the same path.
-            with contextlib.suppress(OSError):
-                os.fsync(directory)
+            _sync_descriptor(directory)
         except BaseException:
             with contextlib.suppress(OSError):
                 os.unlink(temp_name, dir_fd=directory)
