@@ -593,6 +593,12 @@ class SyntheticTreeTest(unittest.TestCase):
             # no reader resolves.
             '{"m\\etadata": {workflow: [one, two]}}\n',
             'metadata: {"work\\flow": [one, two]}\n',
+            # A decoded key is compared as the value it is: `"workflow "`
+            # carries a space that no reader trims, so the mapping has no
+            # `workflow` key and the block declares nothing — in flow and
+            # in block alike.
+            'metadata: {"workflow ": [one, two]}\n',
+            'metadata:\n  "workflow ": [one, two]\n',
             # A single-quoted scalar escapes its quote by doubling it, so
             # the pair is a character in the value and not the end of it —
             # closing at the first would expose the rest of a scalar as

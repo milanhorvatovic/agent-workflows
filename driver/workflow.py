@@ -371,8 +371,15 @@ def _blank_quoted(text: str) -> str:
         # characters that spell it, since `"workflow"` names the same
         # key and the scan downstream compares text.
         after = text[end + 1 :]
-        if after.lstrip(" \t").startswith(":"):
-            out.append(_decoded(span))
+        decoded = _decoded(span) if after.lstrip(" \t").startswith(":") else None
+        # Written back only where the value reads as itself. Decoded text
+        # rejoins structural text, and whitespace in it would then read as
+        # the separator YAML trims: `{"workflow ": …}` names a key with a
+        # space that no reader trims, and unquoted it would answer for the
+        # key that has none. Anything else is blanked — the two names this
+        # scan looks for are plain, so nothing it needs is lost.
+        if decoded is not None and PLAIN_TEXT.fullmatch(decoded):
+            out.append(decoded)
         else:
             out.append(" " * len(span))
         # The span was a node, so what follows it is not the start of one
@@ -500,6 +507,10 @@ def _root_flow_declares(body: str) -> bool:
     # child — a declaration read out of an example that has none.
     return _flow_has_direct_key(_flow_value(flat[end:]), "workflow")
 
+
+# What a decoded key may rejoin structural text as: characters that read as
+# themselves, with nothing YAML would take for a separator or an indicator.
+PLAIN_TEXT = re.compile(r"[A-Za-z0-9_.-]+")
 
 ESCAPE = re.compile(r"\\(?:x([0-9A-Fa-f]{2})|u([0-9A-Fa-f]{4})|U([0-9A-Fa-f]{8})|(.))")
 # YAML 1.2's double-quoted escapes, whole: what each names is a character
@@ -669,15 +680,22 @@ def _block_has_direct_key(after: str, name: str) -> bool:
         if explicit:
             key = key[1:].lstrip(WHITESPACE)
         key = _without_properties(key)
-        for quote in ("'", '"'):
-            if key.startswith(quote):
-                closing = _closing_quote(key, 0)
-                if closing is None:
-                    break
-                # Decoded, as the flow scan reads a quoted key: the value
-                # is the key, and `"workflow"` spells the same one.
-                key = _decoded(key[: closing + 1]) + key[closing + 1 :]
-                break
+        quoted = key[:1] in ("'", '"')
+        if quoted:
+            closing = _closing_quote(key, 0)
+            if closing is None:
+                continue
+            # Decoded and compared as a value, not as text on the page: the
+            # quotes end the key, so whitespace inside them is the key's
+            # own and `"workflow "` names something `workflow` does not.
+            # Only a plain key may carry the space YAML trims before a
+            # colon.
+            if _decoded(key[: closing + 1]) != name:
+                continue
+            rest = key[closing + 1 :].lstrip(WHITESPACE)
+            if rest.startswith(":") or (explicit and not rest):
+                return True
+            continue
         if key.startswith(name):
             rest = key[len(name) :].lstrip(WHITESPACE)
             if rest.startswith(":") or (explicit and not rest):
