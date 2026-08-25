@@ -935,6 +935,44 @@ class CrossStageInvalidationTest(StateTestCase):
         self.assertEqual(state_obj.record("approve").status, "pending")
 
 
+class RejectedRunTest(StateTestCase):
+    def test_a_rejected_run_has_nothing_left_to_walk_into(self) -> None:
+        """§7: where what ends is the run, "every record still `pending` or
+        `blocked` becomes `skipped` with the outcome, every one but the
+        deciding gate's own". Without that write a resume looks for the
+        first record neither done nor skipped and finds work the rejection
+        ended — so a document carrying one without the other is a run this
+        driver would carry on executing after it was stopped."""
+        def rejected(rest: str) -> state.RunState:
+            return state.RunState(
+                run_id="2026-08-17-x",
+                workflow="demo",
+                protocol="0.2",
+                # A run rejected at its intake gate never accepted a class,
+                # so there is none to carry.
+                steps=[
+                    state.StepRecord(id="make", status=rest),
+                    state.StepRecord(id="check", status="done"),
+                ],
+                gates=[
+                    state.GateRecord(
+                        gate="check",
+                        transport="blocking",
+                        outcome="reject",
+                        at="2026-08-16T09:00:00Z",
+                    )
+                ],
+                artifacts=[],
+            )
+
+        for rest in ("pending", "blocked", "active"):
+            with self.subTest(status=rest):
+                with self.assertRaises(state.StateError) as caught:
+                    state.check_gates(rejected(rest), self.workflow)
+                self.assertIn("reject", str(caught.exception))
+        state.check_gates(rejected("skipped"), self.workflow)
+
+
 class RoutedStateTest(StateTestCase):
     def test_what_routing_writes_passes_the_checks_that_read_it(self) -> None:
         """A re-entry returns a decided gate to `pending` so it decides

@@ -844,6 +844,26 @@ def check_gates(state: RunState, workflow: Workflow) -> None:
                 f"gate {record.id!r} is done at phase {state.phase} and its latest "
                 f"decision records {says} (spec §10)"
             )
+        # §7: where what ends is the run, "every record still `pending` or
+        # `blocked` becomes `skipped` with the outcome, every one but the
+        # deciding gate's own" — and a resume looks for the first record
+        # neither done nor skipped, so without that write it walks into the
+        # work the rejection ended. Bounded to a run with no phase: where
+        # the workflow declares them and a list is accepted, a reject ends
+        # the phase and the same write is bounded by it, the records after
+        # it belonging to a run that continues.
+        if decision.outcome == "reject" and state.phase is None:
+            left = [
+                step.id
+                for step in state.steps
+                if step.id != record.id and step.status not in ("done", "skipped")
+            ]
+            if left:
+                raise StateError(
+                    f"gate {record.id!r} records a reject, which ends the run, and "
+                    f"these are neither done nor skipped: {', '.join(left)} "
+                    f"(spec §7)"
+                )
         if decision.outcome not in ("accept", "reject"):
             raise StateError(
                 f"gate {record.id!r} is done and its latest outcome is "
@@ -1090,16 +1110,15 @@ def _resolve_target(state: RunState, workflow: Workflow, target: str) -> str:
             # would stop the run at a decision nothing has yet produced work
             # for, where the rule sends it to the work itself.
             #
-            # Every `skipped` record is passed over, which is wider than the
-            # rule's words: a class exclusion, a conditional whose route has
-            # not fired, and a step whose output the run imported (§8.6) all
-            # wear that one status, and run state records no reason to tell
-            # them apart. Nothing shipped reaches the difference — the only
-            # stage-id targets declared today enter `planning`, whose first
-            # member is unconditional — but a stage whose first step is
-            # conditional would be entered past it. Narrowing this needs the
-            # protocol to carry why a record was skipped; until it does,
-            # reading all three alike is the only reading available.
+            # Only what the class excluded is passed over. Three things
+            # wear `skipped` and run state records no reason to tell them
+            # apart, but the declarations do: a conditional member is one
+            # the sequence says so about, an imported derivation is one the
+            # manifest of imports names, and a member that is neither was
+            # left out by the class. The first two are where the stage's
+            # work begins if they are first — §9.1 names the stage's first
+            # step, and a route re-enters a conditional member (§10) or an
+            # imported one (§8.6) rather than stepping over it.
             # Resolution continues past the stage where the stage itself is
             # skipped whole: the overlays say "an edge or stage id targeting
             # skipped content resolves to the next non-skipped point in
