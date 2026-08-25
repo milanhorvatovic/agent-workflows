@@ -1321,6 +1321,10 @@ class TerminalAcceptTest(StateTestCase):
                 with self.assertRaises(state.StateError) as caught:
                     state.check_gates(approved(rest), workflow)
                 self.assertIn("tail", str(caught.exception))
+        # And the states that write is what leaves behind.
+        for rest in ("done", "skipped"):
+            with self.subTest(status=rest):
+                state.check_gates(approved(rest), workflow)
 
     def test_a_class_that_skips_the_last_gate_ends_at_the_one_it_reached(self) -> None:
         """The overlays leave R0 with "no structured steps after intake" and
@@ -1386,9 +1390,6 @@ class TerminalAcceptTest(StateTestCase):
             ],
             artifacts=["{run}/out.md"],
         )
-        for rest in ("done", "skipped"):
-            with self.subTest(status=rest):
-                state.check_gates(approved(rest), workflow)
 
 
 class ManifestTest(StateTestCase):
