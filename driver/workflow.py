@@ -482,10 +482,10 @@ def _declares_workflow(body: str) -> bool:
             continue
         if _block_has_direct_key(body[opening.end() :], "workflow"):
             return True
-    return _root_flow_declares(body)
+    return _root_flow_declares(body, anchors)
 
 
-def _root_flow_declares(body: str) -> bool:
+def _root_flow_declares(body: str, anchors: list[tuple[int, str, str, str]]) -> bool:
     """Whether the document is a flow mapping whose own `metadata` key holds
     `workflow`.
 
@@ -510,6 +510,11 @@ def _root_flow_declares(body: str) -> bool:
     )
     if not flat.startswith("{"):
         return False
+    # An alias in flow stands where a key or a value does, and the scan
+    # below compares text: what each one names is put in its place first,
+    # read as the value it holds where it is a key and as the structure it
+    # is where it is a value.
+    flat = _resolve_flow_aliases(flat, anchors, len(body))
     end = _flow_key_end(flat, "metadata")
     if end is None:
         return False
@@ -537,6 +542,7 @@ YAML_ESCAPES = {
 
 ANCHOR_NAME = re.compile(r"&(?P<name>[^\s\[\]{},]+)(?P<value>[ \t]*.*)$")
 ALIAS = re.compile(r"^\*(?P<name>[^\s\[\]{},]+)$")
+ALIAS_NAME = re.compile(r"\*(?P<name>[^\s\[\]{},:]+)")
 
 
 def _anchors(body: str) -> list[tuple[int, str, str, str]]:
@@ -560,8 +566,7 @@ def _anchors(body: str) -> list[tuple[int, str, str, str]]:
     offset = 0
     lines = body.split("\n")
     for number, line in enumerate(lines):
-        match = _anchor_on(line)
-        if match is not None:
+        for match, depth in _anchors_on(line):
             # A comment is not part of what the anchor holds: `&m metadata
             # # a label` anchors `metadata`, and carrying the label with it
             # names a key nothing declares. Where the comment ends is read
@@ -571,16 +576,23 @@ def _anchors(body: str) -> list[tuple[int, str, str, str]]:
             uncommented = _without_comment(_blank_quoted(raw))
             structure = uncommented.strip(WHITESPACE)
             value = raw[: len(uncommented)].strip(WHITESPACE)
+            if depth:
+                # Inside a flow collection the node ends where the
+                # collection says: at its own closing brace or the comma
+                # that starts the next entry, not at the end of the line.
+                structure = _flow_node(structure)
+                value = _flow_node(value)
             if value[:1] in ("'", '"') and _closing_quote(value, 0) == len(value) - 1:
                 value = _decoded(value)
             indent = len(line) - len(line.lstrip(WHITESPACE))
-            for following in lines[number + 1 :]:
-                if not following.strip():
-                    continue
-                if len(following) - len(following.lstrip(WHITESPACE)) <= indent:
-                    break
-                structure += "\n" + following
-                value += "\n" + following
+            if not depth:
+                for following in lines[number + 1 :]:
+                    if not following.strip():
+                        continue
+                    if len(following) - len(following.lstrip(WHITESPACE)) <= indent:
+                        break
+                    structure += "\n" + following
+                    value += "\n" + following
             found.append(
                 (offset + match.start("name"), match.group("name"), structure, value)
             )
@@ -588,8 +600,8 @@ def _anchors(body: str) -> list[tuple[int, str, str, str]]:
     return found
 
 
-def _anchor_on(line: str) -> re.Match | None:
-    """The anchor this line defines, if it opens a node with one.
+def _anchors_on(line: str) -> list[tuple[re.Match, int]]:
+    """Every anchor this line defines, with the flow depth it stands at.
 
     `&` is an indicator where a node begins and an ordinary character
     everywhere else: `note: x &m metadata` is a plain scalar that contains
@@ -597,18 +609,30 @@ def _anchor_on(line: str) -> re.Match | None:
     it a value the document never anchored. A node begins after `:`, `-`,
     `{`, `[`, or `,` with only whitespace between, and at the start of the
     line's own content.
+
+    More than one, because a flow mapping puts several nodes on one line —
+    `{a: &k metadata, b: &v {workflow: …}, *k: *v}` defines two, and a scan
+    that stopped at the first would resolve half the aliases below it.
     """
+    found: list[tuple[re.Match, int]] = []
     at_node_start = True
+    depth = 0
     for index, character in enumerate(line):
         if character == "&" and at_node_start:
             match = ANCHOR_NAME.match(line, index)
             if match is not None:
-                return match
-        if character in "{[,:-":
+                found.append((match, depth))
+        if character in "{[":
+            depth += 1
+            at_node_start = True
+        elif character in "}]":
+            depth = max(0, depth - 1)
+            at_node_start = False
+        elif character in ",:-":
             at_node_start = True
         elif character not in WHITESPACE:
             at_node_start = False
-    return None
+    return found
 
 
 def _anchored(
@@ -723,13 +747,55 @@ def _flow_value(rest: str) -> str:
         after = after[1:].lstrip(WHITESPACE)
     if not after.startswith(":"):
         return ""
-    after = after[1:].lstrip(WHITESPACE)
+    return _flow_node(after[1:].lstrip(WHITESPACE))
+
+
+def _resolve_flow_aliases(
+    flat: str, anchors: list[tuple[int, str, str, str]], before: int
+) -> str:
+    """Every alias in a flow document replaced by what its anchor holds.
+
+    An alias followed by a colon is a key, and what names a key is the
+    value its anchor holds; anywhere else it is a value, and what stands
+    there is the structure the anchor holds — a quoted scalar being a
+    string however that string reads.
+    """
+    out: list[str] = []
+    index = 0
+    at_node_start = True
+    while index < len(flat):
+        character = flat[index]
+        if character == "*" and at_node_start:
+            match = ALIAS_NAME.match(flat, index)
+            if match is not None:
+                rest = flat[match.end() :].lstrip(WHITESPACE)
+                held = _anchored(
+                    anchors, match.group("name"), before, as_value=rest.startswith(":")
+                )
+                if held is not None:
+                    out.append(held)
+                    index = match.end()
+                    at_node_start = False
+                    continue
+        if character in "{[,:":
+            at_node_start = True
+        elif character not in WHITESPACE:
+            at_node_start = False
+        out.append(character)
+        index += 1
+    return "".join(out)
+
+
+def _flow_node(after: str) -> str:
+    """The node at the start of `after`: the balanced span of a collection
+    it opens, or the text up to the comma or brace that ends a scalar at
+    this depth."""
     depth = 0
     for index, character in enumerate(after):
         if character in "{[":
             depth += 1
         elif character in "}]":
-            if depth == 0:  # the mapping this key belongs to, closing
+            if depth == 0:  # the collection this node belongs to, closing
                 return after[:index]
             depth -= 1
             if depth == 0:

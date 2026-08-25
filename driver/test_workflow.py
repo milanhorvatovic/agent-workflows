@@ -583,6 +583,7 @@ class SyntheticTreeTest(unittest.TestCase):
             # the `workflow:` indented under it is that string's text.
             "metadata: !!str |\n  workflow: [one, two]\n",
             "metadata: &saved >\n  workflow: [one, two]\n",
+            '{label: &m "{workflow: x}", metadata: *m}\n',
             # What the anchor holds is a string, so the value the alias
             # gives `metadata` is a string too — text that reads as a
             # mapping is not one for being quoted text about one.
@@ -671,6 +672,10 @@ class SyntheticTreeTest(unittest.TestCase):
             # An anchor holds a quoted scalar as readily as a plain one,
             # and the key an alias to it names is that scalar's value.
             'anchor: &m "metadata"\n*m:\n  workflow: [one, two]\n',
+            # In flow as in block: an alias names the key, and a line may
+            # define more than one anchor.
+            "{label: &m metadata, *m: {workflow: [one, two]}}\n",
+            "{a: &k metadata, b: &v {workflow: [one, two]}, *k: *v}\n",
             "anchor: &m 'metadata'\n*m:\n  workflow: [one, two]\n",
             "anchor: &w {workflow: [one, two]}\nmetadata: *w\n",
             # A stream mark stands ahead of the document it opens, and the
