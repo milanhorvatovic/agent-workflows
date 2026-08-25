@@ -710,6 +710,8 @@ def _opens_quote(line: str) -> bool:
     index = 0
     while index < len(line):
         character = line[index]
+        if character == "#" and (index == 0 or line[index - 1] in WHITESPACE):
+            return False  # a comment: what it carries opens nothing
         if character == '"' and at_node_start:
             closing = _closing_quote(line, index)
             if closing is None:
@@ -758,6 +760,10 @@ def _anchors_on(line: str) -> list[tuple[re.Match, int]]:
             index = closing + 1
             at_node_start = False
             continue
+        # A comment ends the structure on its line: what follows `#`
+        # defines no anchor and opens nothing.
+        if character == "#" and (index == 0 or line[index - 1] in WHITESPACE):
+            break
         if character == "&" and at_node_start:
             match = ANCHOR_NAME.match(line, index)
             if match is not None:
@@ -785,7 +791,12 @@ def _after(character: str, following: str, at_node_start: bool, depth: int) -> b
     if character in "{[}]":
         return character in "{["
     if character == ":":
-        return True
+        # In a flow collection the punctuation is the separator; in a block
+        # mapping the separation after it is what makes it one, and without
+        # that the colon is the plain scalar's own text. `note: x:&m` is a
+        # scalar carrying a colon, and reading it as a value's opening
+        # defined an anchor the document never wrote.
+        return depth > 0 or following in tuple(WHITESPACE) + ("",)
     if character == ",":
         return depth > 0
     if character == "-":

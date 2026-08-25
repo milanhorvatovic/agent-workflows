@@ -636,6 +636,12 @@ class SyntheticTreeTest(unittest.TestCase):
             # forward reference: this one names nothing, so the mapping has
             # no `metadata` key and the block declares nothing.
             "{*m: {workflow: [one]}, label: &m metadata}\n",
+            # A comment ends the structure on its line, so what follows
+            # `#` defines no anchor and opens no scalar.
+            "actual: &m other\nnote: x # : &m metadata\n*m:\n  workflow: [one]\n",
+            # A colon opens a mapping's value where separation follows it,
+            # and is that scalar's text where none does.
+            "actual: &m other\nnote: x:&m metadata\n*m:\n  workflow: [one]\n",
             # A hyphen inside a plain scalar is that scalar's text: it
             # opens no node, so the `&m` after it defines nothing and the
             # quote after it opens nothing.
@@ -736,6 +742,11 @@ class SyntheticTreeTest(unittest.TestCase):
             # define more than one anchor.
             "{label: &m metadata, *m: {workflow: [one, two]}}\n",
             "{a: &k metadata, b: &v {workflow: [one, two]}, *k: *v}\n",
+            # A quote inside a comment opens no scalar, and neither does
+            # one after a colon that separates nothing — the declaration
+            # below stands on its own either way.
+            'note: x # "unterminated\nmetadata:\n  workflow: [one]\n',
+            'note: x:"unterminated\nmetadata:\n  workflow: [one]\n',
             # A hyphen inside a plain scalar opens no node, so the quote
             # after it opens no scalar either — the declaration below is a
             # declaration and not a string's continuation.
