@@ -539,17 +539,24 @@ ANCHOR_NAME = re.compile(r"&(?P<name>[^\s\[\]{},]+)(?P<value>[ \t]*.*)$")
 ALIAS = re.compile(r"^\*(?P<name>[^\s\[\]{},]+)$")
 
 
-def _anchors(body: str) -> list[tuple[int, str, str]]:
+def _anchors(body: str) -> list[tuple[int, str, str, str]]:
     """Every anchor the block defines, in the order they appear: where it
-    was defined, what it is called, and the text it holds — the rest of its
-    own line with any comment removed, and the lines indented under it
-    where that is where its node continues.
+    was defined, what it is called, and what it holds — read twice, because
+    an alias to it may stand in either place.
+
+    As structure, a quoted scalar is blanked like any other: what `&m
+    "{workflow: x}"` holds is a string, and an alias giving it to
+    `metadata` declares nothing however the string reads. As a value, the
+    quotes are the delimiter and not the key: what `&m "metadata"` holds is
+    `metadata`, and an alias to it names that key. The rest of the line
+    with any comment removed, and the lines indented under it where that is
+    where its node continues.
 
     A list rather than a map, because a name may be defined more than once
     and an alias names the definition before it. Reading the last one in
     the file would answer for a node the alias never saw.
     """
-    found: list[tuple[int, str, str]] = []
+    found: list[tuple[int, str, str, str]] = []
     offset = 0
     lines = body.split("\n")
     for number, line in enumerate(lines):
@@ -557,16 +564,26 @@ def _anchors(body: str) -> list[tuple[int, str, str]]:
         if match is not None:
             # A comment is not part of what the anchor holds: `&m metadata
             # # a label` anchors `metadata`, and carrying the label with it
-            # names a key nothing declares.
-            held = _without_comment(_blank_quoted(match.group("value"))).strip(WHITESPACE)
+            # names a key nothing declares. Where the comment ends is read
+            # off the blanked copy, so a `#` inside quotes does not cut the
+            # value short.
+            raw = match.group("value")
+            uncommented = _without_comment(_blank_quoted(raw))
+            structure = uncommented.strip(WHITESPACE)
+            value = raw[: len(uncommented)].strip(WHITESPACE)
+            if value[:1] in ("'", '"') and _closing_quote(value, 0) == len(value) - 1:
+                value = _decoded(value)
             indent = len(line) - len(line.lstrip(WHITESPACE))
             for following in lines[number + 1 :]:
                 if not following.strip():
                     continue
                 if len(following) - len(following.lstrip(WHITESPACE)) <= indent:
                     break
-                held += "\n" + following
-            found.append((offset + match.start("name"), match.group("name"), held))
+                structure += "\n" + following
+                value += "\n" + following
+            found.append(
+                (offset + match.start("name"), match.group("name"), structure, value)
+            )
         offset += len(line) + 1
     return found
 
@@ -594,17 +611,23 @@ def _anchor_on(line: str) -> re.Match | None:
     return None
 
 
-def _anchored(anchors: list[tuple[int, str, str]], name: str, before: int) -> str | None:
+def _anchored(
+    anchors: list[tuple[int, str, str, str]],
+    name: str,
+    before: int,
+    as_value: bool = False,
+) -> str | None:
     """What `name` held where the alias stands: the last definition ahead of
-    it, which is the one YAML resolves an alias against."""
+    it, which is the one YAML resolves an alias against. `as_value` reads it
+    as the scalar it is rather than as the structure it is not."""
     held = None
-    for offset, anchor, text in anchors:
+    for offset, anchor, structure, value in anchors:
         if anchor == name and offset < before:
-            held = text
+            held = value if as_value else structure
     return held
 
 
-def _resolved(text: str, anchors: list[tuple[int, str, str]], offset: int) -> str:
+def _resolved(text: str, anchors: list[tuple[int, str, str, str]], offset: int) -> str:
     """An alias standing alone as a value, replaced by what it names."""
     alias = ALIAS.match(text.strip(WHITESPACE))
     if alias is None:
@@ -615,7 +638,7 @@ def _resolved(text: str, anchors: list[tuple[int, str, str]], offset: int) -> st
 
 def _key_name(
     token: str,
-    anchors: list[tuple[int, str, str]] | None = None,
+    anchors: list[tuple[int, str, str, str]] | None = None,
     offset: int = 0,
 ) -> str:
     """What a captured key names: its resolved value, quoted, aliased, or
@@ -625,7 +648,7 @@ def _key_name(
     token = token.rstrip(WHITESPACE)
     alias = ALIAS.match(token)
     if alias is not None and anchors is not None:
-        held = _anchored(anchors, alias.group("name"), offset)
+        held = _anchored(anchors, alias.group("name"), offset, as_value=True)
         if held is not None:
             return held.strip(WHITESPACE)
     return token
