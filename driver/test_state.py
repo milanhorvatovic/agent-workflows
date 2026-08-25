@@ -409,6 +409,10 @@ class TransitionTest(StateTestCase):
         workflow = load_workflow(self.base, "demo")
         _, created = state.create_run(self.runs, "gate-first", workflow, "0.2")
         self.assertEqual([s.id for s in created.steps], ["check", "make"])
+        # The gate is ahead of the step in the sequence, so the run reaches
+        # it first and its decision stands before the step runs at all —
+        # which is the state a route out of that step is resolved from.
+        created.record("check").status = "done"
         self.complete(created, workflow, "make")
         target = state.route_verdict(created, workflow, "make", "PASS")
         self.assertEqual(target, "make")
@@ -507,6 +511,40 @@ class DurabilityTest(StateTestCase):
         runs = os.stat(self.runs)
         self.assertIn((runs.st_ino, runs.st_dev), synced)
         self.assertTrue((run_dir / state.STATE_FILE).is_file())
+
+
+class StartPositionTest(StateTestCase):
+    def two_steps(self) -> object:
+        """A stage whose sequence runs one step and then another, so the
+        second is `pending` while the first still is."""
+        two = STAGE.replace(
+            "        - step: make\n", "        - step: make\n        - step: also\n"
+        ).replace(
+            "## Gates",
+            "### also (planner)\n\nProse.\n\n```yaml\nmetadata:\n  workflow:\n"
+            '    protocol: "0.2"\n    step:\n      role: planner\n      output:\n'
+            '        artifact: "{run}/also.md"\n```\n\n## Gates',
+        )
+        (self.base / "workflows" / "stages" / "demo.md").write_text(two, encoding="utf-8")
+        return load_workflow(self.base, "demo")
+
+    def test_a_step_starts_only_where_the_run_stands(self) -> None:
+        """§8.5 resolves one position, and starting anything else walks past
+        the work between: the record goes `active`, and the active-first
+        rule then preserves that skip on every resume after it. The two
+        checks that ran before this one report their own cases — a second
+        active record, and a status a start would erase."""
+        workflow = self.two_steps()
+        _, created = state.create_run(self.runs, "2026-08-17-x", workflow, "0.2")
+        with self.assertRaises(state.StateError) as caught:
+            state.start_step(created, workflow, "also")
+        self.assertIn("make", str(caught.exception))
+        self.assertEqual(created.record("also").status, "pending")
+        # The position itself starts, and once it is done the next one is
+        # the position in its turn.
+        state.start_step(created, workflow, "make")
+        state.complete_step(created, workflow, "make")
+        self.assertEqual(state.start_step(created, workflow, "also").status, "active")
 
 
 class RoutedStateTest(StateTestCase):

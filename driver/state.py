@@ -531,6 +531,19 @@ def start_step(state: RunState, workflow: Workflow, step_id: str) -> StepRecord:
         raise StateError(
             f"step {step_id!r} is {record.status}, and a step starts from pending"
         )
+    # And only where the run stands. §8.5 resolves one position, and the
+    # record order §10 declares is what makes it mean anything: starting a
+    # later `pending` record walks past the work between, and the
+    # active-first rule then preserves that skip on every resume after it.
+    # Routing keeps the two in step by the same reading — a destination
+    # MUST precede every record it invalidates (§10), so what a route
+    # re-enters is the position when the write that re-entered it lands.
+    position = state.position()
+    if position is not None and position.id != step_id:
+        raise StateError(
+            f"step {step_id!r} is not where the run stands — {position.id!r} is "
+            f"(spec §8.5, §10)"
+        )
     record.status = "active"
     return record
 
