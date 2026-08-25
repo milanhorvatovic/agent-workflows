@@ -228,8 +228,22 @@ def _remove_run(run_dir: Path, runs: int | None) -> None:
             (run_dir / STATE_FILE).unlink(missing_ok=True)
             run_dir.rmdir()
         else:
-            with contextlib.suppress(FileNotFoundError):
-                os.unlink(f"{run_dir.name}/{STATE_FILE}", dir_fd=runs)
+            # Bound to the directory rather than named through it. A path
+            # with a separator in it is resolved component by component
+            # even from a descriptor, so `<run-id>/workflow-state.yaml`
+            # would follow whatever `<run-id>` is by then — and this runs
+            # while the failure that caused it is still unwinding, which is
+            # a window to swap a link into that name. Opened with
+            # `O_NOFOLLOW`, a link there is refused instead, and the
+            # `rmdir` that follows refuses it too.
+            inside = os.open(
+                run_dir.name, os.O_RDONLY | os.O_DIRECTORY | _NOFOLLOW, dir_fd=runs
+            )
+            try:
+                with contextlib.suppress(FileNotFoundError):
+                    os.unlink(STATE_FILE, dir_fd=inside)
+            finally:
+                os.close(inside)
             os.rmdir(run_dir.name, dir_fd=runs)
     except OSError:
         pass

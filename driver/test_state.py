@@ -128,6 +128,26 @@ class CreateRunTest(StateTestCase):
         run_dir, _ = state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.2")
         self.assertTrue((run_dir / state.STATE_FILE).is_file())
 
+    def test_a_rollback_never_reaches_outside_the_runs_root(self) -> None:
+        """The rollback runs while the failure that caused it is still
+        unwinding, and a name it walks through can be swapped in that
+        window. Naming the state file through the run directory left the
+        containment to the path: bound to the directory itself, a link put
+        in its place is refused at the open rather than followed to
+        whatever it points at."""
+        outside = self.base / "elsewhere"
+        outside.mkdir()
+        victim = outside / state.STATE_FILE
+        victim.write_text("someone else's state\n", encoding="utf-8")
+        self.runs.mkdir(parents=True)
+        try:
+            (self.runs / "2026-08-19-x").symlink_to(outside, target_is_directory=True)
+        except (OSError, NotImplementedError) as error:  # pragma: no cover
+            self.skipTest(f"symlinks unavailable: {error}")
+        with state._runs_directory(self.runs) as runs:
+            state._remove_run(self.runs / "2026-08-19-x", runs)
+        self.assertTrue(victim.is_file())
+
     def test_creating_refuses_a_protocol_it_cannot_load_back(self) -> None:
         """The version is written into the document and `load` holds every
         document to it, so an unchecked one leaves a run that exists and
