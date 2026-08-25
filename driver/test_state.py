@@ -1008,6 +1008,16 @@ class RejectedRunTest(StateTestCase):
                 artifacts=[],
             )
 
+        # A phase list states which phases must complete before which
+        # others, and §7 makes ending only the phase sound "only where
+        # nothing the list places after the rejected phase depends on it,
+        # and an executor that cannot establish that MUST end the run".
+        # This one reads a phase number, not the list — so the run ends.
+        phased = rejected("pending")
+        phased.phase = 2
+        with self.assertRaises(state.StateError) as caught:
+            state.check_gates(phased, self.workflow)
+        self.assertIn("reject", str(caught.exception))
         for rest in ("pending", "blocked", "active"):
             with self.subTest(status=rest):
                 with self.assertRaises(state.StateError) as caught:

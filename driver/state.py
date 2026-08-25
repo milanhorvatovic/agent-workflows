@@ -856,11 +856,16 @@ def check_gates(state: RunState, workflow: Workflow) -> None:
         # `blocked` becomes `skipped` with the outcome, every one but the
         # deciding gate's own" — and a resume looks for the first record
         # neither done nor skipped, so without that write it walks into the
-        # work the rejection ended. Bounded to a run with no phase: where
-        # the workflow declares them and a list is accepted, a reject ends
-        # the phase and the same write is bounded by it, the records after
-        # it belonging to a run that continues.
-        if decision.outcome == "reject" and state.phase is None:
+        # work the rejection ended.
+        #
+        # A phased run is no exception here, though §7 does describe a
+        # write bounded by the phase: ending only the phase "is sound only
+        # where nothing the list places after the rejected phase depends on
+        # it, and an executor that cannot establish that MUST end the run".
+        # This one reads `run.phase`, a number, and never the list that
+        # states those dependencies — so it is an executor that cannot
+        # establish it, and the run-bounded write is the one that applies.
+        if decision.outcome == "reject":
             left = [
                 step.id
                 for step in state.steps
