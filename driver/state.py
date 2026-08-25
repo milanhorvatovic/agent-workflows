@@ -401,9 +401,42 @@ def load(run_dir: Path, runs: int | None = None) -> RunState:
     return _validate(data, path)
 
 
+def _sync(stream) -> None:
+    """The file's own bytes, on the device rather than in a cache.
+
+    `replace` is atomic and says nothing about durability: after a power
+    loss the rename can be on the device while the data it published is
+    not, which is the half-written state the temp-and-replace exists to
+    make impossible. The order — data, then rename, then the directory
+    entry that names it — is what makes a crash leave the previous state
+    or the next one and nothing between.
+    """
+    stream.flush()
+    os.fsync(stream.fileno())
+
+
+def _sync_directory(path: Path) -> None:
+    """The directory entry the rename created. POSIX only: Windows has no
+    handle for a directory's own metadata, and its `replace` is ordered
+    against the file data by the filesystem instead."""
+    try:
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    except OSError:
+        return
+    try:
+        os.fsync(descriptor)
+    except OSError:
+        pass
+    finally:
+        os.close(descriptor)
+
+
 def save(state: RunState, run_dir: Path, runs: int | None = None) -> None:
-    """One atomic write: temp sibling, then replace. The temp file lands in
-    the run directory so the replace never crosses a filesystem boundary."""
+    """One atomic write: temp sibling, synced, then replace. The temp file
+    lands in the run directory so the replace never crosses a filesystem
+    boundary, and the data reaches the device before the rename publishes
+    it — atomic and durable, which the module docstring promises and only
+    the first half of which a rename gives."""
     document: dict[str, object] = {"run": _run_mapping(state)}
     document["steps"] = [_step_mapping(step) for step in state.steps]
     document["gates"] = [_gate_mapping(gate) for gate in state.gates]
@@ -424,7 +457,9 @@ def save(state: RunState, run_dir: Path, runs: int | None = None) -> None:
             try:
                 with os.fdopen(handle, "w", encoding="utf-8") as stream:
                     stream.write(text)
+                    _sync(stream)
                 os.replace(temp_name, run_dir / STATE_FILE)
+                _sync_directory(run_dir)
             except BaseException:
                 os.unlink(temp_name)
                 raise
@@ -444,9 +479,15 @@ def save(state: RunState, run_dir: Path, runs: int | None = None) -> None:
         try:
             with os.fdopen(handle, "w", encoding="utf-8") as stream:
                 stream.write(text)
+                _sync(stream)
             os.rename(
                 temp_name, STATE_FILE, src_dir_fd=directory, dst_dir_fd=directory
             )
+            # The directory this run already holds open is the one the
+            # rename published into, so the entry is synced through it
+            # rather than through a second open of the same path.
+            with contextlib.suppress(OSError):
+                os.fsync(directory)
         except BaseException:
             with contextlib.suppress(OSError):
                 os.unlink(temp_name, dir_fd=directory)

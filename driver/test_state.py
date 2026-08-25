@@ -445,6 +445,43 @@ class TransitionTest(StateTestCase):
         self.assertIn("no runnable step", str(caught.exception))
 
 
+class DurabilityTest(StateTestCase):
+    def test_the_data_reaches_the_device_before_the_rename_publishes_it(self) -> None:
+        """A rename is atomic and says nothing about durability: after a
+        power loss it can be on the device while the data it published is
+        not, which is the half-written state temp-and-replace exists to make
+        impossible. The order is the guarantee — data, rename, then the
+        directory entry naming it."""
+        import unittest.mock
+
+        order: list[str] = []
+        real_fsync, real_replace, real_rename = os.fsync, os.replace, os.rename
+        seen: set[int] = set()
+
+        def fsync(descriptor):
+            order.append("fsync-directory" if descriptor in seen else "fsync-file")
+            return real_fsync(descriptor)
+
+        def replace(source, target, **kwargs):
+            order.append("publish")
+            return real_replace(source, target, **kwargs)
+
+        def rename(source, target, **kwargs):
+            order.append("publish")
+            seen.add(kwargs.get("dst_dir_fd"))
+            return real_rename(source, target, **kwargs)
+
+        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2")
+        order.clear()
+        with unittest.mock.patch.multiple(
+            os, fsync=fsync, replace=replace, rename=rename
+        ):
+            state.save(created, run_dir)
+        self.assertEqual(order[:2], ["fsync-file", "publish"])
+        self.assertIn("fsync", order[-1])
+        self.assertEqual(state.load(run_dir), created)
+
+
 class RoutedStateTest(StateTestCase):
     def test_what_routing_writes_passes_the_checks_that_read_it(self) -> None:
         """A re-entry returns a decided gate to `pending` so it decides
