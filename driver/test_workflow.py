@@ -583,6 +583,11 @@ class SyntheticTreeTest(unittest.TestCase):
             # the `workflow:` indented under it is that string's text.
             "metadata: !!str |\n  workflow: [one, two]\n",
             "metadata: &saved >\n  workflow: [one, two]\n",
+            # An anchor opens a node; the same characters inside a scalar
+            # are that scalar's text. `note: x &m metadata` anchors
+            # nothing, so the alias below it still names what the real
+            # anchor holds.
+            "anchor: &m other\nnote: x &m metadata\n*m:\n  workflow: [one, two]\n",
             # A flow mapping the document does not open with is somebody
             # else's value: `example.labels.metadata.workflow` is as deep a
             # descendant written in braces as it is written in lines.

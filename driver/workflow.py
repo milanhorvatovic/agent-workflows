@@ -535,7 +535,7 @@ YAML_ESCAPES = {
 }
 
 
-ANCHOR = re.compile(r"(?:^|[ \t:\[{,])&(?P<name>[^\s\[\]{},]+)(?P<value>[ \t]*.*)$", re.MULTILINE)
+ANCHOR_NAME = re.compile(r"&(?P<name>[^\s\[\]{},]+)(?P<value>[ \t]*.*)$")
 ALIAS = re.compile(r"^\*(?P<name>[^\s\[\]{},]+)$")
 
 
@@ -553,7 +553,7 @@ def _anchors(body: str) -> list[tuple[int, str, str]]:
     offset = 0
     lines = body.split("\n")
     for number, line in enumerate(lines):
-        match = ANCHOR.search(line)
+        match = _anchor_on(line)
         if match is not None:
             # A comment is not part of what the anchor holds: `&m metadata
             # # a label` anchors `metadata`, and carrying the label with it
@@ -569,6 +569,29 @@ def _anchors(body: str) -> list[tuple[int, str, str]]:
             found.append((offset + match.start("name"), match.group("name"), held))
         offset += len(line) + 1
     return found
+
+
+def _anchor_on(line: str) -> re.Match | None:
+    """The anchor this line defines, if it opens a node with one.
+
+    `&` is an indicator where a node begins and an ordinary character
+    everywhere else: `note: x &m metadata` is a plain scalar that contains
+    an ampersand, and reading it as a definition would give an alias below
+    it a value the document never anchored. A node begins after `:`, `-`,
+    `{`, `[`, or `,` with only whitespace between, and at the start of the
+    line's own content.
+    """
+    at_node_start = True
+    for index, character in enumerate(line):
+        if character == "&" and at_node_start:
+            match = ANCHOR_NAME.match(line, index)
+            if match is not None:
+                return match
+        if character in "{[,:-":
+            at_node_start = True
+        elif character not in WHITESPACE:
+            at_node_start = False
+    return None
 
 
 def _anchored(anchors: list[tuple[int, str, str]], name: str, before: int) -> str | None:
