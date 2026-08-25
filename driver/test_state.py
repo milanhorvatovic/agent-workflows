@@ -1229,6 +1229,17 @@ class TerminalAcceptTest(StateTestCase):
             .replace("FAIL: make", "FAIL: build")
             .replace("- **check** — a gate.", "- **approve** — a gate.")
         )
+        # And a step behind that gate. §7 names the last *gate*, and only
+        # intake must close at one — a sequence may carry work after it.
+        second = second.replace(
+            "        - gate: approve\n",
+            "        - gate: approve\n        - step: after\n",
+        ).replace(
+            "## Gates",
+            "### after (reviewer)\n\nProse.\n\n```yaml\nmetadata:\n  workflow:\n"
+            '    protocol: "0.2"\n    step:\n      role: reviewer\n      output:\n'
+            '        artifact: "{run}/after.md"\n```\n\n## Gates',
+        )
         (self.base / "workflows" / "stages" / "second.md").write_text(
             second, encoding="utf-8"
         )
@@ -1262,6 +1273,7 @@ class TerminalAcceptTest(StateTestCase):
                     state.StepRecord(id="tail", status=rest),
                     state.StepRecord(id="build", status="done"),
                     state.StepRecord(id="approve", status="done"),
+                    state.StepRecord(id="after", status="skipped"),
                 ],
                 gates=[
                     state.GateRecord(

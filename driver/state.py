@@ -836,8 +836,19 @@ def check_gates(state: RunState, workflow: Workflow) -> None:
     # that cannot establish that MUST end the run". This one reads
     # `run.phase`, a number, and never the list that states those
     # dependencies — so it is an executor that cannot establish it.
-    members = [member.id for _, member in workflow.members()]
-    closing = members[-1] if members else None
+    # §7 names "an `accept` at the last gate", which is the last gate and
+    # not the last member: a sequence may carry work behind its decision,
+    # and only intake must close at one. Derived from the last member whose
+    # kind is a gate, so a workflow with a trailing step still reads its
+    # own acceptance as the end of the run.
+    closing = next(
+        (
+            member.id
+            for _, member in reversed(workflow.members())
+            if member.kind == "gate"
+        ),
+        None,
+    )
     # `gates` is append-only in decision order (§10), and a decision that
     # ends the run is the end of that order: nothing decides after it.
     # Reading the latest entry per gate collapses the history, so a
