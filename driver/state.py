@@ -838,6 +838,20 @@ def check_gates(state: RunState, workflow: Workflow) -> None:
     # dependencies — so it is an executor that cannot establish it.
     members = [member.id for _, member in workflow.members()]
     closing = members[-1] if members else None
+    # `gates` is append-only in decision order (§10), and a decision that
+    # ends the run is the end of that order: nothing decides after it.
+    # Reading the latest entry per gate collapses the history, so a
+    # terminal outcome with anything appended behind it was passed over
+    # and the run resumed under whatever came next.
+    for index, entry in enumerate(state.gates[:-1]):
+        if entry.outcome == "reject" or (
+            entry.outcome == "accept" and entry.gate == closing
+        ):
+            raise StateError(
+                f"gate {entry.gate!r} records {entry.outcome!r}, which ends the "
+                f"run, and {len(state.gates) - index - 1} decision(s) follow it "
+                f"(spec §7, §10)"
+            )
     for gate_id, decision in latest.items():
         if gate_id not in scopes:
             continue

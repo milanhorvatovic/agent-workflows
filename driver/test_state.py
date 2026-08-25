@@ -544,14 +544,16 @@ class TransitionTest(StateTestCase):
         ahead of it in the sequence is a member, not that step."""
         gate_first = STAGE.replace(
             "        - step: make\n        - gate: check\n          conditional: true\n",
-            "        - gate: check\n        - step: make\n",
-        ).replace("        PASS: check\n", "        PASS: intake\n")
+            "        - gate: check\n        - step: make\n        - gate: close\n",
+        ).replace("        PASS: check\n", "        PASS: intake\n").replace(
+            "- **check** — a gate.", "- **check** — a gate.\n- **close** — the stage's own."
+        )
         (self.base / "workflows" / "stages" / "intake.md").write_text(
             gate_first, encoding="utf-8"
         )
         workflow = load_workflow(self.base, "demo")
         _, created = state.create_run(self.runs, "gate-first", workflow, "0.2")
-        self.assertEqual([s.id for s in created.steps], ["check", "make"])
+        self.assertEqual([s.id for s in created.steps], ["check", "make", "close"])
         # The gate is ahead of the step in the sequence, so the run reaches
         # it first and its decision stands before the step runs at all —
         # which is the state a route out of that step is resolved from.
@@ -1156,23 +1158,65 @@ class AcceptedClassTest(StateTestCase):
                 self.assertIn("make", str(caught.exception))
 
 
+class TerminalHistoryTest(StateTestCase):
+    def test_a_decision_that_ended_the_run_is_the_last_one_recorded(self) -> None:
+        """`gates` is append-only in decision order (§10), and a decision
+        that ends the run is the end of that order — nothing decides after
+        it. Reading only the latest entry per gate collapses that history,
+        so a reject with anything appended behind it was ignored and the
+        run resumed under whatever came next."""
+        def history(*outcomes: str) -> state.RunState:
+            return state.RunState(
+                run_id="2026-08-17-x",
+                workflow="demo",
+                protocol="0.2",
+                steps=[
+                    state.StepRecord(id="make", status="done"),
+                    state.StepRecord(id="check", status="pending"),
+                ],
+                gates=[
+                    state.GateRecord(
+                        gate="check",
+                        transport="blocking",
+                        outcome=outcome,
+                        at=f"2026-08-16T09:0{index}:00Z",
+                    )
+                    for index, outcome in enumerate(outcomes)
+                ],
+                artifacts=["{run}/out.md"],
+            )
+
+        # `check` closes this composition, so both outcomes end the run.
+        for buried in ("reject", "accept"):
+            with self.subTest(outcome=buried):
+                with self.assertRaises(state.StateError) as caught:
+                    state.check_gates(history(buried, "revise"), self.workflow)
+                self.assertIn("ends the run", str(caught.exception))
+        # A revise decides nothing terminal, so what follows it is ordinary.
+        state.check_gates(history("revise", "revise"), self.workflow)
+
+
 class TerminalAcceptTest(StateTestCase):
     def build(self) -> object:
         """Two stages, and a step after the entry gate: the unfinished
         record has to sit where no decided gate stands before it in its own
         stage, or the rule about that answers first and this one is never
         reached."""
-        entry = STAGE.replace(
-            "        - gate: check\n          conditional: true\n",
-            "        - gate: check\n          conditional: true\n        - step: tail\n",
-        ).replace(
-            "## Gates",
-            "### tail (reviewer)\n\nProse.\n\n```yaml\nmetadata:\n  workflow:\n"
-            '    protocol: "0.2"\n    step:\n      role: reviewer\n      output:\n'
-            '        artifact: "{run}/tail.md"\n```\n\n## Gates',
+        # A stage of its own, with no gate to close it: intake ends at the
+        # decision that populates the rest, so the unfinished record has to
+        # sit somewhere no decided gate stands before it.
+        middle = (
+            STAGE.replace("name: intake", "name: middle")
+            .replace("        - gate: check\n          conditional: true\n", "")
+            .replace("- step: make", "- step: tail")
+            .replace("### make (analyst)", "### tail (reviewer)")
+            .replace("role: analyst", "role: reviewer")
+            .replace('artifact: "{run}/out.md"', 'artifact: "{run}/tail.md"')
+            .replace("      on:\n        PASS: check\n        FAIL: make\n", "")
+            .replace("## Gates\n\n- **check** — a gate.\n", "")
         )
-        (self.base / "workflows" / "stages" / "intake.md").write_text(
-            entry, encoding="utf-8"
+        (self.base / "workflows" / "stages" / "middle.md").write_text(
+            middle, encoding="utf-8"
         )
         second = (
             STAGE.replace("name: intake", "name: second")
@@ -1189,7 +1233,10 @@ class TerminalAcceptTest(StateTestCase):
             second, encoding="utf-8"
         )
         (self.base / "workflows" / "demo.md").write_text(
-            WORKFLOW + "2. [stages/second.md](stages/second.md)\n", encoding="utf-8"
+            WORKFLOW
+            + "2. [stages/middle.md](stages/middle.md)\n"
+            + "3. [stages/second.md](stages/second.md)\n",
+            encoding="utf-8",
         )
         return load_workflow(self.base, "demo")
 
