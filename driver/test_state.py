@@ -616,6 +616,63 @@ class StartPositionTest(StateTestCase):
         self.assertEqual(state.start_step(created, workflow, "also").status, "active")
 
 
+class CrossStageInvalidationTest(StateTestCase):
+    def build(self) -> object:
+        """Two stages, the second reading what the first produced and its
+        own gate standing after the step that reads it."""
+        second = (
+            STAGE.replace("name: demo", "name: second")
+            .replace("- step: make", "- step: build")
+            .replace("- gate: check\n          conditional: true", "- gate: approve")
+            .replace("### make (analyst)", "### build (implementer)")
+            .replace("role: analyst", "role: implementer")
+            .replace('artifact: "{run}/in.md"', 'artifact: "{run}/out.md"')
+            .replace("required: false", "required: true")
+            .replace('artifact: "{run}/out.md"\n        template', 'artifact: "{run}/built.md"\n        template')
+            .replace("PASS: check", "PASS: approve")
+            .replace("FAIL: make", "FAIL: build")
+            .replace("- **check** — a gate.", "- **approve** — a gate.")
+        )
+        (self.base / "workflows" / "stages" / "second.md").write_text(
+            second, encoding="utf-8"
+        )
+        (self.base / "workflows" / "demo.md").write_text(
+            WORKFLOW + "2. [stages/second.md](stages/second.md)\n", encoding="utf-8"
+        )
+        return load_workflow(self.base, "demo")
+
+    def test_a_re_entry_reaches_the_gates_of_every_stage_it_touches(self) -> None:
+        """The dependency walk crosses stages on purpose — a dependent's
+        output is as stale as what it was computed from — and the gates it
+        leaves behind have to follow it. A step re-run in a later stage
+        under a gate that stayed `done` is an approval standing over work
+        the approver never saw, and resume walks straight past it."""
+        workflow = self.build()
+        order, _ = workflow.sequence()
+        self.assertEqual(order, ["make", "check", "build", "approve"])
+        state_obj = state.RunState(
+            run_id="2026-08-17-x",
+            workflow="demo",
+            protocol="0.2",
+            risk="R1",
+            risk_rationale="small",
+            steps=[state.StepRecord(id=member, status="done") for member in order],
+            gates=[
+                state.GateRecord(
+                    gate=gate,
+                    transport="blocking",
+                    outcome="accept",
+                    at="2026-08-16T09:00:00Z",
+                )
+                for gate in ("check", "approve")
+            ],
+            artifacts=["{run}/out.md", "{run}/built.md"],
+        )
+        state.route_verdict(state_obj, workflow, "make", "FAIL")
+        self.assertEqual(state_obj.record("build").status, "pending")
+        self.assertEqual(state_obj.record("approve").status, "pending")
+
+
 class RoutedStateTest(StateTestCase):
     def test_what_routing_writes_passes_the_checks_that_read_it(self) -> None:
         """A re-entry returns a decided gate to `pending` so it decides

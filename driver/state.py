@@ -969,13 +969,19 @@ def _invalidated_by(state: RunState, workflow: Workflow, destination: str) -> se
             if consumer in after and consumer in ran and consumer not in invalidated:
                 invalidated.add(consumer)
                 pending.append(consumer)
-    for stage in workflow.stages:
-        ids = [member.id for member in stage.members]
-        if destination not in ids:
-            continue
-        for member in stage.members[ids.index(destination) + 1 :]:
-            if member.kind == "gate" and member.id in after:
-                invalidated.add(member.id)
+    # Every stage the walk reached, not the destination's alone: a
+    # dependent's output is as stale as what it was computed from, and the
+    # gate standing after that dependent decided about the version it is
+    # replacing. Left `done`, it is an approval over work its approver
+    # never saw, and §8.5 walks straight past it to whatever follows.
+    for member_id in {destination, *invalidated}:
+        for stage in workflow.stages:
+            ids = [member.id for member in stage.members]
+            if member_id not in ids:
+                continue
+            for member in stage.members[ids.index(member_id) + 1 :]:
+                if member.kind == "gate" and member.id in after:
+                    invalidated.add(member.id)
     return invalidated
 
 
