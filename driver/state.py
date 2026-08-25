@@ -192,13 +192,47 @@ def create_run(
         # and the entry naming that run lives one level up. Unsynced, a
         # power loss takes the whole run with it — after this call has
         # already reported it made.
-        if runs is None:
-            _sync_directory(runs_dir)
-        else:
-            _sync_descriptor(runs)
-        for path in fresh:
-            _sync_directory(path.parent)
+        #
+        # These run past the bootstrap that rolls itself back, and a
+        # failure here is this creation failing like any other: the
+        # directory goes, so the id the call reported failure for is the
+        # id a retry can use.
+        try:
+            if runs is None:
+                _sync_directory(runs_dir)
+            else:
+                _sync_descriptor(runs)
+            for path in fresh:
+                _sync_directory(path.parent)
+        except BaseException:
+            _remove_run(run_dir, runs)
+            raise
         return created
+
+
+def _remove_run(run_dir: Path, runs: int | None) -> None:
+    """Undo a creation that failed, so its id stays usable.
+
+    The directory exists only to hold this run's state, and §8.1 makes a
+    pre-existing one a refusal — so leaving one behind would burn the id:
+    the retry meets "already exists" and the run it names has no state to
+    resume. The state file goes with it, since a write can fail after the
+    rename has published it — the sync that follows says it did not reach
+    the device — and a directory holding that file is not empty for `rmdir`
+    to take. Nothing else has written here: the directory was made moments
+    ago by the call now rolling itself back, and the failure it is rolling
+    back from is what propagates.
+    """
+    try:
+        if runs is None:
+            (run_dir / STATE_FILE).unlink(missing_ok=True)
+            run_dir.rmdir()
+        else:
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(f"{run_dir.name}/{STATE_FILE}", dir_fd=runs)
+            os.rmdir(run_dir.name, dir_fd=runs)
+    except OSError:
+        pass
 
 
 def _bootstrap(
@@ -219,26 +253,7 @@ def _bootstrap(
     try:
         save(state, run_dir, runs)
     except BaseException:
-        # The directory exists only to hold this state, and §8.1 makes a
-        # pre-existing one a refusal — so leaving one behind after the
-        # write that fills it failed would burn the id: the retry meets
-        # "already exists" and the run it names has no state to resume.
-        # The state file goes with it, since a save can fail after the
-        # rename has already published it — the sync that follows says the
-        # write did not reach the device — and a directory holding that
-        # file is not empty for `rmdir` to take. Nothing else has written
-        # here: the directory was made moments ago by this call. The
-        # failure itself is what propagates.
-        try:
-            if runs is None:
-                (run_dir / STATE_FILE).unlink(missing_ok=True)
-                run_dir.rmdir()
-            else:
-                with contextlib.suppress(FileNotFoundError):
-                    os.unlink(f"{run_dir.name}/{STATE_FILE}", dir_fd=runs)
-                os.rmdir(run_dir.name, dir_fd=runs)
-        except OSError:
-            pass
+        _remove_run(run_dir, runs)
         raise
     return run_dir, state
 

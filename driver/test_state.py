@@ -90,6 +90,44 @@ class CreateRunTest(StateTestCase):
         run_dir, created = state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.2")
         self.assertTrue((run_dir / state.STATE_FILE).is_file())
 
+    def test_a_sync_that_fails_after_the_bootstrap_leaves_the_id_usable(self) -> None:
+        """The syncs that persist the entries naming the run run after the
+        state file is written and outside the bootstrap that cleans up
+        after itself. A failure there is a creation that failed, so the
+        directory it made has to go with it — or the id is taken for good
+        by a call that reported failure."""
+        import errno
+        import unittest.mock
+
+        real_descriptor, real_directory = state._sync_descriptor, state._sync_directory
+        runs_id = None
+
+        def sync_descriptor(descriptor):
+            # The run's own directory is synced by the save inside the
+            # bootstrap; this fails only the one that names the run.
+            if runs_id is not None:
+                info = os.fstat(descriptor)
+                if (info.st_ino, info.st_dev) == runs_id:
+                    raise OSError(errno.EIO, os.strerror(errno.EIO))
+            return real_descriptor(descriptor)
+
+        def sync_directory(path):
+            if Path(path) != self.runs / "2026-08-19-x":
+                raise OSError(errno.EIO, os.strerror(errno.EIO))
+            return real_directory(path)
+
+        self.runs.mkdir(parents=True)
+        info = os.stat(self.runs)
+        runs_id = (info.st_ino, info.st_dev)
+        with unittest.mock.patch.multiple(
+            state, _sync_descriptor=sync_descriptor, _sync_directory=sync_directory
+        ):
+            with self.assertRaises(OSError):
+                state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.2")
+        self.assertFalse((self.runs / "2026-08-19-x").exists())
+        run_dir, _ = state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.2")
+        self.assertTrue((run_dir / state.STATE_FILE).is_file())
+
     def test_creating_refuses_a_protocol_it_cannot_load_back(self) -> None:
         """The version is written into the document and `load` holds every
         document to it, so an unchecked one leaves a run that exists and
