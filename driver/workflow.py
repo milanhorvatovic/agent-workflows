@@ -523,9 +523,17 @@ def _root_flow_declares(body: str, anchors: list[tuple[int, str, str, str]]) -> 
     # around the declaration it carries.
     # `---` opens the document that follows it, on its own line or ahead of
     # the root on the same one, and what follows is the root this reads.
+    # A directive stands ahead of the document it applies to, and the
+    # marker stands between them: `%YAML 1.2` is not the root node's first
+    # characters, and reading it as them left the declaration behind it
+    # filed as prose. Dropped by line, since a `%` is a directive only at
+    # the start of one.
+    lines = body.split("\n")
+    while lines and (not lines[0].strip() or lines[0].startswith("%")):
+        lines.pop(0)
     flat = _without_properties(
         _without_marker(
-            " ".join(_without_comment(_blank_quoted(line)) for line in body.split("\n"))
+            " ".join(_without_comment(_blank_quoted(line)) for line in lines)
         )
     )
     if not flat.startswith("{"):

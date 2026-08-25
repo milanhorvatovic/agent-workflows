@@ -707,6 +707,11 @@ class SyntheticTreeTest(unittest.TestCase):
             "{q: &m metadata, *m: {workflow: [one]}, r: &m other}\n",
             "anchor: &m 'metadata'\n*m:\n  workflow: [one, two]\n",
             "anchor: &w {workflow: [one, two]}\nmetadata: *w\n",
+            # A directive stands ahead of the document it applies to, with
+            # the marker between them — in either form.
+            "%YAML 1.2\n---\n{metadata: {workflow: [one, two]}}\n",
+            "%YAML 1.2\n---\nmetadata:\n  workflow: [one, two]\n",
+            "%TAG ! tag:example.com,2026:\n---\n{metadata: {workflow: [one]}}\n",
             # A stream mark stands ahead of the document it opens, and the
             # reader that parses past it resolves the same two keys.
             "\ufeff{metadata: {workflow: [one, two]}}\n",
