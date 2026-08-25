@@ -818,6 +818,45 @@ def check_gates(state: RunState, workflow: Workflow) -> None:
     # decide again, and the accept it made before is still the latest entry
     # there, `gates` being append-only. Requiring `done` here refused the
     # state this module's own routing writes.
+    # §7: where what ends is the run, "every record still `pending` or
+    # `blocked` becomes `skipped` with the outcome, every one but the
+    # deciding gate's own" — and a resume looks for the first record
+    # neither done nor skipped, so without that write it walks into the
+    # work the rejection ended.
+    #
+    # Read from the decision rather than from the record, since the record
+    # is half of what the write owes: the deciding gate is `done`, and
+    # nothing after a reject re-enters it — the run is over. A decision on
+    # file over a gate still `pending`, `blocked`, or `skipped` is a
+    # rejection the resume can return to and ask again.
+    #
+    # A phased run is no exception, though §7 does describe a write bounded
+    # by the phase: ending only the phase "is sound only where nothing the
+    # list places after the rejected phase depends on it, and an executor
+    # that cannot establish that MUST end the run". This one reads
+    # `run.phase`, a number, and never the list that states those
+    # dependencies — so it is an executor that cannot establish it.
+    for gate_id, decision in latest.items():
+        if decision.outcome != "reject" or gate_id not in scopes:
+            continue
+        deciding = next((step for step in state.steps if step.id == gate_id), None)
+        if deciding is None or deciding.status != "done":
+            stands = "no record" if deciding is None else f"status {deciding.status!r}"
+            raise StateError(
+                f"gate {gate_id!r} records a reject, which ends the run, and its "
+                f"own entry has {stands} — the decision that ended it is `done` "
+                f"(spec §7)"
+            )
+        left = [
+            step.id
+            for step in state.steps
+            if step.id != gate_id and step.status not in ("done", "skipped")
+        ]
+        if left:
+            raise StateError(
+                f"gate {gate_id!r} records a reject, which ends the run, and "
+                f"these are neither done nor skipped: {', '.join(left)} (spec §7)"
+            )
     entry_gate = workflow.entry_gate()
     if entry_gate is not None:
         decision = latest.get(entry_gate)
@@ -852,31 +891,6 @@ def check_gates(state: RunState, workflow: Workflow) -> None:
                 f"gate {record.id!r} is done at phase {state.phase} and its latest "
                 f"decision records {says} (spec §10)"
             )
-        # §7: where what ends is the run, "every record still `pending` or
-        # `blocked` becomes `skipped` with the outcome, every one but the
-        # deciding gate's own" — and a resume looks for the first record
-        # neither done nor skipped, so without that write it walks into the
-        # work the rejection ended.
-        #
-        # A phased run is no exception here, though §7 does describe a
-        # write bounded by the phase: ending only the phase "is sound only
-        # where nothing the list places after the rejected phase depends on
-        # it, and an executor that cannot establish that MUST end the run".
-        # This one reads `run.phase`, a number, and never the list that
-        # states those dependencies — so it is an executor that cannot
-        # establish it, and the run-bounded write is the one that applies.
-        if decision.outcome == "reject":
-            left = [
-                step.id
-                for step in state.steps
-                if step.id != record.id and step.status not in ("done", "skipped")
-            ]
-            if left:
-                raise StateError(
-                    f"gate {record.id!r} records a reject, which ends the run, and "
-                    f"these are neither done nor skipped: {', '.join(left)} "
-                    f"(spec §7)"
-                )
         if decision.outcome not in ("accept", "reject"):
             raise StateError(
                 f"gate {record.id!r} is done and its latest outcome is "

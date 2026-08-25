@@ -1018,6 +1018,17 @@ class RejectedRunTest(StateTestCase):
         with self.assertRaises(state.StateError) as caught:
             state.check_gates(phased, self.workflow)
         self.assertIn("reject", str(caught.exception))
+        # §7 writes the deciding gate `done`, and nothing after a reject
+        # re-enters it — the run is over. A decision on file over a record
+        # that never closed is a rejection the resume can return to and
+        # ask again.
+        for status in ("pending", "blocked", "skipped"):
+            with self.subTest(gate=status):
+                undecided = rejected("skipped")
+                undecided.record("check").status = status
+                with self.assertRaises(state.StateError) as caught:
+                    state.check_gates(undecided, self.workflow)
+                self.assertIn("reject", str(caught.exception))
         for rest in ("pending", "blocked", "active"):
             with self.subTest(status=rest):
                 with self.assertRaises(state.StateError) as caught:
