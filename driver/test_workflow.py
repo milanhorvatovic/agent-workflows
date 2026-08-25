@@ -905,6 +905,29 @@ class SyntheticTreeTest(unittest.TestCase):
             load_workflow(self.framework, "demo")
         self.assertIn("carries {P}", str(caught.exception))
 
+    def test_an_artifact_outside_the_run_is_an_error(self) -> None:
+        """§8.1 puts a run's artifacts under `{run}`, and a contract naming
+        anything else is a path the completion manifests and a later
+        assembler resolves — outside the directory the run owns. An
+        absolute path says so outright; a traversal says it one segment at
+        a time."""
+        for name, path in {
+            "absolute": "/tmp/out.md",
+            "traversal": "{run}/../outside.md",
+            "bare": "out.md",
+            "empty segment": "{run}//out.md",
+            "dot": "{run}/./out.md",
+        }.items():
+            for field in ('artifact: "{run}/out.md"', 'artifact: "{run}/in.md"'):
+                with self.subTest(path=name, field=field):
+                    self.write(
+                        "workflows/stages/intake.md",
+                        STAGE.replace(field, f'artifact: "{path}"'),
+                    )
+                    with self.assertRaises(WorkflowError) as caught:
+                        load_workflow(self.framework, "demo")
+                    self.assertIn("{run}", str(caught.exception))
+
     def test_a_placeholder_the_spec_does_not_define_is_an_error(self) -> None:
         """The spec defines four, and nothing resolves a fifth: completion
         substitutes `{N}` alone, so an unknown token would enter the manifest

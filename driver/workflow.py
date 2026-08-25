@@ -430,6 +430,25 @@ def _blank_quoted(text: str) -> str:
     return "".join(out)
 
 
+# A declared artifact lives under the run that produces it (§8.1): the
+# `{run}` anchor, then segments that are neither empty nor a dot entry,
+# carrying no separator a platform would read as one. The run-state schema
+# holds an imported path to the same shape, for the same reason — what a
+# contract names is what completion manifests and a later assembler
+# resolves, so a path leaving the run leaves it there too.
+RUN_RELATIVE = re.compile(
+    r"^\{run\}(?:/(?!\.{1,2}(?:/|$))[^/\\:?*\"<>|]+)+$"
+)
+
+
+def _check_artifact(value: str, at: str, what: str) -> None:
+    """Every artifact a contract names is one the run contains."""
+    if not RUN_RELATIVE.match(value):
+        raise WorkflowError(
+            f"{at}: {what} is not a path under {{run}}: {value!r} (spec §8.1)"
+        )
+
+
 def _check_placeholders(value: str, at: str, what: str) -> None:
     """Every token the value carries is one the spec defines, or the value
     addresses a path nothing will resolve."""
@@ -1498,6 +1517,7 @@ def _step_declaration(declaration: dict, step_id: str, rel: str) -> StepDeclarat
     if not isinstance(artifact, str) or not artifact:
         raise WorkflowError(f"{at}: missing output artifact")
     _check_placeholders(artifact, at, "output artifact")
+    _check_artifact(artifact, at, "output artifact")
     # §8.1 and §9.1: `{P}` resolves to one path per phase, and a step
     # produces one artifact — a phase set of outputs is a stage that
     # repeats, not a step that fans out, which is why the step schema
@@ -1533,6 +1553,7 @@ def _step_declaration(declaration: dict, step_id: str, rel: str) -> StepDeclarat
         if not isinstance(input_artifact, str) or not input_artifact:
             raise WorkflowError(f"{at}: input without an artifact")
         _check_placeholders(input_artifact, at, "input artifact")
+        _check_artifact(input_artifact, at, "input artifact")
         # §9.1 has no default in prose; the schemas require the field only
         # when false matters, and every shipped block states it. Reading
         # absence as required errs toward blocking, never toward silently
