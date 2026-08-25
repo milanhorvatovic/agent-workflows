@@ -691,6 +691,11 @@ class SyntheticTreeTest(unittest.TestCase):
             # define more than one anchor.
             "{label: &m metadata, *m: {workflow: [one, two]}}\n",
             "{a: &k metadata, b: &v {workflow: [one, two]}, *k: *v}\n",
+            # An anchor defined inside the value an alias stands in is
+            # ahead of that alias, and a later definition of the same name
+            # is behind it.
+            "metadata: {a: &w workflow, *w: [one, two]}\n",
+            "{q: &m metadata, *m: {workflow: [one]}, r: &m other}\n",
             "anchor: &m 'metadata'\n*m:\n  workflow: [one, two]\n",
             "anchor: &w {workflow: [one, two]}\nmetadata: *w\n",
             # A stream mark stands ahead of the document it opens, and the
