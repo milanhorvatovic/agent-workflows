@@ -552,6 +552,12 @@ def save(state: RunState, run_dir: Path, runs: int | None = None) -> None:
             {"artifact": record.artifact, "from": record.from_run, "at": record.at}
             for record in state.imports
         ]
+    # One writer and one round trip: what this module publishes is what it
+    # can read back. The record it serializes is mutable and the handlers
+    # to come hold one, so a field put wrong in memory would be written out
+    # and refused at the next load — the run left holding a document its
+    # own driver rejects. Read here, against the same rules `load` applies.
+    _validate(document, run_dir / STATE_FILE)
     try:
         text = dumps(document)
     except (TypeError, ValueError) as error:
@@ -1218,6 +1224,31 @@ def _invalidated_by(state: RunState, workflow: Workflow, destination: str) -> se
                 if member.kind == "gate" and member.id in after:
                     invalidated.add(member.id)
     return invalidated
+
+
+def ended(state: RunState, workflow: Workflow) -> bool:
+    """Whether a decision ended this run (§7).
+
+    "Where what ends is the run — a `reject` in a workflow with no phases,
+    an `accept` at the last gate" — so a run that has ended says so, and
+    one whose records merely ran out has not. The difference is what a
+    crash between a step's completion and the verdict that routes it looks
+    like: every record done or skipped, and the transition still owed.
+    """
+    if not state.gates:
+        return False
+    closing = next(
+        (
+            member.id
+            for _, member in reversed(workflow.members())
+            if member.kind == "gate"
+        ),
+        None,
+    )
+    last = state.gates[-1]
+    return last.outcome == "reject" or (
+        last.outcome == "accept" and last.gate == closing
+    )
 
 
 def _import_skipped(state: RunState, workflow: Workflow) -> set[str]:

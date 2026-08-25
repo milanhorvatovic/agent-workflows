@@ -148,6 +148,21 @@ class CreateRunTest(StateTestCase):
             state._remove_run(self.runs / "2026-08-19-x", runs)
         self.assertTrue(victim.is_file())
 
+    def test_a_document_this_module_would_refuse_is_not_written(self) -> None:
+        """One writer and one round trip: a state this module publishes is
+        one it can read back. `save` takes a mutable record — the later
+        handlers hold one and call this writer — so a field put wrong in
+        memory was written out and refused at the next load, the run left
+        holding a document its own driver rejects."""
+        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2")
+        before = (run_dir / state.STATE_FILE).read_text(encoding="utf-8")
+        created.record("make").status = "underway"
+        with self.assertRaises(state.StateError) as caught:
+            state.save(created, run_dir)
+        self.assertIn("status", str(caught.exception))
+        # And the document it would have replaced is still the one on disk.
+        self.assertEqual((run_dir / state.STATE_FILE).read_text(encoding="utf-8"), before)
+
     def test_a_value_the_subset_cannot_write_is_reported_as_state(self) -> None:
         """Every defect this module meets leaves it as a StateError, which
         is what carries one to an exit code rather than a traceback. A
