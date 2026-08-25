@@ -910,6 +910,17 @@ def route_verdict(state: RunState, workflow: Workflow, step_id: str, verdict: st
     # destination on an output no document says exists. `{N}` resolves from
     # the phase now executing, which is the scope the suite checks too:
     # what an earlier phase owes cannot be read from this document.
+    # A route rewrites records for the resume to find, and §8.5 returns to
+    # the active record ahead of every one of them: applied while another
+    # step is running, a verdict mutates the list and changes nothing the
+    # resume reads — a transition that half happened. The counterpart to
+    # the single-active guard on starting a step.
+    running = next((step for step in state.steps if step.status == "active"), None)
+    if running is not None:
+        raise StateError(
+            f"step {running.id!r} is active — a verdict routes when the run is "
+            f"between steps (spec §8.5, §10)"
+        )
     produced = PHASE.sub(
         str(state.phase if state.phase is not None else 1),
         declaration.output_artifact,

@@ -351,6 +351,19 @@ class TransitionTest(StateTestCase):
         state.start_step(state_obj, workflow, step_id)
         state.complete_step(state_obj, workflow, step_id)
 
+    def test_a_verdict_does_not_route_while_a_step_is_running(self) -> None:
+        """The counterpart to the single-active guard on starting one. A
+        route rewrites records for the resume to find, and §8.5 returns to
+        the active record ahead of any of them — so a verdict applied while
+        another step runs mutates the list and changes nothing the resume
+        reads, which is a transition that half happened."""
+        self.complete(self.state, self.workflow, "make")
+        self.state.steps.append(state.StepRecord(id="later", status="active"))
+        with self.assertRaises(state.StateError) as caught:
+            state.route_verdict(self.state, self.workflow, "make", "PASS")
+        self.assertIn("later", str(caught.exception))
+        self.assertEqual(self.state.record("check").status, "skipped")
+
     def test_route_follows_the_declared_edge(self) -> None:
         self.complete(self.state, self.workflow, "make")
         target = state.route_verdict(self.state, self.workflow, "make", "PASS")
