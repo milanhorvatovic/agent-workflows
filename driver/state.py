@@ -861,6 +861,19 @@ def check_gates(state: RunState, workflow: Workflow) -> None:
     if entry_gate is not None:
         decision = latest.get(entry_gate)
         accepted = decision is not None and decision.outcome == "accept"
+        # And the record it wrote. A re-entry is why this is not held to
+        # `done` — the gate returns to `pending` to decide again, and to
+        # `blocked` once it is waiting — but `skipped` is neither: nothing
+        # writes it over a gate that has accepted, the terminal write of §7
+        # reaching the records still pending or blocked and never the
+        # deciding gate's own. A class beside one is a class no decision of
+        # this run produced.
+        standing = next((step for step in state.steps if step.id == entry_gate), None)
+        if accepted and standing is not None and standing.status == "skipped":
+            raise StateError(
+                f"gate {entry_gate!r} records an accept and its own entry is "
+                f"skipped — accepting writes it `done` (spec §7, §10)"
+            )
         if state.risk is not None and not accepted:
             stands = (
                 f"its latest decision is {decision.outcome!r}"

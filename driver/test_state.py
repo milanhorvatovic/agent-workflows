@@ -1037,6 +1037,45 @@ class RejectedRunTest(StateTestCase):
         state.check_gates(rejected("skipped"), self.workflow)
 
 
+class AcceptedClassTest(StateTestCase):
+    def test_a_skipped_gate_never_accepted_the_class_it_carries(self) -> None:
+        """Accepting writes the gate `done`, and a re-entry can only make
+        it `pending` or `blocked` — the run coming back to decide again.
+        `skipped` is neither, so a class beside one is a class no decision
+        of this run produced, and every check keyed on `run.risk` reads the
+        post-intake shape as established."""
+        def carrying(status: str) -> state.RunState:
+            return state.RunState(
+                run_id="2026-08-17-x",
+                workflow="demo",
+                protocol="0.2",
+                risk="R1",
+                risk_rationale="small",
+                steps=[
+                    state.StepRecord(id="make", status="pending"),
+                    state.StepRecord(id="check", status=status),
+                ],
+                gates=[
+                    state.GateRecord(
+                        gate="check",
+                        transport="blocking",
+                        outcome="accept",
+                        at="2026-08-16T09:00:00Z",
+                    )
+                ],
+                artifacts=[],
+            )
+
+        with self.assertRaises(state.StateError) as caught:
+            state.check_gates(carrying("skipped"), self.workflow)
+        self.assertIn("check", str(caught.exception))
+        # What a re-entry leaves is still read: the gate decides again, and
+        # the class it accepted stands until it does.
+        for status in ("done", "pending", "blocked"):
+            with self.subTest(status=status):
+                state.check_gates(carrying(status), self.workflow)
+
+
 class RoutedStateTest(StateTestCase):
     def test_what_routing_writes_passes_the_checks_that_read_it(self) -> None:
         """A re-entry returns a decided gate to `pending` so it decides
