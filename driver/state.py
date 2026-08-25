@@ -1118,11 +1118,15 @@ def _resolve_target(state: RunState, workflow: Workflow, target: str) -> str:
             # would stop the run at a decision nothing has yet produced work
             # for, where the rule sends it to the work itself.
             #
-            # Every `skipped` record is passed over, which is wider than the
-            # rule's words: a class exclusion, a conditional whose route has
-            # not fired, and a step whose output the run imported (§8.6) all
-            # wear that one status, and run state records no reason to tell
-            # them apart.
+            # Only what the class excluded is passed over. Three things
+            # wear `skipped` and run state records no reason to tell them
+            # apart, but the declarations do: a conditional member is one
+            # the sequence says so about, an imported derivation is one the
+            # manifest of imports names, and a member that is neither was
+            # left out by the class. The first two are where the stage's
+            # work begins if they are first — §9.1 names the stage's first
+            # step, and a route re-enters a conditional member (§10) or an
+            # imported one (§8.6) rather than stepping over it.
             # Resolution continues past the stage where the stage itself is
             # skipped whole: the overlays say "an edge or stage id targeting
             # skipped content resolves to the next non-skipped point in
@@ -1137,14 +1141,54 @@ def _resolve_target(state: RunState, workflow: Workflow, target: str) -> str:
                     record = next(
                         (step for step in state.steps if step.id == member.id), None
                     )
-                    if record is not None and record.status != "skipped":
+                    if record is not None and (
+                        record.status != "skipped"
+                        or _re_enterable(state, workflow, member.id)
+                    ):
                         return member.id
             raise StateError(
                 f"stage {target!r} resolves to no runnable step, here or after "
                 f"it (spec §9.1, overlays' skip resolution)"
             )
-    state.record(target)  # raises if the id names nothing
-    return target
+    record = state.record(target)  # raises if the id names nothing
+    if record.status != "skipped" or _re_enterable(state, workflow, target):
+        return target
+    # The overlays: "an edge or stage id targeting skipped content resolves
+    # to the next non-skipped point in composition order". What this
+    # destination names is work the class excluded, and re-entering it
+    # would resurrect what the accepted class left out — so the edge
+    # resolves past it, to the next member the run still runs.
+    order = [member.id for _, member in workflow.members()]
+    for member_id in order[order.index(target) + 1 :]:
+        later = next((step for step in state.steps if step.id == member_id), None)
+        if later is not None and (
+            later.status != "skipped" or _re_enterable(state, workflow, member_id)
+        ):
+            return member_id
+    raise StateError(
+        f"edge target {target!r} is skipped by the accepted class and nothing "
+        f"after it runs (spec §9.1, overlays' skip resolution)"
+    )
+
+
+def _re_enterable(state: RunState, workflow: Workflow, member_id: str) -> bool:
+    """Whether a `skipped` record is one a route may re-enter.
+
+    Two of the three reasons a record wears that status are re-enterable
+    and readable from the declarations: a conditional member is skipped
+    until a route fires it (§10), and a step whose output the run imported
+    is skipped with the artifact already in place, which §8.6 has a route
+    "run on the imported copy as it would on any artifact it is given". The
+    third is work the accepted class excluded, which a route may not
+    resurrect — and which is what a record is when it is neither of the
+    other two.
+    """
+    for stage in workflow.stages:
+        for member in stage.members:
+            if member.id == member_id:
+                if member.conditional:
+                    return True
+    return member_id in _import_skipped(state, workflow)
 
 
 def _run_mapping(state: RunState) -> dict[str, object]:

@@ -376,6 +376,37 @@ class TransitionTest(StateTestCase):
         self.assertIn("later", str(caught.exception))
         self.assertEqual(self.state.record("check").status, "skipped")
 
+    def test_a_route_to_overlay_skipped_work_resolves_past_it(self) -> None:
+        """`workflows/overlays.md` resolves an edge targeting skipped
+        content to the next non-skipped point, and §10 has a route re-enter
+        a member a condition skipped. Both are `skipped`, and what tells
+        them apart is the declaration: a conditional member is one the
+        sequence says so about, an imported derivation is one the manifest
+        names, and a member that is neither was left out by the class —
+        work a route may not resurrect."""
+        three = STAGE.replace(
+            "        - step: make\n",
+            "        - step: make\n        - step: spare\n        - step: last\n",
+        ).replace("        PASS: check\n", "        PASS: spare\n").replace(
+            "## Gates",
+            "### spare (planner)\n\nProse.\n\n```yaml\nmetadata:\n  workflow:\n"
+            '    protocol: "0.2"\n    step:\n      role: planner\n      output:\n'
+            '        artifact: "{run}/spare.md"\n```\n\n'
+            "### last (reviewer)\n\nProse.\n\n```yaml\nmetadata:\n  workflow:\n"
+            '    protocol: "0.2"\n    step:\n      role: reviewer\n      output:\n'
+            '        artifact: "{run}/last.md"\n```\n\n## Gates',
+        )
+        (self.base / "workflows" / "stages" / "demo.md").write_text(three, encoding="utf-8")
+        workflow = load_workflow(self.base, "demo")
+        _, created = state.create_run(self.runs, "overlay", workflow, "0.2")
+        created.record("spare").status = "skipped"  # the class left it out
+        self.complete(created, workflow, "make")
+        self.assertEqual(
+            state.route_verdict(created, workflow, "make", "PASS"), "last"
+        )
+        self.assertEqual(created.record("spare").status, "skipped")
+        self.assertEqual(created.record("last").status, "pending")
+
     def test_route_follows_the_declared_edge(self) -> None:
         self.complete(self.state, self.workflow, "make")
         target = state.route_verdict(self.state, self.workflow, "make", "PASS")
