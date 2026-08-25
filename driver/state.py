@@ -244,6 +244,14 @@ _BINDS_TO_DIRECTORY = (
     and hasattr(os, "O_DIRECTORY")
     and hasattr(os, "O_NOFOLLOW")
 )
+# Whether a directory can be opened and synced at all. POSIX names the
+# operation; Windows has no handle for a directory's own metadata, and its
+# `replace` is ordered against the file data by the filesystem instead.
+# Decided by the platform rather than read out of an error code: an open
+# that fails where the operation exists means no sync happened, which is
+# the write not being durable rather than the platform declining to make
+# it so.
+_SYNCS_DIRECTORIES = hasattr(os, "O_DIRECTORY")
 _NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 # Opening a FIFO blocks until the other end is written; non-blocking
 # turns that wait into a descriptor this module can look at and refuse.
@@ -462,14 +470,16 @@ def _sync_descriptor(descriptor: int) -> None:
 
 
 def _sync_directory(path: Path) -> None:
-    """The directory entry the rename created. Opening it is the part that
-    is allowed to fail quietly: Windows has no handle for a directory's own
-    metadata, and its `replace` is ordered against the file data by the
-    filesystem instead. Once it is open, a failure to sync is a failure."""
-    try:
-        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
-    except OSError:
+    """The directory entry the rename created, on the device.
+
+    Where the platform has no directory sync there is nothing to attempt
+    and nothing to report. Where it has one, every failure is this write's:
+    an open that fails means no sync happened at all, and a save that
+    swallowed it would report the durability it did not achieve.
+    """
+    if not _SYNCS_DIRECTORIES:
         return
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
     try:
         _sync_descriptor(descriptor)
     finally:

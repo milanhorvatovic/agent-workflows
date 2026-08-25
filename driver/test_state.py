@@ -516,6 +516,35 @@ class DurabilityTest(StateTestCase):
             state.save(created, run_dir)
         self.assertEqual(state.load(run_dir), created)
 
+    def test_a_directory_that_cannot_be_opened_is_not_a_sync_declined(self) -> None:
+        """Where a platform syncs directories, failing to open one means no
+        sync was attempted at all — an `EIO` or an exhausted descriptor
+        table is the write not being made durable, reported as made. The
+        platforms that have no such operation are decided by the platform,
+        not read out of an error code."""
+        import errno
+        import unittest.mock
+
+        if not state._SYNCS_DIRECTORIES:  # pragma: no cover
+            self.skipTest("this platform does not sync directories")
+        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2")
+        real = os.open
+
+        def failing(path, flags, *args, **kwargs):
+            # The directory open `_sync_directory` makes, and no other:
+            # every write here opens files, and the bound path opens the
+            # run directory to hold it.
+            if flags & os.O_DIRECTORY and str(path) == str(run_dir):
+                raise OSError(errno.EIO, os.strerror(errno.EIO))
+            return real(path, flags, *args, **kwargs)
+
+        # Unbound, so the sync is the one that opens the directory by path.
+        with unittest.mock.patch.object(state, "_BINDS_TO_DIRECTORY", False):
+            with unittest.mock.patch.object(os, "open", failing):
+                with self.assertRaises(OSError) as caught:
+                    state.save(created, run_dir)
+        self.assertEqual(caught.exception.errno, errno.EIO)
+
     def test_creation_persists_the_entry_that_names_the_run(self) -> None:
         """The state file's own durability says nothing about the directory
         holding it: a parent that never recorded the new entry loses the
