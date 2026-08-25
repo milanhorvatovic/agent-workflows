@@ -167,6 +167,23 @@ def _line_number(text: str, offset: int) -> int:
     return len(LINE_BREAK.findall(text[:offset])) + 1
 
 
+def _opens_item(content: str) -> bool:
+    """Whether this line opens a block-sequence item.
+
+    `-` is the indicator and what follows it is separation — a space or a
+    tab, as everywhere else this module reads YAML — or the end of the
+    line, where the item is the block indented beneath. Knowing only the
+    space sent a sequence written with tabs to the mapping parser, and
+    refused a document no conforming reader refuses.
+    """
+    return content == "-" or (content[:1] == "-" and content[1:2] in tuple(WHITESPACE))
+
+
+def _item_rest(content: str) -> str:
+    """What the item carries on its own line, past the indicator."""
+    return content[1:].strip(WHITESPACE)
+
+
 def _content_lines(text: str) -> list[_Line]:
     # Raw control characters are not YAML content, and this module cannot
     # read them harmlessly: NUL and its neighbours would survive into a
@@ -251,8 +268,8 @@ def _scalar_start(raw: str) -> int:
     what tells the two apart.
     """
     index = len(raw) - len(raw.lstrip(WHITESPACE))
-    if raw[index : index + 2] == "- ":
-        index += 2
+    if raw[index : index + 1] == "-" and raw[index + 1 : index + 2] in tuple(WHITESPACE):
+        index += 1
         index += len(raw[index:]) - len(raw[index:].lstrip(WHITESPACE))
     rest = raw[index:]
     if rest.startswith(('"', "#")):
@@ -285,7 +302,7 @@ def _parse_block(
     line = lines[start]
     if line.indent != indent:
         raise ProtocolYamlError(line.number, f"expected indent {indent}, got {line.indent}")
-    if line.content.startswith("- ") or line.content == "-":
+    if _opens_item(line.content):
         return _parse_sequence(lines, start, indent, depth)
     return _parse_mapping(lines, start, indent, depth)
 
@@ -297,7 +314,7 @@ def _parse_mapping(
     index = start
     while index < len(lines) and lines[index].indent == indent:
         line = lines[index]
-        if line.content.startswith("- ") or line.content == "-":
+        if _opens_item(line.content):
             raise ProtocolYamlError(line.number, "sequence entry inside a mapping")
         key, rest = _split_key(line)
         if key in mapping:
@@ -324,9 +341,9 @@ def _parse_sequence(
     index = start
     while index < len(lines) and lines[index].indent == indent:
         line = lines[index]
-        if not (line.content.startswith("- ") or line.content == "-"):
+        if not _opens_item(line.content):
             raise ProtocolYamlError(line.number, "mapping entry inside a sequence")
-        rest = line.content[2:].strip(WHITESPACE) if line.content != "-" else ""
+        rest = _item_rest(line.content)
         if not rest:
             # `-` alone: the item is the deeper-indented block that follows.
             if index + 1 < len(lines) and lines[index + 1].indent > indent:
@@ -535,7 +552,7 @@ def _is_plain_key(key: str) -> bool:
     `- item: 1`, which the reader takes as a sequence, so a mapping went out
     and a list came back.
     """
-    if key[0] in INDICATORS or key.startswith("- ") or key == "-":
+    if key[0] in INDICATORS or _opens_item(key):
         return False
     return not any(character in key for character in "{}[],#?|>\t")
 

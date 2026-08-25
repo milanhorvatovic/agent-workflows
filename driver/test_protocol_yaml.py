@@ -342,6 +342,15 @@ class LoadsTest(unittest.TestCase):
             loads("a: 'quoted'\n")
         self.assertIn("outside the subset", str(caught.exception))
 
+    def test_a_tab_separates_a_sequence_item_from_its_indicator(self) -> None:
+        """`-` is the indicator and what follows it is separation, which is
+        a space or a tab wherever else this module reads YAML. Knowing only
+        the space, a sequence written with tabs was routed to the mapping
+        parser and refused as a document no reader refuses."""
+        self.assertEqual(loads("-\titem\n"), ["item"])
+        self.assertEqual(loads("a:\n  -\tone\n  - two\n"), {"a": ["one", "two"]})
+        self.assertEqual(loads(dumps(["item"])), ["item"])
+
     def test_a_carriage_return_ends_a_line_for_the_line_number_too(self) -> None:
         """The reader takes CR as a line break — `splitlines` does — so the
         diagnostics have to count it as one: a document written with them
