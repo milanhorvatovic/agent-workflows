@@ -153,7 +153,13 @@ def _parse_directory(data: dict, key: str, default: str, config_path: Path) -> P
     # process working directory: the config sits in the consuming project,
     # and both roots must land there no matter where the driver is invoked
     # from. The `/` operator keeps an absolute value as-is.
-    return config_path.resolve().parent / expanded
+    anchored = config_path.resolve().parent / expanded
+    # That directory writes part of the path too, and `run` prints what the
+    # value resolves to rather than what it said. The rule is about the
+    # path the driver ends up with, so it is applied to the path the driver
+    # ends up with — as written, as expanded, and now as anchored.
+    _check_printable(str(anchored), f"the path {key} resolves to")
+    return anchored
 
 
 def _parse_backends(data: dict) -> dict[str, Backend]:

@@ -162,6 +162,23 @@ class ConfigTest(unittest.TestCase):
                         f"{key} must not contain control characters",
                     )
 
+    def test_a_config_directory_carrying_control_characters_is_rejected(self) -> None:
+        """A relative value anchors at the config file's own directory, so
+        that directory writes part of the path too — and `run` prints what
+        it resolves to. The rule is about the path the driver ends up with,
+        which is the third place the same value passes through: as written,
+        as expanded, and as anchored."""
+        odd = self.base / "we\x1b[2Kird"
+        try:
+            odd.mkdir()
+        except OSError as error:  # pragma: no cover
+            self.skipTest(f"control characters unusable in a path: {error}")
+        path = odd / "driver.json"
+        path.write_text(json.dumps(VALID), encoding="utf-8")
+        with self.assertRaises(ConfigError) as caught:
+            load_config(path)
+        self.assertIn("control characters", str(caught.exception))
+
     def test_a_surrogate_in_a_configured_path_is_rejected(self) -> None:
         """JSON decodes `\\ud800` into a lone surrogate, which UTF-8 cannot
         encode — so the path reaches `mkdir` or the line that prints it and
