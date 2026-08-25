@@ -604,6 +604,10 @@ class SyntheticTreeTest(unittest.TestCase):
             # forward reference: this one names nothing, so the mapping has
             # no `metadata` key and the block declares nothing.
             "{*m: {workflow: [one]}, label: &m metadata}\n",
+            # A hyphen inside a plain scalar is that scalar's text: it
+            # opens no node, so the `&m` after it defines nothing and the
+            # quote after it opens nothing.
+            "actual: &m other\nnote: x- &m metadata\n*m:\n  workflow: [one]\n",
             # A colon inside a quoted scalar is that scalar's text, not a
             # place where the next node begins: the `&m` after it defines
             # nothing, so the alias below still names what the real anchor
@@ -700,6 +704,10 @@ class SyntheticTreeTest(unittest.TestCase):
             # define more than one anchor.
             "{label: &m metadata, *m: {workflow: [one, two]}}\n",
             "{a: &k metadata, b: &v {workflow: [one, two]}, *k: *v}\n",
+            # A hyphen inside a plain scalar opens no node, so the quote
+            # after it opens no scalar either — the declaration below is a
+            # declaration and not a string's continuation.
+            'note: x- "unterminated\nmetadata:\n  workflow: [one]\n',
             # An anchor defined inside the value an alias stands in is
             # ahead of that alias, and a later definition of the same name
             # is behind it.

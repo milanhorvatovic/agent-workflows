@@ -660,6 +660,7 @@ def _fold_quoted(body: str) -> str:
 def _opens_quote(line: str) -> bool:
     """Whether a double-quoted scalar opens on this line and stays open."""
     at_node_start = True
+    depth = 0
     index = 0
     while index < len(line):
         character = line[index]
@@ -670,10 +671,11 @@ def _opens_quote(line: str) -> bool:
             index = closing + 1
             at_node_start = False
             continue
-        if character in "{[,:-":
-            at_node_start = True
-        elif character not in WHITESPACE:
-            at_node_start = False
+        at_node_start = _after(character, line[index + 1 : index + 2], at_node_start, depth)
+        if character in "{[":
+            depth += 1
+        elif character in "}]":
+            depth = max(0, depth - 1)
         index += 1
     return False
 
@@ -714,18 +716,37 @@ def _anchors_on(line: str) -> list[tuple[re.Match, int]]:
             match = ANCHOR_NAME.match(line, index)
             if match is not None:
                 found.append((match, depth))
+        at_node_start = _after(character, line[index + 1 : index + 2], at_node_start, depth)
         if character in "{[":
             depth += 1
-            at_node_start = True
         elif character in "}]":
             depth = max(0, depth - 1)
-            at_node_start = False
-        elif character in ",:-":
-            at_node_start = True
-        elif character not in WHITESPACE:
-            at_node_start = False
         index += 1
     return found
+
+
+def _after(character: str, following: str, at_node_start: bool, depth: int) -> bool:
+    """Whether a node begins after this character.
+
+    The punctuation that opens a place for one: a flow collection's
+    brackets, its commas, and the `:` between a key and its value. A `-`
+    joins them only as the block-sequence indicator — itself at a node
+    start and separated from what follows — since a hyphen inside a plain
+    scalar is that scalar's text, and reading it as an indicator invented
+    anchors and quoted scalars out of `note: x- &m metadata`. A comma
+    outside a flow collection is text for the same reason.
+    """
+    if character in "{[}]":
+        return character in "{["
+    if character == ":":
+        return True
+    if character == ",":
+        return depth > 0
+    if character == "-":
+        return at_node_start and following in tuple(WHITESPACE) + ("",)
+    if character in WHITESPACE:
+        return at_node_start
+    return False
 
 
 def _anchored(
@@ -856,10 +877,6 @@ def _resolve_flow_aliases(
     out: list[str] = []
     index = 0
     at_node_start = True
-    # An anchor defined in this text stands where it was written, so the
-    # definitions passed in are the ones outside it and these are the ones
-    # within: an alias names the nearest ahead of it either way, and a
-    # redefinition behind it names nothing it can see.
     local: dict[str, tuple[str, str]] = {}
     while index < len(flat):
         character = flat[index]
