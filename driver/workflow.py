@@ -42,13 +42,20 @@ MEMBER_ID = re.compile('^[a-z][a-z0-9]*(-[a-z0-9]+)*$')
 STEP_HEADING = re.compile(
     r"^### (?P<id>[a-z][a-z0-9-]*) \((?P<role>[a-z]+)\)[ \t]*$", re.MULTILINE
 )
-# A key is a node, so a tag or an anchor may precede it — `!!str metadata:`
-# resolves to the same key any reader that parses it reports, and a scan
-# that read only the bare spelling would file the declaration under it as
-# prose. Up to two, the tag and the anchor in either order.
+# A first-column key and its value. The key is captured rather than spelled
+# out, because what names it is its resolved value: a document-start marker
+# may precede it, the explicit indicator may, a tag or an anchor may, and
+# the name itself may be quoted and escaped. Every one of those is the same
+# key to a reader that parses the document, and a pattern that matched one
+# spelling filed the declarations under the others as prose. `_key_name`
+# decides which matches are `metadata`.
+KEY_TOKEN = (
+    r'(?P<key>"(?:\\.|[^"\\\n])*"|\'(?:\'\'|[^\'\n])*\'|[^\s:#][^:#\n]*?)'
+)
 METADATA_KEY = re.compile(
     r'^(?:---[ \t]+)?(?:\?[ \t]+)?(?:[!&]\S*[ \t]+){0,2}'
-    r'[\'"]?metadata[\'"]?[ \t]*:(?P<rest>.*)$',
+    + KEY_TOKEN
+    + r'[ \t]*:(?P<rest>.*)$',
     re.MULTILINE,
 )
 # YAML's explicit key form spells the same key over two lines — `? metadata`
@@ -56,7 +63,9 @@ METADATA_KEY = re.compile(
 # any reader that parses it. The `rest` group is that value, so both forms
 # are read the same way from here on.
 EXPLICIT_KEY = re.compile(
-    r'^\?[ \t]+(?:[!&]\S*[ \t]+){0,2}[\'"]?metadata[\'"]?[ \t]*\n^:(?P<rest>.*)$',
+    r'^\?[ \t]+(?:[!&]\S*[ \t]+){0,2}'
+    + KEY_TOKEN
+    + r'[ \t]*\n^:(?P<rest>.*)$',
     re.MULTILINE,
 )
 WORKFLOW_KEY = re.compile(r'^[ \t]+[\'"]?workflow[\'"]?[ \t]*:')
@@ -430,9 +439,8 @@ def _declares_workflow(body: str) -> bool:
     spans are blanked and a trailing comment removed first, since neither
     is structure.
     """
-    for opening in list(METADATA_KEY.finditer(body)) + list(
-        EXPLICIT_KEY.finditer(body)
-    ):
+    openings = list(METADATA_KEY.finditer(body)) + list(EXPLICIT_KEY.finditer(body))
+    for opening in (m for m in openings if _key_name(m.group("key")) == "metadata"):
         rest = _without_comment(_blank_quoted(opening.group("rest")))
         if _flow_has_direct_key(rest, "workflow"):
             return True
@@ -486,6 +494,13 @@ def _root_flow_declares(body: str) -> bool:
 
 
 ESCAPE = re.compile(r"\\(?:x([0-9A-Fa-f]{2})|u([0-9A-Fa-f]{4})|U([0-9A-Fa-f]{8})|(.))")
+
+
+def _key_name(token: str) -> str:
+    """What a captured key names: its resolved value, quoted or not."""
+    if token[:1] in ("'", '"') and _closing_quote(token, 0) == len(token) - 1:
+        return _decoded(token)
+    return token.rstrip(WHITESPACE)
 
 
 def _decoded(span: str) -> str:

@@ -646,6 +646,8 @@ class SyntheticTreeTest(unittest.TestCase):
             # A quoted key is decoded before it is a key: `"work\\u0066low"`
             # is the same key spelled with an escape, at either level.
             'metadata: {"work\\u0066low": [one, two]}\n',
+            '"met\\u0061data":\n  workflow: [one, two]\n',
+            '? "met\\u0061data"\n: {workflow: [one, two]}\n',
             '{"met\\u0061data": {workflow: [one, two]}}\n',
             'metadata:\n  "work\\u0066low": [one, two]\n',
             "metadata: {!!str workflow: [one, two]}\n",
