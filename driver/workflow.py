@@ -442,6 +442,11 @@ def _declares_workflow(body: str) -> bool:
     spans are blanked and a trailing comment removed first, since neither
     is structure.
     """
+    # A stream may open with U+FEFF, which marks its encoding rather than
+    # its content — `loads` drops it, and a scan that kept it would read
+    # the mark as the first characters of whatever follows: neither the
+    # first-column key nor the root brace is where it looks.
+    body = body[1:] if body.startswith("\ufeff") else body
     openings = list(METADATA_KEY.finditer(body)) + list(EXPLICIT_KEY.finditer(body))
     for opening in (m for m in openings if _key_name(m.group("key")) == "metadata"):
         rest = _without_comment(_blank_quoted(opening.group("rest")))
@@ -674,8 +679,8 @@ def _block_has_direct_key(after: str, name: str) -> bool:
                 key = _decoded(key[: closing + 1]) + key[closing + 1 :]
                 break
         if key.startswith(name):
-            after = key[len(name) :].lstrip(WHITESPACE)
-            if after.startswith(":") or (explicit and not after):
+            rest = key[len(name) :].lstrip(WHITESPACE)
+            if rest.startswith(":") or (explicit and not rest):
                 return True
     return False
 

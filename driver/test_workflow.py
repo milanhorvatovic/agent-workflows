@@ -644,6 +644,10 @@ class SyntheticTreeTest(unittest.TestCase):
             "&saved metadata:\n  workflow: [one, two]\n",
             "metadata:\n  !!str workflow: [one, two]\n",
             "{!!str metadata: {workflow: [one, two]}}\n",
+            # A stream mark stands ahead of the document it opens, and the
+            # reader that parses past it resolves the same two keys.
+            "\ufeff{metadata: {workflow: [one, two]}}\n",
+            "\ufeffmetadata:\n  workflow: [one, two]\n",
             # The document-start marker opens the document it precedes, and
             # what follows it is that document's root.
             "--- {metadata: {workflow: [one, two]}}\n",
