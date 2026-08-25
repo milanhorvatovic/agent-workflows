@@ -510,6 +510,15 @@ class DurabilityTest(StateTestCase):
             )
         runs = os.stat(self.runs)
         self.assertIn((runs.st_ino, runs.st_dev), synced)
+        # And every ancestor the creation made: syncing `runs` persists the
+        # run inside it, while the entry naming `runs` lives in its own
+        # parent — unsynced, the first run of a fresh artifact root goes
+        # with it.
+        for ancestor in (self.runs.parent, self.runs.parent.parent):
+            info = os.stat(ancestor)
+            self.assertIn(
+                (info.st_ino, info.st_dev), synced, f"{ancestor} was never synced"
+            )
         self.assertTrue((run_dir / state.STATE_FILE).is_file())
 
 

@@ -171,6 +171,12 @@ def create_run(
             f"implements {PROTOCOL} (spec §11)"
         )
     run_dir = runs_dir / run_id
+    # Which ancestors this creation will make. The entry naming each one
+    # lives in its parent, and only that parent's own sync persists it —
+    # syncing `runs` alone persists the run inside it while the entry
+    # naming `runs` is still nowhere on the device. Read before anything
+    # is created, since afterwards they all exist.
+    fresh = [path for path in (runs_dir, *runs_dir.parents) if not path.exists()]
     with _runs_directory(runs_dir, create=True) as runs:
         try:
             if runs is None:
@@ -190,6 +196,8 @@ def create_run(
         else:
             with contextlib.suppress(OSError):
                 os.fsync(runs)
+        for path in fresh:
+            _sync_directory(path.parent)
         return created
 
 
