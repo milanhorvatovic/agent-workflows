@@ -463,10 +463,12 @@ def _declares_workflow(body: str) -> bool:
     anchors = _anchors(body)
     openings = list(METADATA_KEY.finditer(body)) + list(EXPLICIT_KEY.finditer(body))
     for opening in (
-        m for m in openings if _key_name(m.group("key"), anchors) == "metadata"
+        m
+        for m in openings
+        if _key_name(m.group("key"), anchors, m.start()) == "metadata"
     ):
         rest = _without_comment(_blank_quoted(opening.group("rest")))
-        rest = _resolved(rest, anchors)
+        rest = _resolved(rest, anchors, opening.start())
         if _flow_has_direct_key(rest, "workflow"):
             return True
         # `metadata: |` or `metadata: >` opens a block scalar, and what is
@@ -537,37 +539,62 @@ ANCHOR = re.compile(r"(?:^|[ \t:\[{,])&(?P<name>[^\s\[\]{},]+)(?P<value>[ \t]*.*
 ALIAS = re.compile(r"^\*(?P<name>[^\s\[\]{},]+)$")
 
 
-def _anchors(body: str) -> dict[str, str]:
-    """Every anchor the block defines, mapped to the text it holds — the
-    rest of its own line, and the lines indented under it where that is
-    where its node continues."""
-    found: dict[str, str] = {}
+def _anchors(body: str) -> list[tuple[int, str, str]]:
+    """Every anchor the block defines, in the order they appear: where it
+    was defined, what it is called, and the text it holds — the rest of its
+    own line with any comment removed, and the lines indented under it
+    where that is where its node continues.
+
+    A list rather than a map, because a name may be defined more than once
+    and an alias names the definition before it. Reading the last one in
+    the file would answer for a node the alias never saw.
+    """
+    found: list[tuple[int, str, str]] = []
+    offset = 0
     lines = body.split("\n")
     for number, line in enumerate(lines):
         match = ANCHOR.search(line)
-        if match is None:
-            continue
-        held = match.group("value").strip(WHITESPACE)
-        indent = len(line) - len(line.lstrip(WHITESPACE))
-        for following in lines[number + 1 :]:
-            if not following.strip():
-                continue
-            if len(following) - len(following.lstrip(WHITESPACE)) <= indent:
-                break
-            held += "\n" + following
-        found[match.group("name")] = held
+        if match is not None:
+            # A comment is not part of what the anchor holds: `&m metadata
+            # # a label` anchors `metadata`, and carrying the label with it
+            # names a key nothing declares.
+            held = _without_comment(_blank_quoted(match.group("value"))).strip(WHITESPACE)
+            indent = len(line) - len(line.lstrip(WHITESPACE))
+            for following in lines[number + 1 :]:
+                if not following.strip():
+                    continue
+                if len(following) - len(following.lstrip(WHITESPACE)) <= indent:
+                    break
+                held += "\n" + following
+            found.append((offset + match.start("name"), match.group("name"), held))
+        offset += len(line) + 1
     return found
 
 
-def _resolved(text: str, anchors: dict[str, str]) -> str:
+def _anchored(anchors: list[tuple[int, str, str]], name: str, before: int) -> str | None:
+    """What `name` held where the alias stands: the last definition ahead of
+    it, which is the one YAML resolves an alias against."""
+    held = None
+    for offset, anchor, text in anchors:
+        if anchor == name and offset < before:
+            held = text
+    return held
+
+
+def _resolved(text: str, anchors: list[tuple[int, str, str]], offset: int) -> str:
     """An alias standing alone as a value, replaced by what it names."""
     alias = ALIAS.match(text.strip(WHITESPACE))
     if alias is None:
         return text
-    return anchors.get(alias.group("name"), text)
+    held = _anchored(anchors, alias.group("name"), offset)
+    return text if held is None else held
 
 
-def _key_name(token: str, anchors: dict[str, str] | None = None) -> str:
+def _key_name(
+    token: str,
+    anchors: list[tuple[int, str, str]] | None = None,
+    offset: int = 0,
+) -> str:
     """What a captured key names: its resolved value, quoted, aliased, or
     plain."""
     if token[:1] in ("'", '"') and _closing_quote(token, 0) == len(token) - 1:
@@ -575,7 +602,9 @@ def _key_name(token: str, anchors: dict[str, str] | None = None) -> str:
     token = token.rstrip(WHITESPACE)
     alias = ALIAS.match(token)
     if alias is not None and anchors is not None:
-        return anchors.get(alias.group("name"), token).strip(WHITESPACE)
+        held = _anchored(anchors, alias.group("name"), offset)
+        if held is not None:
+            return held.strip(WHITESPACE)
     return token
 
 

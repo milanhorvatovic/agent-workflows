@@ -654,6 +654,11 @@ class SyntheticTreeTest(unittest.TestCase):
             # `metadata` where `&m metadata` said so, and a value `*w` is
             # the mapping the anchor carries.
             "anchor: &m metadata\n*m:\n  workflow: [one, two]\n",
+            # What an anchor holds ends where a comment begins, and an
+            # alias names the definition before it rather than the last one
+            # in the file.
+            "anchor: &m metadata # a label\n*m:\n  workflow: [one, two]\n",
+            "a: &m metadata\n*m:\n  workflow: [one, two]\nb: &m other\n",
             "anchor: &w {workflow: [one, two]}\nmetadata: *w\n",
             # A stream mark stands ahead of the document it opens, and the
             # reader that parses past it resolves the same two keys.
