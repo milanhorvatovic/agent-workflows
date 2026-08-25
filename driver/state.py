@@ -220,15 +220,22 @@ def _bootstrap(
         save(state, run_dir, runs)
     except BaseException:
         # The directory exists only to hold this state, and §8.1 makes a
-        # pre-existing one a refusal — so leaving an empty one behind after
-        # the write that fills it failed would burn the id: the retry meets
+        # pre-existing one a refusal — so leaving one behind after the
+        # write that fills it failed would burn the id: the retry meets
         # "already exists" and the run it names has no state to resume.
-        # Only an empty directory is removed, nothing else having written
-        # into it yet, and the failure itself is what propagates.
+        # The state file goes with it, since a save can fail after the
+        # rename has already published it — the sync that follows says the
+        # write did not reach the device — and a directory holding that
+        # file is not empty for `rmdir` to take. Nothing else has written
+        # here: the directory was made moments ago by this call. The
+        # failure itself is what propagates.
         try:
             if runs is None:
+                (run_dir / STATE_FILE).unlink(missing_ok=True)
                 run_dir.rmdir()
             else:
+                with contextlib.suppress(FileNotFoundError):
+                    os.unlink(f"{run_dir.name}/{STATE_FILE}", dir_fd=runs)
                 os.rmdir(run_dir.name, dir_fd=runs)
         except OSError:
             pass
