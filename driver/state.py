@@ -30,7 +30,7 @@ from pathlib import Path
 
 from . import PROTOCOL, PROTOCOL_VERSION, implements
 from .protocol_yaml import ProtocolYamlError, dumps, loads
-from .workflow import PHASE, PHASE_SET, Workflow
+from .workflow import PHASE, PHASE_SET, PHASE_TOKEN, Workflow
 
 STATE_FILE = "workflow-state.yaml"
 
@@ -933,9 +933,17 @@ def route_verdict(state: RunState, workflow: Workflow, step_id: str, verdict: st
     # validator the class skipped "stays `skipped` and is not resurrected by
     # a rule expecting it", and a `blocked` gate is a decision still open
     # rather than one this write undoes.
+    # What the walk returned, returned to `pending`: every record that ran,
+    # and the derivations §8.6 skipped by import — identifying one and
+    # leaving it `skipped` is a resume walking past it exactly as it would
+    # have without the walk. A conditional member's own skip is untouched,
+    # its condition not having fired for this write to answer.
+    reset = {step.id for step in state.steps if step.status == "done"} | _import_skipped(
+        state, workflow
+    )
     for step_id in _invalidated_by(state, workflow, resolved):
         record = next((step for step in state.steps if step.id == step_id), None)
-        if record is not None and record.status == "done":
+        if record is not None and record.id in reset:
             record.status = "pending"
     return resolved
 
@@ -984,17 +992,10 @@ def _invalidated_by(state: RunState, workflow: Workflow, destination: str) -> se
     # `skipped` where its declared output was imported, and holds that skip
     # "only while the derivation stays imported": once the artifact it was
     # derived from is re-entered, what the import holds was computed from
-    # the old input, and a resume walking past it carries that forward. A
-    # member the class or a condition skipped produced nothing and derives
-    # from nothing, which is why the two `skipped` are told apart by the
-    # manifest of imports rather than by the status they share.
-    imported = {_phase_free(record.artifact) for record in (state.imports or ())}
-    ran = {
-        step.id
-        for step in state.steps
-        if step.status == "done"
-        or (step.status == "skipped" and produced.get(step.id) in imported)
-    }
+    # the old input, and a resume walking past it carries that forward.
+    ran = {step.id for step in state.steps if step.status == "done"} | _import_skipped(
+        state, workflow
+    )
     invalidated: set[str] = set()
     pending = [destination]
     while pending:
@@ -1019,6 +1020,39 @@ def _invalidated_by(state: RunState, workflow: Workflow, destination: str) -> se
                 if member.kind == "gate" and member.id in after:
                     invalidated.add(member.id)
     return invalidated
+
+
+def _import_skipped(state: RunState, workflow: Workflow) -> set[str]:
+    """Every step whose record is `skipped` because its declared output was
+    imported (§8.6), told from the members a class or a condition skipped.
+
+    A member the class or a condition left out produced nothing and derives
+    from nothing; one skipped by import has an artifact in the run and a
+    lineage behind it. The two wear the same status, so what tells them
+    apart is the manifest of imports — matched against the family the
+    declaration names rather than the text it is written as, since an
+    import records the one path it copied and `{run}/phase-{N}-plan.md` is
+    not the string `{run}/phase-1-plan.md`.
+    """
+    imports = [record.artifact for record in (state.imports or ())]
+    if not imports:
+        return set()
+    produced: set[str] = set()
+    for stage in workflow.stages:
+        for step_id, declaration in stage.steps.items():
+            family = re.compile(
+                "[0-9]+".join(
+                    re.escape(part)
+                    for part in PHASE_TOKEN.split(declaration.output_artifact)
+                )
+            )
+            if any(family.fullmatch(path) for path in imports):
+                produced.add(step_id)
+    return {
+        step.id
+        for step in state.steps
+        if step.status == "skipped" and step.id in produced
+    }
 
 
 def _phase_free(artifact: str) -> str:

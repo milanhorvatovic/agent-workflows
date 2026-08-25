@@ -121,6 +121,10 @@ PLACEHOLDER = re.compile(r"(?<!\$)\{([^{}]*)\}")
 # would agree with itself about the corruption.
 PHASE = re.compile(r"(?<!\$)\{N\}")
 PHASE_SET = re.compile(r"(?<!\$)\{P\}")
+# Either of them, for reading a declared path as the family it names: an
+# import records the one path it copied, and what says whether a step
+# produced it is the family its declaration describes.
+PHASE_TOKEN = re.compile(r"(?<!\$)\{[NP]\}")
 
 # The schemas declare every structure below closed, and §9.5 makes unknown
 # keys inside one an authoring error while tolerating unknown siblings of
@@ -350,6 +354,16 @@ def _blank_quoted(text: str) -> str:
     at_node_start = True
     while index < len(text):
         character = text[index]
+        # Node properties stand between the punctuation that opens a place
+        # and the node that fills it, so a tag or an anchor keeps the start
+        # rather than ending it: `&m "…"` opens a quoted scalar as plainly
+        # as `: "…"` does, and reading the name as content left the span
+        # unblanked for everything downstream to read as structure.
+        if character in "&!" and at_node_start:
+            while index < len(text) and text[index] not in WHITESPACE:
+                out.append(text[index])
+                index += 1
+            continue
         if character not in "\"'" or not at_node_start:
             if character in "{[,:":
                 at_node_start = True
@@ -817,14 +831,31 @@ def _resolve_flow_aliases(
     out: list[str] = []
     index = 0
     at_node_start = True
+    # An anchor defined in this text stands where it was written, so the
+    # definitions passed in are the ones outside it and these are the ones
+    # within: an alias names the nearest ahead of it either way, and a
+    # redefinition behind it names nothing it can see.
+    local: dict[str, tuple[str, str]] = {}
     while index < len(flat):
         character = flat[index]
+        if character == "&" and at_node_start:
+            defined = ANCHOR_NAME.match(flat, index)
+            if defined is not None:
+                node = _flow_node(defined.group("value").lstrip(WHITESPACE))
+                value = node
+                if value[:1] in ("'", '"') and _closing_quote(value, 0) == len(value) - 1:
+                    value = _decoded(value)
+                local[defined.group("name")] = (node, value)
         if character == "*" and at_node_start:
             match = ALIAS_NAME.match(flat, index)
             if match is not None:
                 rest = flat[match.end() :].lstrip(WHITESPACE)
-                held = _anchored(
-                    anchors, match.group("name"), before, as_value=rest.startswith(":")
+                as_value = rest.startswith(":")
+                nearest = local.get(match.group("name"))
+                held = (
+                    nearest[1 if as_value else 0]
+                    if nearest is not None
+                    else _anchored(anchors, match.group("name"), before, as_value=as_value)
                 )
                 if held is not None:
                     out.append(held)

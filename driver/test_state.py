@@ -743,6 +743,67 @@ class ImportInvalidationTest(StateTestCase):
         self.assertIn("derive", invalidated)
         self.assertNotIn("other", invalidated)
 
+    def test_the_write_returns_that_derivation_to_pending(self) -> None:
+        """Identifying it is half the transition: left `skipped`, §8.5
+        walks past it exactly as it would have without the walk."""
+        workflow = self.build()
+        state_obj = state.RunState(
+            run_id="2026-08-17-x",
+            workflow="demo",
+            protocol="0.2",
+            risk="R1",
+            risk_rationale="small",
+            steps=[
+                state.StepRecord(id="make", status="done"),
+                state.StepRecord(id="derive", status="skipped"),
+                state.StepRecord(id="other", status="skipped"),
+                state.StepRecord(id="check", status="skipped"),
+            ],
+            gates=[],
+            artifacts=["{run}/out.md", "{run}/derived.md"],
+            imports=[
+                state.ImportRecord(
+                    artifact="{run}/derived.md",
+                    from_run="2026-08-01-source",
+                    at="2026-08-16T09:00:00Z",
+                )
+            ],
+        )
+        state.route_verdict(state_obj, workflow, "make", "FAIL")
+        self.assertEqual(state_obj.record("derive").status, "pending")
+        # The class-skipped reader is not a derivation and stays as it is.
+        self.assertEqual(state_obj.record("other").status, "skipped")
+
+    def test_a_phased_output_is_matched_against_the_path_imported(self) -> None:
+        """An import records the path it copied — `{run}/phase-1-out.md` —
+        and a declaration names the family it belongs to. Compared as text
+        the two never meet, so every phased derivation read as never
+        imported and no re-entry reached one."""
+        phased = STAGE.replace(
+            'artifact: "{run}/out.md"', 'artifact: "{run}/phase-{N}-out.md"'
+        )
+        (self.base / "workflows" / "stages" / "demo.md").write_text(phased, encoding="utf-8")
+        workflow = load_workflow(self.base, "demo")
+        state_obj = state.RunState(
+            run_id="2026-08-17-x",
+            workflow="demo",
+            protocol="0.2",
+            steps=[
+                state.StepRecord(id="make", status="skipped"),
+                state.StepRecord(id="check", status="skipped"),
+            ],
+            gates=[],
+            artifacts=["{run}/phase-1-out.md"],
+            imports=[
+                state.ImportRecord(
+                    artifact="{run}/phase-1-out.md",
+                    from_run="2026-08-01-source",
+                    at="2026-08-16T09:00:00Z",
+                )
+            ],
+        )
+        self.assertEqual(state._import_skipped(state_obj, workflow), {"make"})
+
 
 class CrossStageInvalidationTest(StateTestCase):
     def build(self) -> object:
