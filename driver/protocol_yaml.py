@@ -104,8 +104,13 @@ INDICATORS = "'\"&*!|>[]{},#%@`"
 # and the emitter refuses the code point: UTF-8 cannot carry it. Accepted
 # raw, this reader returned a value its own writer cannot put in a file,
 # which is the round trip the two halves promise each other.
+# U+FFFE and U+FFFF join them: YAML 1.2 keeps both out of the character
+# stream outright, so a document carrying either raw is one no conforming
+# reader accepts. Escaped, they are ordinary content — the rule is about
+# the stream, not the value.
 RAW_FORBIDDEN = re.compile(
-    "[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f-\\x9f\\u2028\\u2029\\ud800-\\udfff]"
+    "[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f-\\x9f"
+    "\\u2028\\u2029\\ufffe\\uffff\\ud800-\\udfff]"
 )
 SURROGATE = re.compile("[\\ud800-\\udfff]")
 
@@ -211,6 +216,8 @@ def _content_lines(text: str) -> list[_Line]:
         what = (
             "lone surrogate, which UTF-8 cannot encode"
             if SURROGATE.match(found.group())
+            else "a character YAML keeps out of the stream"
+            if found.group() in "\ufffe\uffff"
             else "raw control character in the document"
         )
         raise ProtocolYamlError(
@@ -690,7 +697,7 @@ def _quote(value: str) -> str:
         elif (
             ord(character) < 0x20
             or 0x7F <= ord(character) <= 0x9F
-            or character in "\u2028\u2029"
+            or character in "\u2028\u2029\ufffe\uffff"
         ):
             # Every character `str.splitlines` breaks on has to leave here as
             # an escape, or the emitter writes a document the reader sees as

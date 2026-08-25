@@ -387,6 +387,20 @@ class LoadsTest(unittest.TestCase):
         # content this subset does not carry.
         self.assertEqual(loads('a: "x﻿y"\n'), {"a": "x﻿y"})
 
+    def test_rejects_the_two_code_points_yaml_excludes_outright(self) -> None:
+        """YAML 1.2 keeps U+FFFE and U+FFFF out of the character stream, so
+        a document carrying either raw is one no conforming reader accepts
+        — and one this emitter must not write. Escaped, they are ordinary
+        content: what the rule is about is the stream."""
+        for character in ("\ufffe", "\uffff"):
+            with self.subTest(character=character):
+                with self.assertRaises(ProtocolYamlError) as caught:
+                    loads(f"a: before{character}after\n")
+                self.assertIn("YAML", str(caught.exception))
+                text = dumps({"a": f"x{character}y"})
+                self.assertNotIn(character, text)
+                self.assertEqual(loads(text), {"a": f"x{character}y"})
+
     def test_rejects_a_raw_surrogate_as_it_rejects_the_escape(self) -> None:
         """UTF-8 cannot carry a lone surrogate, which is why the escape for
         one is refused and why the emitter refuses the code point. Raw, it
