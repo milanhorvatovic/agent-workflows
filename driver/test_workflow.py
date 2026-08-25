@@ -600,6 +600,10 @@ class SyntheticTreeTest(unittest.TestCase):
             # gives `metadata` is a string too — text that reads as a
             # mapping is not one for being quoted text about one.
             'anchor: &m "{workflow: x}"\nmetadata: *m\n',
+            # An alias names an anchor standing before it, and YAML has no
+            # forward reference: this one names nothing, so the mapping has
+            # no `metadata` key and the block declares nothing.
+            "{*m: {workflow: [one]}, label: &m metadata}\n",
             # An anchor opens a node; the same characters inside a scalar
             # are that scalar's text. `note: x &m metadata` anchors
             # nothing, so the alias below it still names what the real
