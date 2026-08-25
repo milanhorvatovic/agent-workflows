@@ -1307,6 +1307,71 @@ class TerminalAcceptTest(StateTestCase):
                 with self.assertRaises(state.StateError) as caught:
                     state.check_gates(approved(rest), workflow)
                 self.assertIn("tail", str(caught.exception))
+
+    def test_a_class_that_skips_the_last_gate_ends_at_the_one_it_reached(self) -> None:
+        """The overlays leave R0 with "no structured steps after intake" and
+        no `delivery-approval` firing, so the gate a composition ends with
+        is not always the gate a run reaches. Read from the composition
+        alone, such a run has no decision that ends it and resumes for
+        ever, its records exhausted and its acceptance on file."""
+        workflow = self.build()
+        exhausted = state.RunState(
+            run_id="2026-08-17-x",
+            workflow="demo",
+            protocol="0.2",
+            risk="R0",
+            risk_rationale="a note, no structured steps",
+            steps=[
+                state.StepRecord(id="make", status="done"),
+                state.StepRecord(id="check", status="done"),
+                *(
+                    state.StepRecord(id=member, status="skipped")
+                    for member in ("tail", "build", "approve", "after")
+                ),
+            ],
+            gates=[
+                state.GateRecord(
+                    gate="check",
+                    transport="blocking",
+                    outcome="accept",
+                    at="2026-08-16T09:00:00Z",
+                )
+            ],
+            artifacts=["{run}/out.md"],
+        )
+        state.check_gates(exhausted, workflow)
+        self.assertTrue(state.ended(exhausted, workflow))
+        # And where the later gate is still to fire, that gate is the one
+        # the run ends at — the acceptance behind it ends nothing.
+        proceeding = self.accepted_at_intake(workflow)
+        self.assertFalse(state.ended(proceeding, workflow))
+        state.check_gates(proceeding, workflow)
+
+    def accepted_at_intake(self, workflow) -> state.RunState:
+        return state.RunState(
+            run_id="2026-08-17-x",
+            workflow="demo",
+            protocol="0.2",
+            risk="R2",
+            risk_rationale="a class that runs the rest",
+            steps=[
+                state.StepRecord(id="make", status="done"),
+                state.StepRecord(id="check", status="done"),
+                *(
+                    state.StepRecord(id=member, status="pending")
+                    for member in ("tail", "build", "approve", "after")
+                ),
+            ],
+            gates=[
+                state.GateRecord(
+                    gate="check",
+                    transport="blocking",
+                    outcome="accept",
+                    at="2026-08-16T09:00:00Z",
+                )
+            ],
+            artifacts=["{run}/out.md"],
+        )
         for rest in ("done", "skipped"):
             with self.subTest(status=rest):
                 state.check_gates(approved(rest), workflow)

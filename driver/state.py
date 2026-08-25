@@ -856,18 +856,10 @@ def check_gates(state: RunState, workflow: Workflow) -> None:
     # `run.phase`, a number, and never the list that states those
     # dependencies — so it is an executor that cannot establish it.
     # §7 names "an `accept` at the last gate", which is the last gate and
-    # not the last member: a sequence may carry work behind its decision,
-    # and only intake must close at one. Derived from the last member whose
-    # kind is a gate, so a workflow with a trailing step still reads its
-    # own acceptance as the end of the run.
-    closing = next(
-        (
-            member.id
-            for _, member in reversed(workflow.members())
-            if member.kind == "gate"
-        ),
-        None,
-    )
+    # not the last member — a sequence may carry work behind its decision —
+    # and the last gate of this run rather than of the composition, since
+    # the accepted class may skip the one a workflow ends with.
+    closing = _closing_gate(state, workflow)
     # `gates` is append-only in decision order (§10), and a decision that
     # ends the run is the end of that order: nothing decides after it.
     # Reading the latest entry per gate collapses the history, so a
@@ -1226,6 +1218,31 @@ def _invalidated_by(state: RunState, workflow: Workflow, destination: str) -> se
     return invalidated
 
 
+def _closing_gate(state: RunState, workflow: Workflow) -> str | None:
+    """The gate this run ends at: the last one the composition declares
+    that the run's own class did not skip.
+
+    §7 ends a run at "an `accept` at the last gate", and which gate that is
+    belongs to the run rather than to the composition. The overlays leave
+    R0 with "no structured steps after intake" and no `delivery-approval`
+    firing, so the gate a workflow ends with is one that run never reaches
+    — and read from the composition alone, such a run has no decision that
+    ends it and resumes for ever with its records exhausted.
+    """
+    return next(
+        (
+            member.id
+            for _, member in reversed(workflow.members())
+            if member.kind == "gate"
+            and next(
+                (step.status for step in state.steps if step.id == member.id), None
+            )
+            != "skipped"
+        ),
+        None,
+    )
+
+
 def ended(state: RunState, workflow: Workflow) -> bool:
     """Whether a decision ended this run (§7).
 
@@ -1237,14 +1254,7 @@ def ended(state: RunState, workflow: Workflow) -> bool:
     """
     if not state.gates:
         return False
-    closing = next(
-        (
-            member.id
-            for _, member in reversed(workflow.members())
-            if member.kind == "gate"
-        ),
-        None,
-    )
+    closing = _closing_gate(state, workflow)
     last = state.gates[-1]
     return last.outcome == "reject" or (
         last.outcome == "accept" and last.gate == closing
