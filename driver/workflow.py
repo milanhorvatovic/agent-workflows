@@ -121,6 +121,10 @@ PLACEHOLDER = re.compile(r"(?<!\$)\{([^{}]*)\}")
 # would agree with itself about the corruption.
 PHASE = re.compile(r"(?<!\$)\{N\}")
 PHASE_SET = re.compile(r"(?<!\$)\{P\}")
+# Either of them, for reading a declared path as the family it names — the
+# manifest holds one artifact per phase a run has passed through, and every
+# one of them is the output its declaration describes.
+PHASE_TOKEN = re.compile(r"(?<!\$)\{[NP]\}")
 
 # The schemas declare every structure below closed, and §9.5 makes unknown
 # keys inside one an authoring error while tolerating unknown siblings of
@@ -487,6 +491,12 @@ def _declares_workflow(body: str) -> bool:
     # anchor holds is taken as the text it was written with, so an alias
     # reads as whatever that text reads as.
     anchors = _anchors(body)
+    # An explicit key may be a block scalar, and what it holds is the key
+    # it names: `? |-` over an indented `metadata` is that key, spelled the
+    # one way this scan would otherwise read as no key at all. Folded to
+    # the single-line form first, so everything downstream reads it as the
+    # explicit key it is.
+    body = SCALAR_KEY.sub(_folded_key, body)
     openings = list(METADATA_KEY.finditer(body)) + list(EXPLICIT_KEY.finditer(body))
     for opening in (
         m
@@ -651,6 +661,23 @@ def _anchors(body: str) -> list[tuple[int, str, str, str]]:
             )
         offset += len(line) + 1
     return found
+
+
+# `? |` or `? >` and the block it opens: the indented lines under the
+# indicator are the key's own text, which YAML folds to one scalar.
+SCALAR_KEY = re.compile(
+    r"^\?[ \t]*(?P<style>[|>])[-+0-9]*[ \t]*\n(?P<body>(?:[ \t]+\S.*\n?)+)",
+    re.MULTILINE,
+)
+
+
+def _folded_key(match: re.Match) -> str:
+    """The block scalar an explicit key holds, written as the single-line
+    key it names — a literal joining its lines with nothing between them,
+    a folded one with a space, which is enough for a name."""
+    lines = [line.strip() for line in match.group("body").split("\n") if line.strip()]
+    joined = ("" if match.group("style") == "|" else " ").join(lines)
+    return f"? {joined}\n"
 
 
 def _fold_quoted(body: str) -> str:

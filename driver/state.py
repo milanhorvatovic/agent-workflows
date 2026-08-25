@@ -30,7 +30,7 @@ from pathlib import Path
 
 from . import PROTOCOL, PROTOCOL_VERSION, implements
 from .protocol_yaml import ProtocolYamlError, dumps, loads
-from .workflow import PHASE, PHASE_SET, Workflow
+from .workflow import PHASE, PHASE_SET, PHASE_TOKEN, Workflow
 
 STATE_FILE = "workflow-state.yaml"
 
@@ -836,17 +836,37 @@ def check_gates(state: RunState, workflow: Workflow) -> None:
     # that cannot establish that MUST end the run". This one reads
     # `run.phase`, a number, and never the list that states those
     # dependencies — so it is an executor that cannot establish it.
+    members = [member.id for _, member in workflow.members()]
+    closing = members[-1] if members else None
     for gate_id, decision in latest.items():
-        if decision.outcome != "reject" or gate_id not in scopes:
+        if gate_id not in scopes:
+            continue
+        # §7 names two ways a run ends — "a `reject` in a workflow with no
+        # phases, an `accept` at the last gate" — and gives both the same
+        # write. The accept is only terminal at the gate the composition
+        # ends with; anywhere else it is a run proceeding.
+        terminal = decision.outcome == "reject" or (
+            decision.outcome == "accept" and gate_id == closing
+        )
+        if not terminal:
             continue
         deciding = next((step for step in state.steps if step.id == gate_id), None)
-        if deciding is None or deciding.status != "done":
+        if decision.outcome == "reject" and (
+            deciding is None or deciding.status != "done"
+        ):
             stands = "no record" if deciding is None else f"status {deciding.status!r}"
             raise StateError(
                 f"gate {gate_id!r} records a reject, which ends the run, and its "
                 f"own entry has {stands} — the decision that ended it is `done` "
                 f"(spec §7)"
             )
+        # An acceptance at the last gate ends the run once it stands, and
+        # its own record says whether it does: a re-entry leaves the gate
+        # `pending` or `blocked`, with the run still to reach it.
+        if decision.outcome == "accept" and (
+            deciding is None or deciding.status != "done"
+        ):
+            continue
         left = [
             step.id
             for step in state.steps
@@ -854,8 +874,9 @@ def check_gates(state: RunState, workflow: Workflow) -> None:
         ]
         if left:
             raise StateError(
-                f"gate {gate_id!r} records a reject, which ends the run, and "
-                f"these are neither done nor skipped: {', '.join(left)} (spec §7)"
+                f"gate {gate_id!r} records {decision.outcome!r}, which ends the "
+                f"run, and these are neither done nor skipped: "
+                f"{', '.join(left)} (spec §7)"
             )
     entry_gate = workflow.entry_gate()
     if entry_gate is not None:
@@ -960,6 +981,27 @@ def check_manifest(state: RunState, workflow: Workflow) -> None:
             raise StateError(
                 f"step {record.id!r} is done and {produced!r} is not in the "
                 f"manifest (spec §8.2)"
+            )
+    # And the other direction. §8.2 makes the manifest the record of what
+    # the run produced or imported, so a path no composed step declares is
+    # neither — content nothing wrote, which a later input or phase-set
+    # resolution would read as an artifact the run holds. Matched against
+    # the family a declaration names rather than the phase now executing: a
+    # run that has passed through phases holds each phase's own artifact,
+    # and every one of them is that declaration's output.
+    families = [
+        re.compile("[0-9]+".join(re.escape(part) for part in PHASE_TOKEN.split(output)))
+        for output in (
+            declaration.output_artifact
+            for stage in workflow.stages
+            for declaration in stage.steps.values()
+        )
+    ]
+    for artifact in state.artifacts:
+        if not any(family.fullmatch(artifact) for family in families):
+            raise StateError(
+                f"{artifact!r} is in the manifest and no composed step declares "
+                f"it (spec §8.2)"
             )
 
 

@@ -1156,6 +1156,115 @@ class AcceptedClassTest(StateTestCase):
                 self.assertIn("make", str(caught.exception))
 
 
+class TerminalAcceptTest(StateTestCase):
+    def build(self) -> object:
+        """Two stages, and a step after the entry gate: the unfinished
+        record has to sit where no decided gate stands before it in its own
+        stage, or the rule about that answers first and this one is never
+        reached."""
+        entry = STAGE.replace(
+            "        - gate: check\n          conditional: true\n",
+            "        - gate: check\n          conditional: true\n        - step: tail\n",
+        ).replace(
+            "## Gates",
+            "### tail (reviewer)\n\nProse.\n\n```yaml\nmetadata:\n  workflow:\n"
+            '    protocol: "0.2"\n    step:\n      role: reviewer\n      output:\n'
+            '        artifact: "{run}/tail.md"\n```\n\n## Gates',
+        )
+        (self.base / "workflows" / "stages" / "intake.md").write_text(
+            entry, encoding="utf-8"
+        )
+        second = (
+            STAGE.replace("name: intake", "name: second")
+            .replace("- step: make", "- step: build")
+            .replace("- gate: check\n          conditional: true", "- gate: approve")
+            .replace("### make (analyst)", "### build (implementer)")
+            .replace("role: analyst", "role: implementer")
+            .replace('artifact: "{run}/out.md"', 'artifact: "{run}/built.md"')
+            .replace("PASS: check", "PASS: approve")
+            .replace("FAIL: make", "FAIL: build")
+            .replace("- **check** — a gate.", "- **approve** — a gate.")
+        )
+        (self.base / "workflows" / "stages" / "second.md").write_text(
+            second, encoding="utf-8"
+        )
+        (self.base / "workflows" / "demo.md").write_text(
+            WORKFLOW + "2. [stages/second.md](stages/second.md)\n", encoding="utf-8"
+        )
+        return load_workflow(self.base, "demo")
+
+    def test_an_accept_at_the_last_gate_ends_the_run_too(self) -> None:
+        """§7 names two ways a run ends — "a `reject` in a workflow with no
+        phases, an `accept` at the last gate" — and gives both the same
+        write: every record still `pending` or `blocked` becomes `skipped`.
+        The reject half was checked and this one was not, so a state with
+        the final approval on file and work still waiting in an earlier
+        stage resumed into work that approval had already shipped past."""
+        workflow = self.build()
+
+        def approved(rest: str) -> state.RunState:
+            return state.RunState(
+                run_id="2026-08-17-x",
+                workflow="demo",
+                protocol="0.2",
+                risk="R1",
+                risk_rationale="small",
+                steps=[
+                    state.StepRecord(id="make", status="done"),
+                    state.StepRecord(id="check", status="done"),
+                    state.StepRecord(id="tail", status=rest),
+                    state.StepRecord(id="build", status="done"),
+                    state.StepRecord(id="approve", status="done"),
+                ],
+                gates=[
+                    state.GateRecord(
+                        gate=gate,
+                        transport="blocking",
+                        outcome="accept",
+                        at="2026-08-16T09:00:00Z",
+                    )
+                    for gate in ("check", "approve")
+                ],
+                artifacts=["{run}/out.md", "{run}/built.md"],
+            )
+
+        for rest in ("pending", "blocked"):
+            with self.subTest(status=rest):
+                with self.assertRaises(state.StateError) as caught:
+                    state.check_gates(approved(rest), workflow)
+                self.assertIn("tail", str(caught.exception))
+        for rest in ("done", "skipped"):
+            with self.subTest(status=rest):
+                state.check_gates(approved(rest), workflow)
+
+
+class ManifestTest(StateTestCase):
+    def test_the_manifest_holds_only_what_the_composition_produces(self) -> None:
+        """§8.2 makes the manifest the record of what the run produced or
+        imported, and a path no composed step declares is neither — content
+        nothing wrote, which a later input or phase-set resolution would
+        then read as an artifact the run holds."""
+        _, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2")
+        created.artifacts.append("{run}/forged.md")
+        with self.assertRaises(state.StateError) as caught:
+            state.check_manifest(created, self.workflow)
+        self.assertIn("forged.md", str(caught.exception))
+
+    def test_every_phase_of_a_family_belongs_to_it(self) -> None:
+        """A run that has passed through phases holds each phase's own
+        artifact, and every one of them is the output its declaration
+        names — the family, not the phase now executing."""
+        phased = STAGE.replace(
+            'artifact: "{run}/out.md"', 'artifact: "{run}/phase-{N}-out.md"'
+        )
+        (self.base / "workflows" / "stages" / "intake.md").write_text(phased, encoding="utf-8")
+        workflow = load_workflow(self.base, "demo")
+        _, created = state.create_run(self.runs, "phased", workflow, "0.2")
+        created.phase = 2
+        created.artifacts.extend(["{run}/phase-1-out.md", "{run}/phase-2-out.md"])
+        state.check_manifest(created, workflow)
+
+
 class RoutedStateTest(StateTestCase):
     def test_what_routing_writes_passes_the_checks_that_read_it(self) -> None:
         """A re-entry returns a decided gate to `pending` so it decides
