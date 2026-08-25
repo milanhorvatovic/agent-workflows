@@ -4,7 +4,12 @@ This module owns every read and write of `{run}/workflow-state.yaml` — the
 single-writer rule is enforced by shape: nothing else in the driver touches
 the file, and every mutation lands through `save`, which writes a sibling
 temp file and replaces atomically, so a crash leaves the previous state
-rather than half of the next one.
+rather than half of the next one. Where the platform syncs a directory,
+that holds through a power loss as well: the bytes reach the device, then
+the rename publishes them, then the entry naming it is persisted. Where it
+does not — Windows, through this library — the write is atomic and the
+file's own bytes are synced, and when the entry follows is the
+filesystem's to decide.
 
 What lands here stops deliberately short of the rest. Creation bootstraps
 the intake records alone — §10 has the list complete only from the intake
@@ -281,8 +286,14 @@ _BINDS_TO_DIRECTORY = (
     and hasattr(os, "O_NOFOLLOW")
 )
 # Whether a directory can be opened and synced at all. POSIX names the
-# operation; Windows has no handle for a directory's own metadata, and its
-# `replace` is ordered against the file data by the filesystem instead.
+# operation; Windows has no handle for a directory's own metadata through
+# this library, so the entry a rename creates is persisted when its
+# filesystem gets to it and not when this module asks. What the ordering
+# below gives there is the atomicity of `replace` and a file whose bytes
+# are on the device — not the "previous state or the next one" a power
+# loss is held to where the entry can be synced. The README states that
+# per-platform, beside the containment guarantee it qualifies the same way.
+#
 # Decided by the platform rather than read out of an error code: an open
 # that fails where the operation exists means no sync happened, which is
 # the write not being durable rather than the platform declining to make
@@ -472,7 +483,9 @@ def _sync(stream) -> None:
     not, which is the half-written state the temp-and-replace exists to
     make impossible. The order — data, then rename, then the directory
     entry that names it — is what makes a crash leave the previous state
-    or the next one and nothing between.
+    or the next one and nothing between, wherever the third step can be
+    taken; where it cannot, this first one still keeps a published name
+    from pointing at bytes that never landed.
     """
     stream.flush()
     os.fsync(stream.fileno())
