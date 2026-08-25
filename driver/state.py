@@ -35,7 +35,7 @@ from pathlib import Path
 
 from . import PROTOCOL, PROTOCOL_VERSION, implements
 from .protocol_yaml import ProtocolYamlError, dumps, loads
-from .workflow import PHASE, PHASE_SET, PHASE_TOKEN, Workflow
+from .workflow import PHASE, PHASE_SET, PHASE_TOKEN, RUN_RELATIVE, Workflow
 
 STATE_FILE = "workflow-state.yaml"
 
@@ -53,14 +53,11 @@ RISKS = ("R0", "R1", "R2", "R3")
 # not at the next path join. The literal is the schema's own pattern;
 # test_state pins the two byte-for-byte so they cannot drift.
 PLAIN_NAME = re.compile('^(?![A-Za-z]:)(?!\\.{1,2}$)(?!\\s+$)(?!(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Mm][1-9¹²³]|[Ll][Pp][Tt][1-9¹²³])(?:[.:]|$))[^/\\\\:?*"<>|\x00-\x1f\x7f-\x9f\u2028\u2029]+(?<![. ])(?![\\s\\S])')
-# The run-state schema's `{run}`-relative import path (§8.6): anchored
-# at `{run}/`, no dot or empty segments, backslashes, control characters
-# or Unicode line separators, colons, Windows-forbidden characters,
-# reserved device basenames, or trailing dots and spaces. A loader that
-# checked the prefix alone would present `{run}/../outside` as validated
-# lineage to the materialization that later copies it. The literal is the
-# schema's own pattern; test_state pins the two byte-for-byte.
-IMPORT_PATH = re.compile('^\\{run\\}(?:/(?!\\.{1,2}(?:/|$))(?!(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Mm][1-9¹²³]|[Ll][Pp][Tt][1-9¹²³])(?:\\.|/|$))[^/\\\\:?*"<>|\x00-\x1f\x7f-\x9f\u2028\u2029]+(?<![. ]))+(?![\\s\\S])')
+# The `{run}`-relative import path (§8.6) is the same shape a declared
+# artifact takes, and `workflow` owns it: what a contract may name and
+# what a lineage record may name are one rule, pinned there against the
+# schema's own pattern.
+IMPORT_PATH = RUN_RELATIVE
 # What a record id may not carry, whatever else it is. The run-state
 # schema asks only for a non-empty string, and the driver does not
 # narrow that to §9.4's member-id shape here — a document the suite

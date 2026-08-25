@@ -303,6 +303,16 @@ def load_workflow(framework: Path, name: str) -> Workflow:
     # that creates the rest — an intake ending at a step has no such
     # decision to reach, so the run walks its bootstrap list to the end and
     # reports itself finished with every later stage never populated.
+    # And has something to run when it is created. `conditional` populates
+    # a member `skipped` until a route fires it (§10), so an intake whose
+    # members are all conditional gives the run no position at all — born
+    # exhausted, with no decision that ended it either, which `run`
+    # persists and every resume after it repeats.
+    if all(member.conditional for member in stages[0].members):
+        raise WorkflowError(
+            f"workflow {name!r} enters at an `intake` whose every member is "
+            f"conditional, so a new run has nothing to run (spec §10)"
+        )
     if stages[0].members[-1].kind != "gate":
         raise WorkflowError(
             f"workflow {name!r} enters at an `intake` ending with step "
@@ -436,9 +446,7 @@ def _blank_quoted(text: str) -> str:
 # holds an imported path to the same shape, for the same reason — what a
 # contract names is what completion manifests and a later assembler
 # resolves, so a path leaving the run leaves it there too.
-RUN_RELATIVE = re.compile(
-    r"^\{run\}(?:/(?!\.{1,2}(?:/|$))[^/\\:?*\"<>|]+)+$"
-)
+RUN_RELATIVE = re.compile('^\\{run\\}(?:/(?!\\.{1,2}(?:/|$))(?!(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Mm][1-9¹²³]|[Ll][Pp][Tt][1-9¹²³])(?:\\.|/|$))[^/\\\\:?*"<>|\x00-\x1f\x7f-\x9f\u2028\u2029]+(?<![. ]))+(?![\\s\\S])')
 
 
 def _check_artifact(value: str, at: str, what: str) -> None:

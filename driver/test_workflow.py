@@ -438,6 +438,22 @@ class SyntheticTreeTest(unittest.TestCase):
             load_workflow(self.framework, "demo")
         self.assertIn("entry stage", str(caught.exception))
 
+    def test_an_intake_with_nothing_to_run_is_an_error(self) -> None:
+        """Creation populates the entry stage's records, `conditional`
+        making each of them `skipped` until a route fires it. Where every
+        member is conditional the run is born with no position and no
+        decision that ended it — unfinished and exhausted at once, which
+        `run` persists and every resume after it repeats."""
+        self.write(
+            "workflows/stages/intake.md",
+            STAGE.replace(
+                "        - step: make\n", "        - step: make\n          conditional: true\n"
+            ),
+        )
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "demo")
+        self.assertIn("conditional", str(caught.exception))
+
     def test_an_intake_that_ends_at_a_step_is_an_error(self) -> None:
         """Creation populates the entry stage's records alone, and §7 makes
         the acceptance at intake's own gate the write that creates the
@@ -916,6 +932,15 @@ class SyntheticTreeTest(unittest.TestCase):
             "traversal": "{run}/../outside.md",
             "bare": "out.md",
             "empty segment": "{run}//out.md",
+            # The shapes a filesystem resolves to something else: a name
+            # Windows reads through the device namespace, an alias its
+            # normalization strips to another name, a character no path
+            # carries.
+            "device name": "{run}/NUL",
+            "device with extension": "{run}/sub/CON.md",
+            "trailing dot": "{run}/out.md.",
+            "trailing space": "{run}/out.md ",
+            "control character": "{run}/a\\0b.md",
             "dot": "{run}/./out.md",
         }.items():
             for field in ('artifact: "{run}/out.md"', 'artifact: "{run}/in.md"'):
