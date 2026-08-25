@@ -604,6 +604,11 @@ class SyntheticTreeTest(unittest.TestCase):
             # forward reference: this one names nothing, so the mapping has
             # no `metadata` key and the block declares nothing.
             "{*m: {workflow: [one]}, label: &m metadata}\n",
+            # A colon inside a quoted scalar is that scalar's text, not a
+            # place where the next node begins: the `&m` after it defines
+            # nothing, so the alias below still names what the real anchor
+            # holds.
+            'actual: &m other\nnote: "x: &m metadata #"\n*m:\n  workflow: [one, two]\n',
             # An anchor opens a node; the same characters inside a scalar
             # are that scalar's text. `note: x &m metadata` anchors
             # nothing, so the alias below it still names what the real

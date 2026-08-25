@@ -687,7 +687,21 @@ def _anchors_on(line: str) -> list[tuple[re.Match, int]]:
     found: list[tuple[re.Match, int]] = []
     at_node_start = True
     depth = 0
-    for index, character in enumerate(line):
+    index = 0
+    while index < len(line):
+        character = line[index]
+        # A quoted scalar is text, and text is not where a node begins: a
+        # colon inside one is that scalar's own, and an `&` after it
+        # defines nothing. Read as structure, `note: "x: &m metadata"`
+        # invented an anchor the document never wrote and gave every alias
+        # below it a value nothing anchored.
+        if character in "\"'" and at_node_start:
+            closing = _closing_quote(line, index)
+            if closing is None:
+                break
+            index = closing + 1
+            at_node_start = False
+            continue
         if character == "&" and at_node_start:
             match = ANCHOR_NAME.match(line, index)
             if match is not None:
@@ -702,6 +716,7 @@ def _anchors_on(line: str) -> list[tuple[re.Match, int]]:
             at_node_start = True
         elif character not in WHITESPACE:
             at_node_start = False
+        index += 1
     return found
 
 
