@@ -156,6 +156,17 @@ def dumps(data: object) -> str:
     return "\n".join(_emit_block(data, 0)) + "\n"
 
 
+# Every break the split below treats as one. A document written with
+# carriage returns is read line by line like any other, so a diagnostic
+# that counted `\n` alone reported every defect in it against line 1 —
+# the line-numbered error this module promises, no better than none.
+LINE_BREAK = re.compile(r"\r\n|\r|\n")
+
+
+def _line_number(text: str, offset: int) -> int:
+    return len(LINE_BREAK.findall(text[:offset])) + 1
+
+
 def _content_lines(text: str) -> list[_Line]:
     # Raw control characters are not YAML content, and this module cannot
     # read them harmlessly: NUL and its neighbours would survive into a
@@ -174,7 +185,7 @@ def _content_lines(text: str) -> list[_Line]:
     found = RAW_FORBIDDEN.search(text)
     if found is not None:
         raise ProtocolYamlError(
-            text.count("\n", 0, found.start()) + 1,
+            _line_number(text, found.start()),
             f"raw control character in the document: {found.group()!r}",
         )
     lines: list[_Line] = []

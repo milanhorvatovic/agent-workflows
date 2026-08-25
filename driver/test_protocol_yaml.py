@@ -342,6 +342,18 @@ class LoadsTest(unittest.TestCase):
             loads("a: 'quoted'\n")
         self.assertIn("outside the subset", str(caught.exception))
 
+    def test_a_carriage_return_ends_a_line_for_the_line_number_too(self) -> None:
+        """The reader takes CR as a line break — `splitlines` does — so the
+        diagnostics have to count it as one: a document written with them
+        reported every defect against line 1, which is the line-numbered
+        error this module promises being no better than none."""
+        with self.assertRaises(ProtocolYamlError) as caught:
+            loads("a: 1\rb: 2\rc: \x00\r")
+        self.assertEqual(caught.exception.line_number, 3)
+        with self.assertRaises(ProtocolYamlError) as caught:
+            loads("a: 1\r\nb: \x00\r\n")
+        self.assertEqual(caught.exception.line_number, 2)
+
     def test_a_leading_byte_order_mark_is_the_stream_s_and_not_a_key_s(self) -> None:
         """A YAML stream may begin with U+FEFF, and every conforming reader
         takes it as the encoding marker it is. Read as content it becomes
