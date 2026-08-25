@@ -49,8 +49,12 @@ STEP_HEADING = re.compile(
 # key to a reader that parses the document, and a pattern that matched one
 # spelling filed the declarations under the others as prose. `_key_name`
 # decides which matches are `metadata`.
+# A colon inside a key is the key's own where nothing separates on it: an
+# anchor name may carry one (`&m:n`), and what ends a key is the `: ` that
+# opens a value rather than the character itself.
 KEY_TOKEN = (
-    r'(?P<key>"(?:\\.|[^"\\\n])*"|\'(?:\'\'|[^\'\n])*\'|[^\s:#][^:#\n]*?)'
+    r'(?P<key>"(?:\\.|[^"\\\n])*"|\'(?:\'\'|[^\'\n])*\''
+    r'|[^\s:#](?:[^:#\n]|:(?![\s]|$))*?)'
 )
 METADATA_KEY = re.compile(
     r'^(?:---[ \t]+)?(?:\?[ \t]+)?(?:[!&]\S*[ \t]+){0,2}'
@@ -615,8 +619,11 @@ YAML_ESCAPES = {
 
 
 ANCHOR_NAME = re.compile(r"&(?P<name>[^\s\[\]{},]+)(?P<value>[ \t]*.*)$")
+# An alias names its anchor, and an anchor name is every character but
+# whitespace and the flow indicators — a colon among them, where no
+# separation follows it. `{*m: …}` names `m` and `*m:n` names `m:n`.
 ALIAS = re.compile(r"^\*(?P<name>[^\s\[\]{},]+)$")
-ALIAS_NAME = re.compile(r"\*(?P<name>[^\s\[\]{},:]+)")
+ALIAS_NAME = re.compile(r"\*(?P<name>(?:[^\s\[\]{},:]|:(?![\s]|$))+)")
 
 
 def _anchors(body: str) -> list[tuple[int, str, str, str]]:

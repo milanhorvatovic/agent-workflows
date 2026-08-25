@@ -807,6 +807,10 @@ class SyntheticTreeTest(unittest.TestCase):
             # The explicit key may be a block scalar, whose content is the
             # key it names — outside this subset, and a declaration.
             "? |-\n  metadata\n:\n  workflow: [one, two]\n",
+            # An anchor name may carry a colon — what ends one is the
+            # separation after it, not the character.
+            "anchor: &m:n metadata\n? *m:n\n: {workflow: [one]}\n",
+            "{a: &m:n metadata, *m:n: {workflow: [one]}}\n",
             "? >-\n  metadata\n:\n  workflow: [one, two]\n",
             # The same indicator standing alone under `metadata`, its key
             # indented beneath it and the value on the `:` line after.
