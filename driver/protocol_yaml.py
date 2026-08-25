@@ -100,7 +100,14 @@ INDICATORS = "'\"&*!|>[]{},#%@`"
 # and carriage return, DEL and C1 — NEL among them — and the two Unicode
 # line separators. Quoted, each has an escape; raw, each is either invalid
 # YAML or a line break the reader would consume silently.
-RAW_FORBIDDEN = re.compile("[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f-\\x9f\\u2028\\u2029]")
+# A lone surrogate joins them, for the reason the escape for one is refused
+# and the emitter refuses the code point: UTF-8 cannot carry it. Accepted
+# raw, this reader returned a value its own writer cannot put in a file,
+# which is the round trip the two halves promise each other.
+RAW_FORBIDDEN = re.compile(
+    "[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f-\\x9f\\u2028\\u2029\\ud800-\\udfff]"
+)
+SURROGATE = re.compile("[\\ud800-\\udfff]")
 
 ESCAPES = {
     "\\": "\\",
@@ -201,9 +208,13 @@ def _content_lines(text: str) -> list[_Line]:
         text = text[1:]
     found = RAW_FORBIDDEN.search(text)
     if found is not None:
+        what = (
+            "lone surrogate, which UTF-8 cannot encode"
+            if SURROGATE.match(found.group())
+            else "raw control character in the document"
+        )
         raise ProtocolYamlError(
-            _line_number(text, found.start()),
-            f"raw control character in the document: {found.group()!r}",
+            _line_number(text, found.start()), f"{what}: {found.group()!r}"
         )
     lines: list[_Line] = []
     for number, raw in enumerate(text.splitlines(), start=1):
@@ -572,6 +583,15 @@ def _check_key(key: object) -> None:
         or not _is_plain_key(key)
     ):
         raise ValueError(f"not a plain key: {key!r}")
+    # The surrogate rule `_quote` applies to a value, applied to the other
+    # half of the mapping: UTF-8 cannot carry one on either side, and a key
+    # accepted here reaches the save that encodes the file and raises there,
+    # after the state it belongs to has been assembled. Read before the
+    # plain-key rule below, which the reader's raw set would answer for
+    # first with the less exact of two true reasons.
+    surrogate = next((c for c in key if 0xD800 <= ord(c) <= 0xDFFF), None)
+    if surrogate is not None:
+        raise ValueError(f"key carries a surrogate, which UTF-8 cannot encode: {key!r}")
     # A key is written plain, so anything the reader forbids raw would be
     # written raw: a newline in a key emits two lines where the document
     # declared one field, and a control character emits text the reader
@@ -583,13 +603,7 @@ def _check_key(key: object) -> None:
     # module cannot write at all rather than one it writes carefully.
     if _resolves_as_non_string(key):
         raise ValueError(f"key would resolve as a non-string: {key!r}")
-    # The surrogate rule `_quote` applies to a value, applied to the other
-    # half of the mapping: UTF-8 cannot carry one on either side, and a key
-    # accepted here reaches the save that encodes the file and raises there,
-    # after the state it belongs to has been assembled.
-    surrogate = next((c for c in key if 0xD800 <= ord(c) <= 0xDFFF), None)
-    if surrogate is not None:
-        raise ValueError(f"key carries a surrogate, which UTF-8 cannot encode: {key!r}")
+
 
 
 def _resolves_as_non_string(value: str) -> bool:

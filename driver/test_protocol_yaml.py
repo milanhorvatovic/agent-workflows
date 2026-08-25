@@ -373,6 +373,21 @@ class LoadsTest(unittest.TestCase):
         # content this subset does not carry.
         self.assertEqual(loads('a: "x﻿y"\n'), {"a": "x﻿y"})
 
+    def test_rejects_a_raw_surrogate_as_it_rejects_the_escape(self) -> None:
+        """UTF-8 cannot carry a lone surrogate, which is why the escape for
+        one is refused and why the emitter refuses the code point. Raw, it
+        passed — and what came back was a value this module's own writer
+        cannot put in a file, which is the round trip these two halves
+        promise each other."""
+        for text in ("a: \ud800\n", 'a: "x\udfffy"\n', "\ud800: 1\n"):
+            with self.subTest(text=text):
+                with self.assertRaises(ProtocolYamlError) as caught:
+                    loads(text)
+                self.assertIn("surrogate", str(caught.exception))
+        with self.assertRaises(ProtocolYamlError) as caught:
+            loads("a: 1\nb: \ud800\n")
+        self.assertEqual(caught.exception.line_number, 2)
+
     def test_rejects_a_surrogate_escape(self) -> None:
         """Accepted, it would load and validate and then break the next
         save: UTF-8 cannot carry a lone surrogate."""
