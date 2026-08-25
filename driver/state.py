@@ -950,16 +950,29 @@ def route_verdict(state: RunState, workflow: Workflow, step_id: str, verdict: st
     if declaration is None:
         raise StateError(f"no declaration for step {step_id!r}")
     # §9.1: the verdict that routes a step is produced by the validation of
-    # that step's output, so the step has produced one — a record still
-    # `pending`, `active`, or `skipped` has not, and routing from it would
-    # re-enter the destination on the strength of work that has not
-    # happened. Starting and completing both check their own status; this
-    # is the third transition, and it was the one taking a caller's word.
+    # that step's output, so the output exists — a record still `pending`
+    # or `active` has none, and routing from it would re-enter the
+    # destination on the strength of work that has not happened. Starting
+    # and completing both check their own status; this is the third
+    # transition, and it was the one taking a caller's word.
+    #
+    # `skipped` is where the two reasons part. §8.6 populates a producer
+    # `skipped` where its output was imported, and §9.1 leaves the edges on
+    # that same producer while the verdict comes from validating what it
+    # holds: import a plan and not its validation, and the validator runs
+    # on the copy — the verdict is real and the artifact is in the run.
+    # What is missing is the run of a step that had nothing to produce, and
+    # refusing that stops an imported plan at its first verdict. A member
+    # the class or a condition skipped produced nothing at all, and still
+    # routes nothing.
     source = state.record(step_id)
-    if source.status != "done":
+    if source.status not in ("done", "skipped") or (
+        source.status == "skipped"
+        and step_id not in _import_skipped(state, workflow)
+    ):
         raise StateError(
             f"step {step_id!r} is {source.status}, and a verdict routes from a "
-            f"step that has produced its output (spec §9.1)"
+            f"step whose output the run holds (spec §9.1, §8.6)"
         )
     # `done` is a status, and §8.2 makes the manifest the record of what was
     # produced — the conformance suite holds every shipped document to

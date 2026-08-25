@@ -510,15 +510,17 @@ class TransitionTest(StateTestCase):
 
     def test_a_verdict_routes_only_from_a_step_that_produced_its_output(self) -> None:
         """§9.1: the verdict comes from the validation of the step's output,
-        so a record that has not produced one has nothing to route — and
-        routing anyway re-enters the destination on work that never
-        happened, past the checks starting and completing both make."""
+        so a record whose output the run does not hold has nothing to route
+        — and routing anyway re-enters the destination on work that never
+        happened, past the checks starting and completing both make. This
+        run imports nothing, so its `skipped` is a member the class or a
+        condition left out, which produced nothing at all."""
         for status in ("pending", "active", "skipped", "blocked"):
             with self.subTest(status=status):
                 self.state.record("make").status = status
                 with self.assertRaises(state.StateError) as caught:
                     state.route_verdict(self.state, self.workflow, "make", "PASS")
-                self.assertIn("produced its output", str(caught.exception))
+                self.assertIn("the run holds", str(caught.exception))
                 self.assertEqual(self.state.record("check").status, "skipped")
 
     def test_route_without_an_edge_escalates(self) -> None:
@@ -818,6 +820,45 @@ class ImportInvalidationTest(StateTestCase):
         invalidated = state._invalidated_by(state_obj, workflow, "make")
         self.assertIn("derive", invalidated)
         self.assertNotIn("other", invalidated)
+
+    def test_a_verdict_routes_from_the_producer_an_import_stood_in_for(self) -> None:
+        """§8.6 populates a producer `skipped` where its output was
+        imported, and §9.1 puts the edges on that same producer while the
+        verdict comes from the validation of its output. Import the plan
+        and not the validation and the validator runs on the copy — so the
+        verdict is real, the artifact is in the manifest, and the only
+        thing missing is the run of a step that had nothing to produce.
+        Refused, an imported plan stops at its first verdict."""
+        workflow = self.build()
+        state_obj = state.RunState(
+            run_id="2026-08-17-x",
+            workflow="demo",
+            protocol="0.2",
+            risk="R1",
+            risk_rationale="small",
+            steps=[
+                state.StepRecord(id="make", status="skipped"),
+                state.StepRecord(id="derive", status="done"),
+                state.StepRecord(id="other", status="skipped"),
+                state.StepRecord(id="check", status="skipped"),
+            ],
+            gates=[],
+            artifacts=["{run}/out.md", "{run}/derived.md"],
+            imports=[
+                state.ImportRecord(
+                    artifact="{run}/out.md",
+                    from_run="2026-08-01-source",
+                    at="2026-08-16T09:00:00Z",
+                )
+            ],
+        )
+        self.assertEqual(
+            state.route_verdict(state_obj, workflow, "make", "PASS"), "check"
+        )
+        # The class-skipped reader produced nothing and routes nothing.
+        with self.assertRaises(state.StateError) as caught:
+            state.route_verdict(state_obj, workflow, "other", "PASS")
+        self.assertIn("other", str(caught.exception))
 
     def test_the_write_returns_that_derivation_to_pending(self) -> None:
         """Identifying it is half the transition: left `skipped`, §8.5
