@@ -146,6 +146,31 @@ class CliTest(unittest.TestCase):
         code, out, err = self.invoke(
             "resume", "2026-08-17-x", "--config", str(self.config_path)
         )
+        # Nothing left to run is not the same as ended: §7 ends a run at a
+        # reject or an accept at its last gate, and this document records
+        # neither — the records simply ran out, which is what a crash
+        # between a step's completion and its verdict looks like.
+        self.assertEqual(code, 2)
+        self.assertIn("ends", err)
+        # `check` closes this composition and is its entry gate, so the
+        # acceptance that ends the run is also the one that set the class.
+        state_path.write_text(
+            state_path.read_text(encoding="utf-8")
+            .replace("status: skipped", "status: done")
+            .replace(
+                '  protocol: "0.2"\n',
+                '  protocol: "0.2"\n  risk: R1\n  risk_rationale: "small"\n',
+            )
+            .replace(
+                "gates: []\n",
+                "gates:\n  - gate: check\n    transport: blocking\n"
+                '    outcome: accept\n    at: "2026-08-16T09:00:00Z"\n',
+            ),
+            encoding="utf-8",
+        )
+        code, out, err = self.invoke(
+            "resume", "2026-08-17-x", "--config", str(self.config_path)
+        )
         self.assertEqual(code, 0)
         self.assertIn("nothing left to run", out)
         self.assertEqual(err, "")

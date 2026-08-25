@@ -190,6 +190,18 @@ def _resume(config: Config, run_id: str) -> int:
 def _report_position(loaded: run_state.RunState, workflow: Workflow) -> int:
     position = loaded.position()
     if position is None:
+        # Nothing left to run is not the same as ended. §7 ends a run at a
+        # reject or an accept at its last gate, and a document recording
+        # neither has run out of records rather than finished — which is
+        # what a crash between a step's completion and the verdict that
+        # routes it leaves behind, the transition still owed.
+        if not run_state.ended(loaded, workflow):
+            print(
+                f"driver: run {loaded.run_id} has no record left to run and no "
+                f"decision that ends it — the run is unfinished (spec §7)",
+                file=sys.stderr,
+            )
+            return 2
         print(f"run {loaded.run_id}: nothing left to run")
         return 0
     print(f"run {loaded.run_id}: next is {position.id} ({position.status})")
