@@ -980,7 +980,21 @@ def _invalidated_by(state: RunState, workflow: Workflow, destination: str) -> se
     # artifact" means once the order is read as well as the declarations.
     order = [step.id for step in state.steps]
     after = set(order[order.index(destination) + 1 :]) if destination in order else set()
-    ran = {step.id for step in state.steps if step.status == "done"}
+    # What ran, and what stands in for having run. §8.6 populates a step
+    # `skipped` where its declared output was imported, and holds that skip
+    # "only while the derivation stays imported": once the artifact it was
+    # derived from is re-entered, what the import holds was computed from
+    # the old input, and a resume walking past it carries that forward. A
+    # member the class or a condition skipped produced nothing and derives
+    # from nothing, which is why the two `skipped` are told apart by the
+    # manifest of imports rather than by the status they share.
+    imported = {_phase_free(record.artifact) for record in (state.imports or ())}
+    ran = {
+        step.id
+        for step in state.steps
+        if step.status == "done"
+        or (step.status == "skipped" and produced.get(step.id) in imported)
+    }
     invalidated: set[str] = set()
     pending = [destination]
     while pending:

@@ -680,6 +680,70 @@ class StartPositionTest(StateTestCase):
         self.assertEqual(state.start_step(created, workflow, "also").status, "active")
 
 
+class ImportInvalidationTest(StateTestCase):
+    def build(self) -> object:
+        """A stage where two later steps read what the first produced: one
+        whose output the run imported, one the class skipped."""
+        def reader(step_id: str, role: str, output: str) -> str:
+            return (
+                f"### {step_id} ({role})\n\nProse.\n\n```yaml\nmetadata:\n"
+                '  workflow:\n    protocol: "0.2"\n    step:\n'
+                f"      role: {role}\n      inputs:\n"
+                '        - artifact: "{run}/out.md"\n          required: true\n'
+                f'      output:\n        artifact: "{output}"\n```\n\n'
+            )
+
+        two = STAGE.replace(
+            "        - step: make\n",
+            "        - step: make\n        - step: derive\n        - step: other\n",
+        ).replace(
+            "## Gates",
+            reader("derive", "planner", "{run}/derived.md")
+            + reader("other", "reviewer", "{run}/other.md")
+            + "## Gates",
+        )
+        (self.base / "workflows" / "stages" / "demo.md").write_text(two, encoding="utf-8")
+        return load_workflow(self.base, "demo")
+
+    def test_a_derivation_that_was_imported_re_enters_with_its_input(self) -> None:
+        """§8.6: the skip holds only while the derivation stays imported. A
+        step skipped because its output was imported has produced nothing
+        this run can re-run — but once the artifact it was derived from is
+        re-entered, what it holds was computed from the old input, and a
+        resume that walked past it would carry that forward.
+
+        The other `skipped` is a step the class left out: it produced
+        nothing and derives from nothing, so the walk passes it by. Which
+        of the two a record is comes from the manifest of imports rather
+        than from the status they share.
+        """
+        workflow = self.build()
+        state_obj = state.RunState(
+            run_id="2026-08-17-x",
+            workflow="demo",
+            protocol="0.2",
+            risk="R1",
+            risk_rationale="small",
+            steps=[
+                state.StepRecord(id=step, status="skipped")
+                for step in ("make", "derive", "other", "check")
+            ],
+            gates=[],
+            artifacts=["{run}/out.md", "{run}/derived.md"],
+            imports=[
+                state.ImportRecord(
+                    artifact=artifact,
+                    from_run="2026-08-01-source",
+                    at="2026-08-16T09:00:00Z",
+                )
+                for artifact in ("{run}/out.md", "{run}/derived.md")
+            ],
+        )
+        invalidated = state._invalidated_by(state_obj, workflow, "make")
+        self.assertIn("derive", invalidated)
+        self.assertNotIn("other", invalidated)
+
+
 class CrossStageInvalidationTest(StateTestCase):
     def build(self) -> object:
         """Two stages, the second reading what the first produced and its
