@@ -4,10 +4,10 @@ The config carries what the driver needs before any run exists: the
 consuming project's artifact root (`artifacts_dir` — `{artifacts}` in
 protocol/spec.md §8.1, which names resolving it as project configuration),
 the framework root where the protocol content lives (`framework_dir` —
-`workflows/` and `workflows/stages/`, resolved by the same rules), the
-harness command lines the driver can invoke (`backends`), and which
-backend — optionally which model — each protocol role executes on
-(`roles`). Validation is strict and happens entirely at load time, so a
+`workflows/`, `workflows/stages/`, `roles/`, and `skills/`, resolved by the
+same rules), the harness command lines the driver can invoke (`backends`),
+and which backend — optionally which model — each protocol role executes
+on (`roles`). Validation is strict and happens entirely at load time, so a
 typo fails the invocation instead of the fifth step of a run.
 `driver/config.example.json` shows the full shape; `driver/README.md`
 documents each field.
