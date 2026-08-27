@@ -445,7 +445,14 @@ def _role(framework: Path, role: str) -> str:
     # holds it to, so the name cannot escape; the file it points at can.
     text = _read(_within(_content_root(framework, "roles"), f"{role}.md", source), source)
     match = FRONTMATTER.match(text)
-    return text[match.end() :] if match is not None else text
+    # Refused rather than returned whole. The conformance suite makes a role's
+    # frontmatter mandatory, so a file without it is a framework defect — and
+    # sending it as instructions is the worst reading of one, since whatever
+    # stands where the frontmatter should be reaches the backend as the role.
+    # `load_skill` refuses the same absence in the other carrier.
+    if match is None:
+        raise AssemblyError(f"{source}: no frontmatter, which a role definition carries")
+    return text[match.end() :]
 
 
 def _skill_source(step_id: str, name: str) -> str:

@@ -613,6 +613,17 @@ class AssembleTest(TreeTest):
             )
         self.assertIn("outside the directory declaring it", str(caught.exception))
 
+    def test_a_role_without_frontmatter_is_a_defect_not_instructions(self) -> None:
+        """Conformance makes a role's frontmatter mandatory, so a file without
+        it is a defective framework — and returning the file whole sends
+        whatever stands in its place to the backend as the role."""
+        self.write("roles/analyst.md", "# Role: Analyst\n\nRead before concluding.\n")
+        with self.assertRaises(assembler.AssemblyError) as caught:
+            assembler.assemble(
+                self.framework, self.run_dir, self.state([]), self.workflow(), "make"
+            )
+        self.assertIn("no frontmatter", str(caught.exception))
+
     def test_the_role_frontmatter_is_not_spent_on_the_step(self) -> None:
         assembly = assembler.assemble(
             self.framework, self.run_dir, self.state([]), self.workflow(), "make"
