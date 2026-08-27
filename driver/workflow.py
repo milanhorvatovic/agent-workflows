@@ -301,7 +301,7 @@ def load_workflow(framework: Path, name: str) -> Workflow:
     # Composition order, the first entry naming a stage winning: a list may
     # name one twice, and the stage composes where it is first read.
     slugs: list[str] = []
-    for match in STAGE_REFERENCE.finditer(_mask_fences(text)):
+    for match in STAGE_REFERENCE.finditer(mask_fences(text)):
         if match.group(1) not in slugs:
             slugs.append(match.group(1))
     if not slugs:
@@ -1187,7 +1187,7 @@ def _block_has_direct_key(
     return False
 
 
-def _mask_fences(text: str) -> str:
+def mask_fences(text: str) -> str:
     """Blank every fenced region, keeping offsets and line numbers intact.
 
     What is shown inside a code block is a demonstration, not structure — a
@@ -1311,7 +1311,7 @@ def _blocks(text: str, rel: str) -> list[tuple[int, dict]]:
             raise WorkflowError(
                 f"{rel}:{line}: metadata.workflow is not a mapping: {workflow!r}"
             )
-        _check_protocol(workflow, rel, line)
+        check_protocol(workflow, rel, line)
         found.append((offset, workflow))
     return found
 
@@ -1323,7 +1323,7 @@ def _closed(mapping: dict, allowed: frozenset[str], at: str, what: str) -> None:
         raise WorkflowError(f"{at}: {what} has unknown keys: {', '.join(unknown)}")
 
 
-def _check_protocol(block: dict, rel: str, line: int) -> None:
+def check_protocol(block: dict, rel: str, line: int) -> None:
     """§9: every `metadata.workflow` block declares the protocol version it
     was authored against, and §11 forbids a client silently interpreting
     structures from a version it does not implement — the rule the package's
@@ -1360,7 +1360,7 @@ def _gates(text: str, rel: str) -> set[str]:
     would read `##\tNotes` as part of this section and its bold bullets as
     gates the sequence rightly omits.
     """
-    masked = _mask_fences(text)
+    masked = mask_fences(text)
     openings = GATES_HEADING.findall(masked)
     if len(openings) > 1:
         raise WorkflowError(
@@ -1452,7 +1452,7 @@ def _steps(text: str, rel: str) -> dict[str, StepDeclaration]:
     # fenced example, sitting between a real heading and its contract, would
     # otherwise be the nearest heading and bind that contract to `fake`. The
     # mask keeps every offset, so the association below still holds.
-    masked = _mask_fences(text)
+    masked = mask_fences(text)
     headings = [
         (m.start(), m.group("id"), m.group("role")) for m in STEP_HEADING.finditer(masked)
     ]
