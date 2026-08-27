@@ -7,7 +7,7 @@
 # Manifested and sourced correctly otherwise, so the case is the one fault;
 # `run-state.invalid.import-request.yaml` proves the exact path beside it.
 run:
-  id: 2026-08-28-feature-slug
+  id: 2026-08-16-feature-slug
   workflow: feature
   protocol: "0.2"
 steps:
@@ -20,4 +20,4 @@ artifacts:
 imports:
   - artifact: "{run}/REQUEST.md"
     from: 2026-08-12-plan-slug
-    at: "2026-08-28T09:00:00Z"
+    at: "2026-08-16T09:00:00Z"

@@ -6,7 +6,7 @@
 #   its own (spec §8.6, §8.7).
 # Manifested and sourced correctly otherwise, so the path itself is the fault.
 run:
-  id: 2026-08-27-feature-slug
+  id: 2026-08-16-feature-slug
   workflow: feature
   protocol: "0.2"
 steps:
@@ -18,4 +18,4 @@ artifacts:
 imports:
   - artifact: "{run}/request.md"
     from: 2026-08-12-plan-slug
-    at: "2026-08-27T09:00:00Z"
+    at: "2026-08-16T09:00:00Z"

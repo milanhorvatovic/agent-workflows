@@ -709,7 +709,15 @@ def _read_artifact(run_dir: Path, artifact: str) -> str:
         except OSError as error:
             raise AssemblyError(f"cannot read {artifact}: {error}") from error
         try:
-            stream = os.fdopen(descriptor, "r", encoding="utf-8")
+            # `newline=""` turns off universal newlines. Text mode otherwise
+            # folds CRLF and lone CR to LF, so an artifact written with a
+            # requester's line endings would reach the step as something other
+            # than the file the run holds — the translation §8.3 already
+            # refuses on the way in, when it has the scaffold read a template
+            # as bytes for this reason. A run's own artifacts are what the
+            # driver must not silently rewrite; framework text is repo content
+            # and is read as the repository stores it.
+            stream = os.fdopen(descriptor, "r", encoding="utf-8", newline="")
         except OSError as error:
             # `fdopen` takes ownership only once it returns one, so a failure
             # here leaves the descriptor this function's to close.

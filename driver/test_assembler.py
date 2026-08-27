@@ -630,6 +630,23 @@ class AssembleTest(TreeTest):
                 )
                 self.assertIn("Sessions must survive a server restart.", assembly.prompt)
 
+    def test_an_artifact_reaches_the_step_with_its_line_endings(self) -> None:
+        """Text mode folds CRLF and a lone CR to LF, so an artifact would reach
+        the step as something other than the file the run holds — the
+        translation §8.3 refuses on the way in, where the scaffold reads a
+        template as bytes for exactly this reason. The request is where it
+        shows: what a requester typed is what the entry step is given, and a
+        write that kept the endings would have been undone one layer out."""
+        workflow = load_workflow(REPO, "feature")
+        run_dir, loaded = self.entry_run([state.REQUEST_ARTIFACT])
+        (run_dir / state.REQUEST_FILE).write_bytes(
+            b"line one\r\nline two\rline three\n"
+        )
+        assembly = assembler.assemble(REPO, run_dir, loaded, workflow, "brief-confirm")
+        material = next(m for m in assembly.materials if m.kind == "input")
+        self.assertEqual(material.text, "line one\r\nline two\rline three\n")
+        self.assertIn("line one\r\nline two\rline three\n", assembly.prompt)
+
     def test_the_entry_step_blocks_where_the_run_holds_no_request(self) -> None:
         """Declared `required`, so §9.1's blocking rule is what a run without
         one meets — a position to report rather than a step run against

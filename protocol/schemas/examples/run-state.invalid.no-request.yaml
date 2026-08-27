@@ -5,7 +5,7 @@
 #   was never given the request it exists to restate.
 # Everything else is the pre-acceptance starter, so this is the one fault.
 run:
-  id: 2026-08-27-feature-slug
+  id: 2026-08-16-feature-slug
   workflow: feature
   protocol: "0.2"
 steps:
