@@ -249,6 +249,23 @@ class CliTest(unittest.TestCase):
             "Sessions must survive.\n﻿ still text\n",
         )
 
+    def test_a_request_file_holding_only_a_mark_is_an_empty_request(self) -> None:
+        """The mark is not content, so a file holding nothing else holds no
+        request — and the run that would be created around it exists only to
+        block at its first step. This is what says the mark is dropped before
+        the emptiness is judged rather than after: read as plain UTF-8 the
+        same file is a one-character request, and the run gets created."""
+        self.write_framework()
+        path = self.base / "empty.md"
+        path.write_bytes(b"\xef\xbb\xbf")
+        code, _, err = self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request-file", str(path), "--config", str(self.config_path)
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("request is empty", err)
+        self.assertFalse((self.base / "runs" / "2026-08-17-x").exists())
+
     def test_run_on_an_unreadable_request_file_is_a_defect(self) -> None:
         self.write_framework()
         code, _, err = self.invoke(

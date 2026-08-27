@@ -171,6 +171,15 @@ def main(argv: list[str] | None = None) -> int:
             # would open the words the entry step restates with a character
             # the requester never typed. Only a leading one: anywhere else it
             # is content, and this decoding leaves it there.
+            #
+            # No non-regular-file guard here, unlike the artifact reads, and
+            # deliberately: `--request-file <(...)` is a FIFO, and composing
+            # the request out of another command is the case the argument
+            # exists for. Refusing what is not a regular file would take that
+            # away, and opening non-blocking the way an artifact read does
+            # would race a writer that has not started. A path the caller
+            # typed is theirs to have chosen — the same trade `--config` takes
+            # — where an artifact's path is one the run resolved.
             request = arguments.request_file.read_text(encoding="utf-8-sig")
         except (OSError, ValueError) as error:
             print(f"driver: {arguments.request_file}: {error}", file=sys.stderr)
