@@ -122,7 +122,7 @@ Risk-class overlays — what each class skips or batches — are encoded once, p
 2. **Risk router** — applies the classification rubric ([5.2](#52-classification-rubric)) and proposes a class.
 3. **Intake gate** — the human sees the confirmed brief and the proposed class, and MAY override the class ([5.3](#53-override-and-reclassification)). Its transport follows the class defaults ([5.1](#51-the-four-classes)).
 
-Its outputs are a confirmed brief artifact, carrying the router's security-surface reading alongside the class it proposes, and the accepted risk class recorded in run state. That recorded reading is what the conditional security review at R2 is evaluated against ([5.1](#51-the-four-classes)); where it lives in the brief is the intake stage's contract.
+Its input is the request the run was created with ([8.7](#87-request)) — the stage's first step restates it, and it is the one input no earlier step produced. Its outputs are a confirmed brief artifact, carrying the router's security-surface reading alongside the class it proposes, and the accepted risk class recorded in run state. That recorded reading is what the conditional security review at R2 is evaluated against ([5.1](#51-the-four-classes)); where it lives in the brief is the intake stage's contract.
 
 ## 7. Gates
 
