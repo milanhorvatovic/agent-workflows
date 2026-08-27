@@ -1716,6 +1716,18 @@ class LoadValidationTest(StateTestCase):
             state.IMPORT_PATH.pattern,
             schema["$defs"]["importRecord"]["properties"]["artifact"]["pattern"],
         )
+        # The request's path is a literal in three schema constraints and a
+        # constant here, and the two enforce the same rule from either side —
+        # so a rename that reached one and not the others would leave the
+        # driver writing a manifest its own schema refuses, silently.
+        self.assertEqual(
+            state.REQUEST_ARTIFACT,
+            schema["properties"]["artifacts"]["contains"]["const"],
+        )
+        self.assertEqual(
+            state.REQUEST_ARTIFACT,
+            schema["$defs"]["importRecord"]["properties"]["artifact"]["not"]["const"],
+        )
 
     def test_imports_load_validate_and_round_trip(self) -> None:
         # Named for the run the document names, which the write requires.

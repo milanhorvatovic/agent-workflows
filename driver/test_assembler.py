@@ -614,15 +614,21 @@ class AssembleTest(TreeTest):
         correct against §9.1's completeness rule and useless to a backend,
         whose first invocation is this step. The request is now the step's
         required input, so a run created with one assembles rather than
-        blocks, and the words that started the run reach the prompt."""
-        workflow = load_workflow(REPO, "feature")
+        blocks, and the words that started the run reach the prompt.
+
+        Every workflow, since every one of them enters through the same stage
+        and the spec and the skill both make that claim."""
         run_dir, loaded = self.entry_run([state.REQUEST_ARTIFACT])
-        assembly = assembler.assemble(REPO, run_dir, loaded, workflow, "brief-confirm")
-        self.assertIn(
-            state.REQUEST_ARTIFACT,
-            [material.source for material in assembly.materials if material.kind == "input"],
-        )
-        self.assertIn("Sessions must survive a server restart.", assembly.prompt)
+        for name in ("feature", "bugfix", "plan"):
+            with self.subTest(workflow=name):
+                assembly = assembler.assemble(
+                    REPO, run_dir, loaded, load_workflow(REPO, name), "brief-confirm"
+                )
+                self.assertIn(
+                    state.REQUEST_ARTIFACT,
+                    [m.source for m in assembly.materials if m.kind == "input"],
+                )
+                self.assertIn("Sessions must survive a server restart.", assembly.prompt)
 
     def test_the_entry_step_blocks_where_the_run_holds_no_request(self) -> None:
         """Declared `required`, so §9.1's blocking rule is what a run without

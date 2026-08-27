@@ -227,6 +227,28 @@ class CliTest(unittest.TestCase):
             "# PROJ-14\n\nSessions must survive a restart.\n",
         )
 
+    def test_a_request_file_opening_with_a_byte_order_mark_drops_it(self) -> None:
+        """U+FEFF marks a file's encoding rather than its content, and every
+        reader here drops a leading one — the YAML reader and the framework
+        reader already do. A Windows editor is what writes one, and keeping it
+        would open the words the entry step restates with a character the
+        requester never typed. Only the leading one: further along it is
+        content, and the request is written verbatim."""
+        self.write_framework()
+        path = self.base / "ticket.md"
+        path.write_bytes("﻿Sessions must survive.\n﻿ still text\n".encode("utf-8"))
+        code, _, _ = self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request-file", str(path), "--config", str(self.config_path)
+        )
+        self.assertEqual(code, 1)
+        self.assertEqual(
+            (self.base / "runs" / "2026-08-17-x" / REQUEST_FILE).read_text(
+                encoding="utf-8"
+            ),
+            "Sessions must survive.\n﻿ still text\n",
+        )
+
     def test_run_on_an_unreadable_request_file_is_a_defect(self) -> None:
         self.write_framework()
         code, _, err = self.invoke(

@@ -1064,6 +1064,27 @@ class SyntheticTreeTest(unittest.TestCase):
             schema["$defs"]["member"]["properties"]["step"]["pattern"],
         )
 
+    def test_the_refused_output_is_the_schema_constant(self) -> None:
+        """The step schema refuses `{run}/request.md` as an output and this
+        reader refuses it too, from either side of the same rule — so a rename
+        reaching one and not the other would leave the driver accepting a
+        declaration its own schema rejects."""
+        import json
+
+        from driver import REQUEST_ARTIFACT
+
+        schema = json.loads(
+            (REPO / "protocol" / "schemas" / "step.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        excluded = schema["properties"]["step"]["properties"]["output"]["properties"][
+            "artifact"
+        ]["not"]["anyOf"]
+        self.assertIn(
+            REQUEST_ARTIFACT, [entry.get("const") for entry in excluded]
+        )
+
     def test_unknown_keys_inside_a_declared_structure_are_errors(self) -> None:
         """§9.5: unknown keys inside a declared structure are authoring
         errors. Each of these typos otherwise reads as a deliberate

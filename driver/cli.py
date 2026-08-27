@@ -164,7 +164,14 @@ def main(argv: list[str] | None = None) -> int:
             # `ValueError` is the decode: the request becomes a markdown
             # artifact a step is handed, so bytes that are not text are a
             # defect to report rather than something to carry into a prompt.
-            request = arguments.request_file.read_text(encoding="utf-8")
+            # `utf-8-sig` drops a leading U+FEFF, which marks the file's
+            # encoding rather than its content — the rule the YAML reader and
+            # the framework reader already apply, and the one a request file
+            # written by a Windows editor needs most, since keeping the mark
+            # would open the words the entry step restates with a character
+            # the requester never typed. Only a leading one: anywhere else it
+            # is content, and this decoding leaves it there.
+            request = arguments.request_file.read_text(encoding="utf-8-sig")
         except (OSError, ValueError) as error:
             print(f"driver: {arguments.request_file}: {error}", file=sys.stderr)
             return 2
