@@ -652,6 +652,7 @@ class ScaffoldTest(TreeTest):
             directory=self.framework / "skills/awf-make",
             body="",
             template="references/out.template.md",
+            template_dir=self.framework / "skills/awf-make",
             references=(),
         )
         with self.assertRaises(assembler.AssemblyError) as caught:
@@ -745,6 +746,52 @@ class ScaffoldTest(TreeTest):
         # reporting the wreckage of the first attempt as already scaffolded.
         self.assertTrue(assembler.scaffold(self.load(), self.run_dir, "{run}/out.md"))
         self.assertEqual(output.read_text(encoding="utf-8"), TEMPLATE)
+
+    def test_a_stage_declared_template_resolves_beside_the_stage(self) -> None:
+        """A template is relative to the file declaring it — the conformance
+        suite states that and tests a stage's template living beside the
+        stage — so resolving both carriers against the package would read a
+        different file than the one CI checked."""
+        self.write(
+            "skills/awf-make/SKILL.md",
+            SKILL.replace("        template: references/out.template.md\n", ""),
+        )
+        self.write("workflows/stages/references/out.template.md", "# From the stage\n")
+        skill = self.load()
+        self.assertEqual(skill.template_dir, self.framework / "workflows" / "stages")
+        self.assertTrue(assembler.scaffold(skill, self.run_dir, "{run}/out.md"))
+        self.assertEqual(
+            (self.run_dir / "out.md").read_text(encoding="utf-8"), "# From the stage\n"
+        )
+
+    def test_a_package_entry_that_links_outside_is_refused(self) -> None:
+        """A checked spelling is half of it: `references/x.md` may itself be a
+        link, and what this module does with the file is put it in a prompt or
+        copy it into a run."""
+        outside = self.base / "secret.md"
+        outside.write_text("SECRET\n", encoding="utf-8")
+        target = self.framework / "skills/awf-make/references/out.template.md"
+        target.unlink()
+        try:
+            target.symlink_to(outside)
+        except (OSError, NotImplementedError) as error:  # pragma: no cover
+            self.skipTest(f"symlinks unavailable: {error}")
+        with self.assertRaises(assembler.AssemblyError) as caught:
+            assembler.scaffold(self.load(), self.run_dir, "{run}/out.md")
+        self.assertIn("outside the directory declaring it", str(caught.exception))
+        self.assertFalse((self.run_dir / "out.md").exists())
+
+    def test_an_existing_output_that_is_not_a_regular_file_is_refused(self) -> None:
+        """EEXIST says the name is taken, not that what holds it is the
+        artifact the step works from."""
+        (self.run_dir / "out.md").mkdir()
+        for binds in (True, False):
+            if binds and not state._BINDS_TO_DIRECTORY:  # pragma: no cover
+                continue
+            with unittest.mock.patch.object(state, "_BINDS_TO_DIRECTORY", binds):
+                with self.assertRaises(assembler.AssemblyError) as caught:
+                    assembler.scaffold(self.load(), self.run_dir, "{run}/out.md")
+                self.assertIn("not a regular file", str(caught.exception))
 
     def test_a_scaffold_never_lands_outside_the_run(self) -> None:
         """The one thing here that creates a file, held to the containment

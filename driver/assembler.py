@@ -115,13 +115,18 @@ class Skill:
     step_id: str
     directory: Path
     body: str
-    # The template the step's output is scaffolded from (§8.3), or None where
-    # the step scaffolds nothing — which is what a step writing an artifact an
-    # earlier step already created declares. Package-relative and held to that
-    # by the reader that produced this, so `scaffold` joins it to `directory`
-    # without checking again: `load_skill` is the boundary, and a second copy
-    # of the rule here is a second thing to keep true.
+    # The template the step's output is scaffolded from (§8.3) as declared, or
+    # None where the step scaffolds nothing — which is what a step writing an
+    # artifact an earlier step already created declares. Held to the segment
+    # rule by the reader that produced this, so `scaffold` does not check the
+    # spelling again: `load_skill` is the boundary.
     template: str | None
+    # And the directory it resolves against, which is the directory of the file
+    # that declared it — a stage's template is beside the stage, a skill's
+    # beside the skill. The conformance suite states that rule and tests it, so
+    # resolving both against the package would read a different file than the
+    # one a stage's declaration was validated against.
+    template_dir: Path | None
     # The reference files the body names, in first-mention order, minus the
     # template: that one reaches the step as the scaffold rather than as
     # reading material, and including it twice would put the same structure in
@@ -165,7 +170,9 @@ def load_skill(framework: Path, step_id: str, declaration: StepDeclaration) -> S
     body = text[match.end() :]
     declared = _skill_step(data, step_id, rel)
     _check_parity(declared, declaration, rel, step_id)
-    template = _template(declared, declaration, rel, step_id)
+    template, template_dir = _template(
+        declared, declaration, rel, step_id, directory, framework / "workflows" / "stages"
+    )
     # Named in the body and present on disk, in that order: the body is what
     # says a reference belongs to this skill's method, and a path it names
     # that nothing backs is a broken package rather than an optional extra —
@@ -179,7 +186,7 @@ def load_skill(framework: Path, step_id: str, declaration: StepDeclaration) -> S
     for name in REFERENCE.findall(mask_fences(body)):
         if name == template or name in references:
             continue
-        if not (directory / name).is_file():
+        if not _within(directory, name, _skill_source(step_id, name)).is_file():
             raise AssemblyError(f"{rel}: names {name}, which is not a file")
         references.append(name)
     return Skill(
@@ -187,6 +194,7 @@ def load_skill(framework: Path, step_id: str, declaration: StepDeclaration) -> S
         directory=directory,
         body=body,
         template=template,
+        template_dir=template_dir,
         references=tuple(references),
     )
 
@@ -254,16 +262,27 @@ def _check_parity(
 
 
 def _template(
-    declared: StepDeclaration, composed: StepDeclaration, rel: str, step_id: str
-) -> str | None:
-    """The template the output is scaffolded from, from whichever carrier
-    declares it (§8.3).
+    declared: StepDeclaration,
+    composed: StepDeclaration,
+    rel: str,
+    step_id: str,
+    skill_dir: Path,
+    stage_dir: Path,
+) -> tuple[str | None, Path | None]:
+    """The template the output is scaffolded from, and the directory it
+    resolves against, from whichever carrier declares it (§8.3).
 
-    The path is skill-relative whichever one names it: a template is a skill
-    asset, and `references/` is a directory only a skill package has. A stage
-    declaring one therefore names the same file, and a disagreement is the
-    parity failure above by another name — checked here rather than there
-    because absence on one side is the ordinary case, not a mismatch.
+    A declared template is relative to the file that declares it — the
+    conformance suite states exactly that and tests a stage's template living
+    beside the stage — so the carrier decides the base. Resolving both against
+    the skill package would read a different file than the one a stage's
+    declaration was checked against, which is a stage passing CI and a driver
+    reading somewhere else.
+
+    A disagreement between the two carriers is the parity failure above by
+    another name, checked here rather than there because absence on one side is
+    the ordinary case; it is compared as the declared string, since two
+    carriers naming the same relative path still mean two different files.
     """
     if (
         declared.output_template is not None
@@ -275,7 +294,11 @@ def _template(
             f"{declared.output_template!r}, and the stage composing it declares "
             f"{composed.output_template!r} — two copies of one contract must agree"
         )
-    return declared.output_template or composed.output_template
+    if declared.output_template is not None:
+        return declared.output_template, skill_dir
+    if composed.output_template is not None:
+        return composed.output_template, stage_dir
+    return None, None
 
 
 def resolve(artifact: str, declaration: StepDeclaration, state: RunState) -> tuple[str, ...]:
@@ -336,12 +359,18 @@ def assemble(
     ]
     for name in skill.references:
         source = _skill_source(step_id, name)
-        materials.append(Material("reference", source, _read(skill.directory / name, source)))
+        materials.append(
+            Material("reference", source, _read(_within(skill.directory, name, source), source))
+        )
     materials.extend(_inputs(run_dir, state, declaration))
     if skill.template is not None:
-        source = _skill_source(step_id, skill.template)
+        source = _template_source(skill)
         materials.append(
-            Material("template", source, _read(skill.directory / skill.template, source))
+            Material(
+                "template",
+                source,
+                _read(_within(skill.template_dir, skill.template, source), source),
+            )
         )
     output = resolve(declaration.output_artifact, declaration, state)[0]
     return Assembly(
@@ -400,6 +429,14 @@ def _skill_source(step_id: str, name: str) -> str:
     return f"skills/{SKILL_PREFIX}{step_id}/{name}"
 
 
+def _template_source(skill: Skill) -> str:
+    """The template named by the carrier that declared it, so a refusal
+    points at the file a reader would open."""
+    if skill.template_dir == skill.directory:
+        return _skill_source(skill.step_id, skill.template)
+    return f"workflows/stages/{skill.template}"
+
+
 def _read(path: Path, source: str) -> str:
     """Framework content, reported by the path a declaration names.
 
@@ -411,6 +448,28 @@ def _read(path: Path, source: str) -> str:
         return path.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as error:
         raise AssemblyError(f"cannot read {source}: {error}") from error
+
+
+def _within(base: Path, relative: str, source: str) -> Path:
+    """A declared package path, resolved and held inside the directory it was
+    declared relative to.
+
+    The spelling is checked where the declaration is read, and a spelling is
+    only half of it: `references/x.md` may itself be a link to somewhere else
+    entirely, and what this module does with the file is put it in a prompt or
+    copy it into a run. Links are resolved and the result must still be under
+    the base — the containment the conformance suite applies to the same
+    declarations, applied again here because the framework the driver was
+    pointed at is not the one CI checked.
+    """
+    try:
+        anchor = base.resolve()
+        resolved = (base / relative).resolve()
+    except OSError as error:
+        raise AssemblyError(f"cannot read {source}: {error}") from error
+    if not resolved.is_relative_to(anchor):
+        raise AssemblyError(f"{source} resolves outside the directory declaring it")
+    return resolved
 
 
 def _components(artifact: str) -> list[str]:
@@ -504,6 +563,22 @@ def _is_link_at(directory: int | None, path: Path | None, name: str) -> bool:
         return False
 
 
+def _is_regular_at(directory: int | None, path: Path | None, name: str) -> bool:
+    """Whether `name` in the held directory is a regular file, read without
+    following a link — bound to the descriptor where there is one."""
+    try:
+        mode = (
+            os.lstat(name, dir_fd=directory).st_mode
+            if directory is not None
+            else (path / name).lstat().st_mode
+        )
+    except OSError:
+        # Gone between the failed create and this look, so there is nothing
+        # standing in the artifact's place to refuse.
+        return True
+    return stat.S_ISREG(mode)
+
+
 def _read_artifact(run_dir: Path, artifact: str) -> str:
     """Read one of this run's artifacts, bound to the run's own directory."""
     relative = _components(artifact)
@@ -559,9 +634,9 @@ def scaffold(skill: Skill, run_dir: Path, artifact: str) -> bool:
     """
     if skill.template is None:
         return False
-    source = _skill_source(skill.step_id, skill.template)
+    source = _template_source(skill)
     try:
-        text = (skill.directory / skill.template).read_bytes()
+        text = _within(skill.template_dir, skill.template, source).read_bytes()
     except OSError as error:
         raise AssemblyError(f"cannot read {source}: {error}") from error
     relative = _components(artifact)
@@ -588,6 +663,13 @@ def scaffold(skill: Skill, run_dir: Path, artifact: str) -> bool:
             # scaffolded" on one platform and a defect on the other.
             if _is_link_at(directory, path, relative[-1]):
                 raise AssemblyError(f"cannot scaffold {artifact}: the name is a link")
+            # And EEXIST says a name is taken, not that what holds it is the
+            # artifact this step works from. A directory, a FIFO, or a socket
+            # reaches here too, is no link, and would be reported as a scaffold
+            # already in place — the same refusal the read side makes, for the
+            # same reason: only a regular file is an artifact.
+            if not _is_regular_at(directory, path, relative[-1]):
+                raise AssemblyError(f"{artifact} is not a regular file")
             return False
         except OSError as error:
             raise AssemblyError(f"cannot scaffold {artifact}: {error}") from error
