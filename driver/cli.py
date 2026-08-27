@@ -172,6 +172,13 @@ def main(argv: list[str] | None = None) -> int:
             # the requester never typed. Only a leading one: anywhere else it
             # is content, and this decoding leaves it there.
             #
+            # Read as bytes and decoded here rather than through `read_text`,
+            # which opens in text mode: universal newlines would translate a
+            # CRLF request to LF before the write ever saw it, so the file
+            # this command promises to keep verbatim would be the one file it
+            # rewrote. Decoding the bytes keeps the endings and still drops
+            # the mark, since `utf-8-sig` is a codec rather than a mode.
+            #
             # No non-regular-file guard here, unlike the artifact reads, and
             # deliberately: `--request-file <(...)` is a FIFO, and composing
             # the request out of another command is the case the argument
@@ -180,7 +187,7 @@ def main(argv: list[str] | None = None) -> int:
             # would race a writer that has not started. A path the caller
             # typed is theirs to have chosen — the same trade `--config` takes
             # — where an artifact's path is one the run resolved.
-            request = arguments.request_file.read_text(encoding="utf-8-sig")
+            request = arguments.request_file.read_bytes().decode("utf-8-sig")
         except (OSError, ValueError) as error:
             print(f"driver: {arguments.request_file}: {error}", file=sys.stderr)
             return 2

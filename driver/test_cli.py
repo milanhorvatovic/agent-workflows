@@ -227,6 +227,40 @@ class CliTest(unittest.TestCase):
             "# PROJ-14\n\nSessions must survive a restart.\n",
         )
 
+    def test_a_request_file_keeps_its_line_endings(self) -> None:
+        """`read_text` opens in text mode, so universal newlines would fold a
+        CRLF request to LF before the write ever saw it — the file this command
+        promises to keep verbatim would be the one file it rewrote. The bytes
+        are read and decoded instead, which keeps the endings and still drops
+        a leading mark, `utf-8-sig` being a codec rather than a mode."""
+        self.write_framework()
+        path = self.base / "crlf.md"
+        path.write_bytes(b"\xef\xbb\xbfline one\r\nline two\rline three\n")
+        code, _, _ = self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request-file", str(path), "--config", str(self.config_path)
+        )
+        self.assertEqual(code, 1)
+        self.assertEqual(
+            (self.base / "runs" / "2026-08-17-x" / REQUEST_FILE).read_bytes(),
+            b"line one\r\nline two\rline three\n",
+        )
+
+    def test_a_request_argv_cannot_carry_is_refused(self) -> None:
+        """POSIX decodes argv with `surrogateescape`, so a byte no encoding
+        claims reaches `--request` as a lone surrogate. It clears the emptiness
+        check, and the write would then raise `UnicodeEncodeError` — a
+        `ValueError`, which this command surface does not catch, so the run
+        would leave as a traceback rather than an exit code."""
+        self.write_framework()
+        code, _, err = self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request", "\udcff", "--config", str(self.config_path)
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("UTF-8 can carry", err)
+        self.assertFalse((self.base / "runs" / "2026-08-17-x").exists())
+
     def test_a_request_file_opening_with_a_byte_order_mark_drops_it(self) -> None:
         """U+FEFF marks a file's encoding rather than its content, and every
         reader here drops a leading one — the YAML reader and the framework

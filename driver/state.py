@@ -178,6 +178,19 @@ def create_run(
         raise StateError(f"not a run id: {run_id!r}")
     if not request.strip():
         raise StateError("the request is empty — a run is created from one (spec §8.7)")
+    # A request that UTF-8 cannot carry, refused here rather than at the write.
+    # POSIX decodes argv with `surrogateescape`, so a byte no encoding claims
+    # reaches `--request` as a lone surrogate: it clears the emptiness check,
+    # and `_write_request` then raises `UnicodeEncodeError` — a `ValueError`,
+    # which the command surface does not catch, so the run leaves as a
+    # traceback rather than an exit code. The run-id guard refuses surrogates
+    # for this reason already; a request is the other string a caller hands in.
+    try:
+        request.encode("utf-8")
+    except UnicodeEncodeError as error:
+        raise StateError(
+            f"the request is not text UTF-8 can carry: {error}"
+        ) from None
     # The version is written into the document and `load` holds every
     # document to it, so an unchecked one here creates a durable run this
     # same module refuses to read back — a directory and a state file that
