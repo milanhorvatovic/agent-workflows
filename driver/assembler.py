@@ -591,6 +591,18 @@ def scaffold(skill: Skill, run_dir: Path, artifact: str) -> bool:
             with os.fdopen(descriptor, "wb") as stream:
                 stream.write(text)
         except OSError as error:
+            # The name this call created is removed with it. Left behind, an
+            # empty or partial scaffold is what the next `O_EXCL` reports as
+            # EEXIST — and this function reads that as an artifact the step
+            # already has, so a failed copy would be handed to the step as
+            # content to work from. Only the file this call created: the
+            # branch that found one already there returned above without
+            # reaching here, which is what makes the removal safe.
+            with contextlib.suppress(OSError):
+                if directory is None:
+                    os.unlink(path / relative[-1])
+                else:
+                    os.unlink(relative[-1], dir_fd=directory)
             raise AssemblyError(f"cannot scaffold {artifact}: {error}") from error
     return True
 

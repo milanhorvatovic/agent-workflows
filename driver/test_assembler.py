@@ -572,12 +572,17 @@ class ContainmentTest(TreeTest):
             self.skipTest("platform has no FIFOs")
         os.mkfifo(self.run_dir / "in.md")
         # An alarm rather than trust: if the guard regresses this test hangs
-        # forever, and a suite that never finishes reports nothing at all.
-        signal.signal(signal.SIGALRM, _alarm)
+        # forever, and a suite that never finishes reports nothing at all. The
+        # handler is process-wide, so it is put back: left installed, every
+        # later test inherits an alarm that fails them.
+        previous = signal.signal(signal.SIGALRM, _alarm)
         signal.alarm(5)
-        self.addCleanup(signal.alarm, 0)
-        with self.assertRaises(assembler.AssemblyError) as caught:
-            assembler._read_artifact(self.run_dir, "{run}/in.md")
+        try:
+            with self.assertRaises(assembler.AssemblyError) as caught:
+                assembler._read_artifact(self.run_dir, "{run}/in.md")
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, previous)
         self.assertIn("not a regular file", str(caught.exception))
 
     def test_a_linked_directory_on_the_way_to_an_artifact_is_not_followed(self) -> None:
@@ -649,7 +654,17 @@ class ScaffoldTest(TreeTest):
         traversal by declaration rather than by link."""
         outside = self.base / "secret.md"
         outside.write_text("SECRET\n", encoding="utf-8")
-        for escape in ("../../secret.md", "/etc/passwd", "references/../../secret.md"):
+        for escape in (
+            "../../secret.md",
+            "/etc/passwd",
+            "references/../../secret.md",
+            # Drive-relative and root-relative Windows forms are not absolute,
+            # and joining either on a Windows host discards the skill
+            # directory — the rule the config paths already carry.
+            "D:secret.md",
+            "\\\\host\\share\\secret.md",
+            "\\secret.md",
+        ):
             self.write("skills/awf-make/SKILL.md", SKILL.replace(
                 "template: references/out.template.md", f"template: {escape}"
             ))
@@ -687,6 +702,24 @@ class ScaffoldTest(TreeTest):
                     assembler.scaffold(self.load(), self.run_dir, "{run}/out.md")
                 self.assertIn("link", str(caught.exception))
         self.assertEqual(outside.read_text(encoding="utf-8"), "SECRET\n")
+
+    def test_a_failed_write_leaves_no_scaffold_behind(self) -> None:
+        """An empty or partial file is what the next `O_EXCL` reports as
+        EEXIST, and this function reads that as an artifact the step already
+        has — so a failed copy would be handed to the step as content to work
+        from."""
+        output = self.run_dir / "out.md"
+        with unittest.mock.patch.object(
+            os, "fdopen", side_effect=OSError("no space left on device")
+        ):
+            with self.assertRaises(assembler.AssemblyError) as caught:
+                assembler.scaffold(self.load(), self.run_dir, "{run}/out.md")
+        self.assertIn("cannot scaffold", str(caught.exception))
+        self.assertFalse(output.exists())
+        # And the retry that follows writes the whole template rather than
+        # reporting the wreckage of the first attempt as already scaffolded.
+        self.assertTrue(assembler.scaffold(self.load(), self.run_dir, "{run}/out.md"))
+        self.assertEqual(output.read_text(encoding="utf-8"), TEMPLATE)
 
     def test_a_scaffold_never_lands_outside_the_run(self) -> None:
         """The one thing here that creates a file, held to the containment

@@ -488,7 +488,13 @@ def _check_package_relative(value: str, at: str) -> None:
     as the step's artifact — traversal by declaration rather than by link, and
     the one path in a contract that nothing else checks.
     """
-    if PureWindowsPath(value).is_absolute() or value.startswith(("/", "\\")):
+    # Any Windows drive or root component, not absoluteness: a drive-relative
+    # `D:secret.md` is not absolute, and joining it on a Windows host discards
+    # the skill directory and reads whatever that drive's working directory
+    # holds. Rejected on every platform, as the config paths are and for the
+    # same reason — a declaration must mean one thing everywhere.
+    windows_form = PureWindowsPath(value)
+    if windows_form.drive or windows_form.root:
         raise WorkflowError(f"{at}: template is not package-relative: {value!r}")
     for segment in value.replace("\\", "/").split("/"):
         if segment in ("", ".", ".."):
