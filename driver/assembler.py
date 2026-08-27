@@ -474,11 +474,21 @@ def _read_bytes(path: Path, source: str) -> bytes:
 
 
 def _read(path: Path, source: str) -> str:
-    """The same, decoded — every framework file this module reads is UTF-8."""
+    """The same, decoded with universal newlines — every framework file this
+    module reads is UTF-8 text.
+
+    The translation is not cosmetic: the conformance suite reads these files
+    through `read_text`, which performs it, and this module's rules are the
+    suite's rules. Without it a CRLF skill would pass CI and then be refused
+    here for having no frontmatter, since the pattern the two share matches
+    `\\n`. `_read_bytes` stays raw for the one caller that must not translate
+    — a template copied byte for byte into a run.
+    """
     try:
-        return _read_bytes(path, source).decode("utf-8")
+        text = _read_bytes(path, source).decode("utf-8")
     except UnicodeError as error:
         raise AssemblyError(f"cannot read {source}: {error}") from error
+    return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
 def _within(base: Path, relative: str, source: str) -> Path:

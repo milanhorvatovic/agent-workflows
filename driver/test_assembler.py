@@ -168,6 +168,19 @@ class LoadSkillTest(TreeTest):
             eval(declared.group("literal").split(", re.")[0]),  # noqa: S307 — a repo literal
         )
 
+    def test_a_skill_authored_with_crlf_reads_the_same_as_the_suite_reads_it(self) -> None:
+        """The conformance suite reads these files through `read_text`, which
+        translates newlines, and the frontmatter pattern the two share matches
+        `\\n` — so without the same translation a CRLF skill passes CI and is
+        then refused here for having no frontmatter."""
+        (self.framework / "skills/awf-make/SKILL.md").write_bytes(
+            SKILL.replace("\n", "\r\n").encode("utf-8")
+        )
+        skill = self.load()
+        self.assertEqual(skill.template, "references/out.template.md")
+        self.assertEqual(skill.references, ("references/checklist.md",))
+        self.assertNotIn("\r", skill.body)
+
     def test_a_reference_named_inside_a_fence_is_an_example(self) -> None:
         """The one fence model this repository reads declarations through: a
         path inside an example is that example's, so loading it would put a
