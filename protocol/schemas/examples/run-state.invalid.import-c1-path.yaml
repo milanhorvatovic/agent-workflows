@@ -12,6 +12,7 @@ steps:
     status: skipped
 gates: []
 artifacts:
+  - "{run}/request.md"
   - "{run}/brief\x85.md"
 imports:
   - artifact: "{run}/brief\x85.md"

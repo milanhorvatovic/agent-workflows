@@ -10,4 +10,5 @@ steps:
   - id: brief-confirm
     status: pending
 gates: []
-artifacts: []
+artifacts:
+  - "{run}/request.md"

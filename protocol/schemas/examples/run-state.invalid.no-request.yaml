@@ -1,0 +1,22 @@
+# INVALID on purpose — schema validation MUST reject this fixture:
+# - artifacts omits `{run}/request.md`. Every run holds one: the executor
+#   materializes the request when the run is created and before any step runs
+#   (spec §8.7), so a manifest without it describes a run whose `brief-confirm`
+#   was never given the request it exists to restate.
+# Everything else is the pre-acceptance starter, so this is the one fault.
+run:
+  id: 2026-08-27-feature-slug
+  workflow: feature
+  protocol: "0.2"
+steps:
+  - id: brief-confirm
+    status: done
+  - id: clarifying-question
+    status: skipped
+  - id: risk-route
+    status: done
+  - id: intake-approval
+    status: blocked
+gates: []
+artifacts:
+  - "{run}/brief.md"

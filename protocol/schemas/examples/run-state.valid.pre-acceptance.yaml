@@ -24,4 +24,5 @@ steps:
     status: blocked # the gate is waiting; not done, so a resume returns to it (spec §7)
 gates: []
 artifacts:
+  - "{run}/request.md" # landed at creation, before `brief-confirm` ran (spec §8.7)
   - "{run}/brief.md"

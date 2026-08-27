@@ -12,4 +12,5 @@ steps:
   - id: risk-route
     status: active
 gates: []
-artifacts: []
+artifacts:
+  - "{run}/request.md"

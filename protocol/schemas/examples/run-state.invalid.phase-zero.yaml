@@ -9,4 +9,5 @@ run:
   protocol: "0.2"
 steps: []
 gates: []
-artifacts: []
+artifacts:
+  - "{run}/request.md"
