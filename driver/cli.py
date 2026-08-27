@@ -2,14 +2,15 @@
 with `run` naming the workflow and the new run's id, and `resume` naming the
 run to resume.
 
-Exit codes: 0 success, 1 the command cannot run yet (a module it needs has
-not landed), 2 bad usage or a defective config or environment. `run` creates
-the run — directory and bootstrap state — and then exits 1 at the point
-execution would start, because executing a step needs the context assembler
-and an invocation backend; `resume` resolves the position the same way. The
-created run is durable either way, which is the point: the state machine's
-writes are real, and the later modules pick up exactly where these commands
-stop.
+Exit codes: 0 success, 1 the command cannot run yet — a module it needs has
+not landed, or the step it resolved is blocked on an input the run has not
+produced (spec §9.1) — and 2 bad usage or a defective config, environment, or
+framework. `run` creates the run — directory and bootstrap state — resolves
+its first step and assembles the context that step would execute from, then
+exits 1 at the point invocation would start; `resume` resolves the position
+the same way. The created run is durable either way, which is the point: the
+state machine's writes are real, and the later modules pick up exactly where
+these commands stop.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ import sys
 from pathlib import Path
 
 from . import PROTOCOL
+from . import assembler
 from . import state as run_state
 from .config import Config, ConfigError, load_config
 from .workflow import Workflow, WorkflowError, load_workflow
@@ -159,14 +161,14 @@ def _run(config: Config, workflow_name: str, run_id: str) -> int:
         print(f"driver: {error}", file=sys.stderr)
         return 2
     print(f"created {run_dir}")
-    return _report_position(created, workflow)
+    return _report_position(created, workflow, config, run_dir)
 
 
 def _resume(config: Config, run_id: str) -> int:
     """Resolve the resume position (spec §8.5) and stop where execution
     would continue."""
     try:
-        _, loaded = run_state.open_run(config.runs_dir, run_id)
+        run_dir, loaded = run_state.open_run(config.runs_dir, run_id)
     except run_state.StateError as error:
         print(f"driver: {error}", file=sys.stderr)
         return 2
@@ -184,10 +186,12 @@ def _resume(config: Config, run_id: str) -> int:
     except (WorkflowError, run_state.StateError) as error:
         print(f"driver: {error}", file=sys.stderr)
         return 2
-    return _report_position(loaded, workflow)
+    return _report_position(loaded, workflow, config, run_dir)
 
 
-def _report_position(loaded: run_state.RunState, workflow: Workflow) -> int:
+def _report_position(
+    loaded: run_state.RunState, workflow: Workflow, config: Config, run_dir: Path
+) -> int:
     position = loaded.position()
     if position is None:
         # Nothing left to run is not the same as ended. §7 ends a run at a
@@ -216,12 +220,32 @@ def _report_position(loaded: run_state.RunState, workflow: Workflow) -> int:
             "driver: cannot decide it yet — the gate handler module has not landed",
             file=sys.stderr,
         )
-    else:
-        print(
-            "driver: cannot execute it yet — the context assembler and "
-            "invocation backend modules have not landed",
-            file=sys.stderr,
+        return 1
+    # The context a step would execute from is resolved here rather than left
+    # to the module that will send it, because assembling is what says the
+    # position is *runnable*: a required input the run has not produced blocks
+    # the step (§9.1), and reporting "next is X" while X cannot start reports
+    # a readiness the run does not have. Nothing is written — the scaffold
+    # §8.3 asks for belongs to the invocation that fills it, not to a command
+    # that stops before one.
+    try:
+        assembly = assembler.assemble(
+            config.framework_dir, run_dir, loaded, workflow, position.id
         )
+    except assembler.BlockedError as error:
+        print(f"driver: {error}", file=sys.stderr)
+        return 1
+    except assembler.AssemblyError as error:
+        print(f"driver: {error}", file=sys.stderr)
+        return 2
+    print(
+        f"assembled {assembly.step_id} ({assembly.role}): "
+        f"{len(assembly.materials)} files, {len(assembly.prompt)} characters"
+    )
+    print(
+        "driver: cannot execute it yet — the invocation backend module has not landed",
+        file=sys.stderr,
+    )
     return 1
 
 
