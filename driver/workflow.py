@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from . import PROTOCOL, PROTOCOL_VERSION, implements
 from .config import ROLES
@@ -475,6 +475,26 @@ def _check_artifact(value: str, at: str, what: str) -> None:
         raise WorkflowError(
             f"{at}: {what} is not a path under {{run}}: {value!r} (spec §8.1)"
         )
+
+
+def _check_package_relative(value: str, at: str) -> None:
+    """A template is resolved inside the skill package that declares it, and
+    the schema constrains only that it is a non-empty string (§8.3).
+
+    So the shape is this reader's to hold, for the reason every artifact path
+    is held to `RUN_RELATIVE`: the executor joins the declared string to a
+    directory and copies what it finds into a run. A `..` segment or an
+    absolute form reads a file the package does not contain and writes it in
+    as the step's artifact — traversal by declaration rather than by link, and
+    the one path in a contract that nothing else checks.
+    """
+    if PureWindowsPath(value).is_absolute() or value.startswith(("/", "\\")):
+        raise WorkflowError(f"{at}: template is not package-relative: {value!r}")
+    for segment in value.replace("\\", "/").split("/"):
+        if segment in ("", ".", ".."):
+            raise WorkflowError(
+                f"{at}: template segment {segment!r} escapes the package: {value!r}"
+            )
 
 
 def _check_placeholders(value: str, at: str, what: str) -> None:
@@ -1573,6 +1593,7 @@ def step_declaration(declaration: dict, step_id: str, rel: str) -> StepDeclarati
         raise WorkflowError(f"{at}: template is not a path: {template!r}")
     if isinstance(template, str):
         _check_placeholders(template, at, "template")
+        _check_package_relative(template, at)
     inputs: list[InputDeclaration] = []
     # Absence is the only thing that means "no declared inputs". A present
     # `inputs` that is not a list — `false`, `null`, a mapping — is an

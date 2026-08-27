@@ -107,9 +107,12 @@ class Skill:
     step_id: str
     directory: Path
     body: str
-    # The template the step's output is scaffolded from (§8.3), skill-relative
-    # as declared, or None where the step scaffolds nothing — which is what a
-    # step writing an artifact an earlier step already created declares.
+    # The template the step's output is scaffolded from (§8.3), or None where
+    # the step scaffolds nothing — which is what a step writing an artifact an
+    # earlier step already created declares. Package-relative and held to that
+    # by the reader that produced this, so `scaffold` joins it to `directory`
+    # without checking again: `load_skill` is the boundary, and a second copy
+    # of the rule here is a second thing to keep true.
     template: str | None
     # The reference files the body names, in first-mention order, minus the
     # template: that one reaches the step as the scaffold rather than as

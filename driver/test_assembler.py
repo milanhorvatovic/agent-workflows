@@ -15,7 +15,7 @@ from pathlib import Path
 from driver import assembler, state
 from driver.state import RunState, StepRecord
 from driver.test_workflow import REPO, STAGE, WORKFLOW
-from driver.workflow import load_workflow
+from driver.workflow import WorkflowError, load_workflow
 
 # The skill bound to STAGE's `make` step: the same contract, which is what
 # makes it the binding rather than the name that finds it.
@@ -627,6 +627,33 @@ class ScaffoldTest(TreeTest):
         with self.assertRaises(assembler.AssemblyError) as caught:
             assembler.scaffold(skill, self.run_dir, "{run}/out.md")
         self.assertIn("skills/awf-make/references/out.template.md", str(caught.exception))
+
+    def test_a_template_cannot_reach_outside_its_own_package(self) -> None:
+        """The schema constrains a template to a non-empty string and nothing
+        more, so the shape is the reader's to hold: a `..` segment reads a file
+        the package does not contain and writes it in as the step's artifact —
+        traversal by declaration rather than by link."""
+        outside = self.base / "secret.md"
+        outside.write_text("SECRET\n", encoding="utf-8")
+        for escape in ("../../secret.md", "/etc/passwd", "references/../../secret.md"):
+            self.write("skills/awf-make/SKILL.md", SKILL.replace(
+                "template: references/out.template.md", f"template: {escape}"
+            ))
+            with self.assertRaises(assembler.AssemblyError) as caught:
+                self.load()
+            self.assertIn("template", str(caught.exception))
+        self.assertFalse((self.run_dir / "out.md").exists())
+
+    def test_a_stage_declaring_an_escaping_template_never_composes(self) -> None:
+        """The guard sits in the reader both carriers share, so the stage's
+        copy is refused where it is read — before a run directory exists."""
+        self.write(
+            "workflows/stages/intake.md",
+            STAGE.replace("template: references/out.template.md", "template: ../../secret.md"),
+        )
+        with self.assertRaises(WorkflowError) as caught:
+            self.workflow()
+        self.assertIn("escapes the package", str(caught.exception))
 
     def test_a_scaffold_never_lands_outside_the_run(self) -> None:
         """The one thing here that creates a file, held to the containment
