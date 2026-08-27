@@ -19,7 +19,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path, PureWindowsPath
 
-from . import PROTOCOL, PROTOCOL_VERSION, implements
+from . import PROTOCOL, PROTOCOL_VERSION, REQUEST_ARTIFACT, implements
 from .config import ROLES
 from .protocol_yaml import WHITESPACE, ProtocolYamlError, loads
 
@@ -1596,6 +1596,18 @@ def step_declaration(declaration: dict, step_id: str, rel: str) -> StepDeclarati
         raise WorkflowError(f"{at}: missing output artifact")
     _check_placeholders(artifact, at, "output artifact")
     _check_artifact(artifact, at, "output artifact")
+    # §8.7: the request is what the run was created from, and no step produces
+    # it. A step claiming it as an output would overwrite mid-run the words
+    # the entry step exists to restate — and the run would still be holding a
+    # manifest entry that says the request is there, which is what a gate's
+    # revise depends on when it returns to a step that reads it again. The
+    # step schema forbids it, and this reader holds the framework it was
+    # pointed at, which no conformance run has necessarily seen.
+    if artifact == REQUEST_ARTIFACT:
+        raise WorkflowError(
+            f"{at}: output artifact is {artifact} — the request is what the run "
+            f"was created from and no step produces it (spec §8.7)"
+        )
     # §8.1 and §9.1: `{P}` resolves to one path per phase, and a step
     # produces one artifact — a phase set of outputs is a stage that
     # repeats, not a step that fans out, which is why the step schema

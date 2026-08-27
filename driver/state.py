@@ -38,18 +38,11 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import PROTOCOL, PROTOCOL_VERSION, implements
+from . import PROTOCOL, PROTOCOL_VERSION, REQUEST_ARTIFACT, REQUEST_FILE, implements
 from .protocol_yaml import ProtocolYamlError, dumps, loads
 from .workflow import PHASE, PHASE_SET, RUN_RELATIVE, Workflow, family
 
 STATE_FILE = "workflow-state.yaml"
-
-# The request the run was created with (§8.7). It is not a step's output —
-# nothing precedes the first step to produce it — so the executor lands it at
-# creation and manifests it, which is what lets the entry step declare what it
-# restates instead of reaching for something no surface carries (§9.1).
-REQUEST_FILE = "request.md"
-REQUEST_ARTIFACT = f"{{run}}/{REQUEST_FILE}"
 
 STATUSES = ("pending", "active", "blocked", "done", "skipped")
 OUTCOMES = ("accept", "revise", "reject")

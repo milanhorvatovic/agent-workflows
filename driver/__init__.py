@@ -18,6 +18,16 @@ PROTOCOL = "0.2"
 # a `metadata.workflow` block and in a run's own state alike.
 PROTOCOL_VERSION = re.compile(r"^[0-9]+\.[0-9]+$")
 
+# The request the run was created from (§8.7). It is not a step's output —
+# nothing precedes the first step to produce it — so the executor lands it at
+# creation and manifests it, which is what lets the entry step declare what it
+# restates instead of reaching for something no surface carries (§9.1). The
+# path is the protocol's rather than any one module's: creation writes it,
+# the declaration reader refuses a step that claims it as an output, and the
+# state reader requires it in every manifest.
+REQUEST_FILE = "request.md"
+REQUEST_ARTIFACT = f"{{run}}/{REQUEST_FILE}"
+
 
 def implements(version: str) -> bool:
     """Whether this driver implements a well-formed declared version (§11).

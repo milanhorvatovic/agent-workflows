@@ -921,6 +921,36 @@ class SyntheticTreeTest(unittest.TestCase):
             load_workflow(self.framework, "demo")
         self.assertIn("carries {P}", str(caught.exception))
 
+    def test_a_step_claiming_the_request_as_its_output_is_an_error(self) -> None:
+        """§8.7: the request is what the run was created from and no step
+        produces it. One declaring it as its output would overwrite mid-run the
+        words the entry step exists to restate, while the manifest went on
+        saying the request was there. The step schema refuses it, and this
+        reader holds the framework it was pointed at, which no conformance run
+        has necessarily seen."""
+        self.write(
+            "workflows/stages/intake.md",
+            STAGE.replace('artifact: "{run}/out.md"', 'artifact: "{run}/request.md"'),
+        )
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "demo")
+        self.assertIn("no step produces it", str(caught.exception))
+
+    def test_the_request_is_refused_only_as_an_output(self) -> None:
+        """Declaring it as an input is what the entry step does — the refusal
+        is about producing it, not about naming it."""
+        self.write(
+            "workflows/stages/intake.md",
+            STAGE.replace(
+                'artifact: "{run}/in.md"', 'artifact: "{run}/request.md"'
+            ),
+        )
+        workflow = load_workflow(self.framework, "demo")
+        self.assertIn(
+            "{run}/request.md",
+            [declared.artifact for declared in workflow.step("make").inputs],
+        )
+
     def test_an_artifact_outside_the_run_is_an_error(self) -> None:
         """§8.1 puts a run's artifacts under `{run}`, and a contract naming
         anything else is a path the completion manifests and a later
