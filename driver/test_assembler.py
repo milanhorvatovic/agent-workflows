@@ -215,6 +215,32 @@ class LoadSkillTest(TreeTest):
         )
         self.assertEqual(self.load().references, ("references/checklist.md",))
 
+    def test_neither_the_package_nor_its_entry_point_may_link_outside(self) -> None:
+        """Containing only the leaf leaves a linked package directory whole,
+        since everything under it resolves within itself; containing only the
+        directory leaves the leaf, which is how a valid skill file outside the
+        framework reaches the prompt."""
+        outside = self.base / "elsewhere"
+        (outside / "references").mkdir(parents=True)
+        (outside / "SKILL.md").write_text(SKILL, encoding="utf-8")
+        (outside / "references/checklist.md").write_text("- check this\n", encoding="utf-8")
+        (outside / "references/out.template.md").write_text(TEMPLATE, encoding="utf-8")
+        package = self.framework / "skills/awf-make"
+        for link, target in ((package / "SKILL.md", outside / "SKILL.md"), (package, outside)):
+            if link.is_dir() and not link.is_symlink():
+                for child in sorted(link.rglob("*"), reverse=True):
+                    child.unlink() if child.is_file() else child.rmdir()
+                link.rmdir()
+            else:
+                link.unlink()
+            try:
+                link.symlink_to(target, target_is_directory=target.is_dir())
+            except (OSError, NotImplementedError) as error:  # pragma: no cover
+                self.skipTest(f"symlinks unavailable: {error}")
+            with self.assertRaises(assembler.AssemblyError) as caught:
+                self.load()
+            self.assertIn("outside the directory declaring it", str(caught.exception))
+
     def test_a_missing_skill_names_the_path_it_looked_for(self) -> None:
         (self.framework / "skills/awf-make/SKILL.md").unlink()
         with self.assertRaises(assembler.AssemblyError) as caught:

@@ -151,15 +151,22 @@ class Assembly:
 
 def load_skill(framework: Path, step_id: str, declaration: StepDeclaration) -> Skill:
     """Read the skill bound to `step_id` and hold it to the stage's contract."""
-    directory = framework / "skills" / f"{SKILL_PREFIX}{step_id}"
-    rel = f"skills/{SKILL_PREFIX}{step_id}/{SKILL_FILE}"
+    package = f"{SKILL_PREFIX}{step_id}"
+    rel = f"skills/{package}/{SKILL_FILE}"
+    # The package directory first, then the entry point inside it. Containing
+    # only the leaf would leave a linked package directory whole — everything
+    # under it resolves within itself and passes — and containing only the
+    # directory would leave the leaf, which is how a valid skill file outside
+    # the framework reaches the prompt. Both, and the references and template
+    # below inherit a directory already known to be inside.
+    directory = _within(framework / "skills", package, f"skills/{package}")
     # Undecodable is malformed rather than absent, the distinction the
     # composition module draws for the same reason: UnicodeError is a
     # ValueError, and without it here a skill that is not UTF-8 leaves the
     # driver as a traceback instead of the defect it is. `_read` reports
     # both, and refuses a FIFO in the file's place rather than blocking on
     # it.
-    text = _read(directory / SKILL_FILE, rel)
+    text = _read(_within(directory, SKILL_FILE, rel), rel)
     match = FRONTMATTER.match(text)
     if match is None:
         raise AssemblyError(f"{rel}: no frontmatter, and §9 declares in it")
