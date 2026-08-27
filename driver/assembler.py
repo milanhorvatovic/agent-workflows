@@ -26,21 +26,24 @@ place, and every placeholder in it is the step's to fill.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import PROTOCOL, PROTOCOL_VERSION, implements
 from .protocol_yaml import ProtocolYamlError, loads
-from .state import _NOFOLLOW, RunState, StateError, is_link, run_directory
+from .state import _NOFOLLOW, _NONBLOCK, RunState, StateError, is_link, run_directory
 from .workflow import (
     PHASE,
     PHASE_SET,
     StepDeclaration,
     Workflow,
     WorkflowError,
+    check_protocol,
     family,
+    mask_fences,
     step_declaration,
 )
 
@@ -156,8 +159,13 @@ def load_skill(framework: Path, step_id: str, declaration: StepDeclaration) -> S
     # says a reference belongs to this skill's method, and a path it names
     # that nothing backs is a broken package rather than an optional extra —
     # the step would be told to load a file the executor cannot hand it.
+    # Fenced content is masked first, by the one fence model this repository
+    # reads declarations through: a path inside an example is that example's,
+    # and loading it would put a demonstration in the step's context — or,
+    # where the example names a file that was never meant to exist, refuse a
+    # skill for illustrating something.
     references: list[str] = []
-    for name in REFERENCE.findall(body):
+    for name in REFERENCE.findall(mask_fences(body)):
         if name == template or name in references:
             continue
         if not (directory / name).is_file():
@@ -182,18 +190,17 @@ def _skill_step(data: object, step_id: str, rel: str) -> StepDeclaration:
             f"carries the contract it executes (spec §9.1)"
         )
     # §9 holds every block to the version it was authored against, and §11
-    # forbids interpreting one from a version this driver does not implement.
-    # The composition module checks the stages' blocks; this is the same rule
-    # applied to the other carrier, since a skill from a mismatched release
-    # ships prose written against contracts this run does not execute.
-    version = workflow.get("protocol")
-    if not isinstance(version, str) or not PROTOCOL_VERSION.fullmatch(version):
-        raise AssemblyError(f"{rel}: declaration without a protocol version: {version!r}")
-    if not implements(version):
-        raise AssemblyError(
-            f"{rel}: declaration is protocol {version}, and this driver "
-            f"implements {PROTOCOL} (spec §11)"
-        )
+    # forbids interpreting one from a version this driver does not implement
+    # — a skill from a mismatched release ships prose written against
+    # contracts this run does not execute. The composition module's check is
+    # the one this calls rather than a second copy of the rule: two checks of
+    # one clause are two things to keep in step, and the frontmatter carrier
+    # is owed exactly what a stage's fenced block is owed. Line 1, the
+    # frontmatter opening the file.
+    try:
+        check_protocol(workflow, rel, 1)
+    except WorkflowError as error:
+        raise AssemblyError(str(error)) from error
     declaration = workflow.get("step")
     if not isinstance(declaration, dict):
         raise AssemblyError(f"{rel}: `metadata.workflow.step` is not a mapping")
@@ -285,21 +292,23 @@ def resolve(artifact: str, declaration: StepDeclaration, state: RunState) -> tup
         )
     excluded = str(phase) if PHASE.search(declaration.output_artifact) else None
     pattern = family(artifact)
-    found: dict[int, str] = {}
+    found: dict[str, str] = {}
     for entry in state.artifacts:
         match = pattern.fullmatch(entry)
         if match is not None and match.group("phase") != excluded:
-            found[int(match.group("phase"))] = entry
-    return tuple(found[number] for number in sorted(found))
+            found[match.group("phase")] = entry
+    # Ordered by length then digits rather than by `int`, which orders the
+    # same way once `family` has excluded leading zeros and does not raise:
+    # the manifest is a document this driver reads and did not necessarily
+    # write, `int()` caps at 4300 digits, and a phase number past that would
+    # leave the driver as a traceback instead of the set it was asked for —
+    # the reason the package compares protocol versions without converting
+    # them either.
+    return tuple(found[digits] for digits in sorted(found, key=lambda d: (len(d), d)))
 
 
 def assemble(
-    framework: Path,
-    run_dir: Path,
-    state: RunState,
-    workflow: Workflow,
-    step_id: str,
-    runs: int | None = None,
+    framework: Path, run_dir: Path, state: RunState, workflow: Workflow, step_id: str
 ) -> Assembly:
     """Everything `step_id` is given to execute, in one deterministic order."""
     declaration = workflow.step(step_id)
@@ -307,21 +316,21 @@ def assemble(
         raise AssemblyError(f"{step_id!r} is not a declared step (spec §9.1)")
     skill = load_skill(framework, step_id, declaration)
     materials = [
-        Material("role", f"roles/{declaration.role}.md", _role(framework, declaration.role)),
+        Material(
+            "role",
+            f"roles/{declaration.role}.md",
+            _role(framework, declaration.role),
+        ),
         Material("skill", f"skills/{SKILL_PREFIX}{step_id}/{SKILL_FILE}", skill.body),
     ]
     for name in skill.references:
-        materials.append(
-            Material("reference", _skill_source(step_id, name), _read(skill.directory / name))
-        )
-    materials.extend(_inputs(run_dir, state, declaration, runs))
+        source = _skill_source(step_id, name)
+        materials.append(Material("reference", source, _read(skill.directory / name, source)))
+    materials.extend(_inputs(run_dir, state, declaration))
     if skill.template is not None:
+        source = _skill_source(step_id, skill.template)
         materials.append(
-            Material(
-                "template",
-                _skill_source(step_id, skill.template),
-                _read(skill.directory / skill.template),
-            )
+            Material("template", source, _read(skill.directory / skill.template, source))
         )
     output = resolve(declaration.output_artifact, declaration, state)[0]
     return Assembly(
@@ -334,9 +343,7 @@ def assemble(
     )
 
 
-def _inputs(
-    run_dir: Path, state: RunState, declaration: StepDeclaration, runs: int | None
-) -> list[Material]:
+def _inputs(run_dir: Path, state: RunState, declaration: StepDeclaration) -> list[Material]:
     """Every declared input this run can satisfy, in declaration order.
 
     The manifest decides what the run holds (§8.2) — it records what steps
@@ -346,19 +353,23 @@ def _inputs(
     satisfied from an earlier run is §8.4's cache, which this module does not
     reach for: nothing here judges freshness.
     """
-    materials: list[Material] = []
     manifest = set(state.artifacts)
+    held: list[str] = []
+    # Every requirement settled before anything is read, so a step blocked on
+    # its third input reports that rather than whatever the first two happened
+    # to fail at — and a run that cannot start this step does not spend a read
+    # finding out.
     for declared in declaration.inputs:
-        paths = resolve(declared.artifact, declaration, state)
-        held = [path for path in paths if path in manifest]
-        if declared.required and not held:
+        satisfied = [
+            path for path in resolve(declared.artifact, declaration, state) if path in manifest
+        ]
+        if declared.required and not satisfied:
             raise BlockedError(
                 f"step {declaration.id!r} requires {declared.artifact}, which this "
                 f"run has not produced (spec §9.1)"
             )
-        for path in held:
-            materials.append(Material("input", path, _read_artifact(run_dir, path, runs)))
-    return materials
+        held.extend(satisfied)
+    return [Material("input", path, _read_artifact(run_dir, path)) for path in held]
 
 
 def _role(framework: Path, role: str) -> str:
@@ -368,7 +379,8 @@ def _role(framework: Path, role: str) -> str:
     reproducing the `description` a generator wrote from the body would spend
     the step's context restating what follows it.
     """
-    text = _read(framework / "roles" / f"{role}.md")
+    source = f"roles/{role}.md"
+    text = _read(framework / source, source)
     match = FRONTMATTER.match(text)
     return text[match.end() :] if match is not None else text
 
@@ -377,11 +389,17 @@ def _skill_source(step_id: str, name: str) -> str:
     return f"skills/{SKILL_PREFIX}{step_id}/{name}"
 
 
-def _read(path: Path) -> str:
+def _read(path: Path, source: str) -> str:
+    """Framework content, reported by the path a declaration names.
+
+    An absolute path is what the process happens to have resolved; `source` is
+    what the reader can look up — the same form every other refusal in this
+    module carries.
+    """
     try:
         return path.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as error:
-        raise AssemblyError(f"cannot read {path}: {error}") from error
+        raise AssemblyError(f"cannot read {source}: {error}") from error
 
 
 def _components(artifact: str) -> list[str]:
@@ -401,100 +419,150 @@ def _under(run_dir: Path, artifact: str) -> Path:
     return run_dir.joinpath(*_components(artifact))
 
 
-def _read_artifact(run_dir: Path, artifact: str, runs: int | None) -> str:
-    """Read one of this run's artifacts, bound to the run's own directory.
+@contextlib.contextmanager
+def _containing(run_dir: Path, relative: list[str], artifact: str, create: bool):
+    """Hold the directory an artifact sits in, bound to the run's own.
 
     An artifact's path is schema-constrained and cannot escape by spelling —
-    no absolute form, no `..` — but a link inside the run directory redirects
-    without changing the path, and what this module does with what it reads is
-    put it in a prompt. Where the platform can bind a file operation to a
-    directory already open, every component is opened relative to the one
-    above it and `O_NOFOLLOW` faults a link at the open itself; where it
-    cannot, the components are checked instead, which closes the case a link
-    is already in place and leaves the window state.py documents for the same
-    compromise.
+    no absolute form, no `..` — but a link at any component redirects without
+    changing the path, and this module both reads artifacts into a prompt and
+    writes a scaffold into one. Where the platform can bind a file operation
+    to a directory already open, each component is opened relative to the one
+    above it and `O_NOFOLLOW` faults a link at the open itself, so nothing on
+    the way down can be re-pointed after it was checked; where it cannot, the
+    components are checked instead, which closes the case a link is already
+    in place and leaves the window state.py documents for the same trade.
+
+    Yields `(descriptor, path)`, exactly one of which is not None: the
+    descriptor where the platform binds, the resolved directory otherwise.
+    `create` makes the intermediate directories a nested output needs, made
+    bound as well so a link cannot be what one of them lands in.
     """
-    relative = _components(artifact)
     try:
-        with run_directory(run_dir, runs) as directory:
+        with run_directory(run_dir, None) as directory:
             if directory is None:
-                return _read_checked(run_dir, relative, artifact)
-            return _read_bound(directory, relative, artifact)
+                path = run_dir
+                for name in relative[:-1]:
+                    path = path / name
+                    if create:
+                        path.mkdir(exist_ok=True)
+                    if is_link(path):
+                        raise AssemblyError(f"cannot use {artifact}: {path} is a link")
+                if is_link(path / relative[-1]):
+                    raise AssemblyError(
+                        f"cannot use {artifact}: {path / relative[-1]} is a link"
+                    )
+                yield None, path
+                return
+            opened: list[int] = []
+            try:
+                for name in relative[:-1]:
+                    parent = opened[-1] if opened else directory
+                    if create:
+                        try:
+                            os.mkdir(name, dir_fd=parent)
+                        except FileExistsError:
+                            pass
+                    opened.append(
+                        os.open(
+                            name,
+                            os.O_RDONLY | os.O_DIRECTORY | _NOFOLLOW,
+                            dir_fd=parent,
+                        )
+                    )
+                yield (opened[-1] if opened else directory), None
+            finally:
+                for handle in opened:
+                    os.close(handle)
+    except OSError as error:
+        raise AssemblyError(f"cannot use {artifact}: {error}") from error
     except StateError as error:
         raise AssemblyError(str(error)) from error
 
 
-def _read_bound(directory: int, relative: list[str], artifact: str) -> str:
-    opened: list[int] = [directory]
-    try:
-        for name in relative[:-1]:
-            opened.append(
-                os.open(
-                    name, os.O_RDONLY | os.O_DIRECTORY | _NOFOLLOW, dir_fd=opened[-1]
-                )
+def _read_artifact(run_dir: Path, artifact: str) -> str:
+    """Read one of this run's artifacts, bound to the run's own directory."""
+    relative = _components(artifact)
+    with _containing(run_dir, relative, artifact, create=False) as (directory, path):
+        # `O_NOFOLLOW` says the name is not a link and nothing about what kind
+        # of file it is. A FIFO in an artifact's place would block this open
+        # until something wrote the other end — a command that hangs rather
+        # than reporting, which is worse than any refusal — so the open is
+        # non-blocking where the platform has it and the descriptor is checked
+        # before it is read, exactly as the state file's is. One open serves
+        # both branches, the bound one naming the leaf relative to a
+        # descriptor and the other naming the path it resolved.
+        try:
+            descriptor = os.open(
+                relative[-1] if directory is not None else os.fspath(path / relative[-1]),
+                os.O_RDONLY | _NOFOLLOW | _NONBLOCK,
+                dir_fd=directory,
             )
-        descriptor = os.open(relative[-1], os.O_RDONLY | _NOFOLLOW, dir_fd=opened[-1])
-    except OSError as error:
-        raise AssemblyError(f"cannot read {artifact}: {error}") from error
-    finally:
-        for handle in opened[1:]:
-            os.close(handle)
-    try:
-        stream = os.fdopen(descriptor, "r", encoding="utf-8")
-    except OSError as error:
-        # `fdopen` takes ownership only once it returns one, so a failure here
-        # leaves the descriptor this function's to close — the leak `status`
-        # was found to have, in the one place it can still happen.
-        os.close(descriptor)
-        raise AssemblyError(f"cannot read {artifact}: {error}") from error
-    try:
-        with stream:
-            return stream.read()
-    except (OSError, UnicodeError) as error:
-        raise AssemblyError(f"cannot read {artifact}: {error}") from error
+        except OSError as error:
+            raise AssemblyError(f"cannot read {artifact}: {error}") from error
+        try:
+            stream = os.fdopen(descriptor, "r", encoding="utf-8")
+        except OSError as error:
+            # `fdopen` takes ownership only once it returns one, so a failure
+            # here leaves the descriptor this function's to close.
+            os.close(descriptor)
+            raise AssemblyError(f"cannot read {artifact}: {error}") from error
+        try:
+            with stream:
+                if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                    raise AssemblyError(f"{artifact} is not a regular file")
+                return stream.read()
+        except (OSError, UnicodeError) as error:
+            raise AssemblyError(f"cannot read {artifact}: {error}") from error
 
 
-def _read_checked(run_dir: Path, relative: list[str], artifact: str) -> str:
-    path = run_dir
-    for name in relative:
-        path = path / name
-        if is_link(path):
-            raise AssemblyError(f"cannot read {artifact}: {path} is a link")
-    # Reported by the path a declaration names rather than by the one the
-    # filesystem resolved, so the same failure reads the same way on either
-    # platform — the bound branch never holds an absolute path to report.
-    try:
-        return path.read_text(encoding="utf-8")
-    except (OSError, UnicodeError) as error:
-        raise AssemblyError(f"cannot read {artifact}: {error}") from error
-
-
-def scaffold(skill: Skill, output_path: Path) -> bool:
+def scaffold(skill: Skill, run_dir: Path, artifact: str) -> bool:
     """Create the step's output from its template (§8.3); return whether it wrote.
 
     Scaffolding creates and MUST NOT overwrite: a step revising, re-entering,
     or appending is given the artifact it already has, and re-scaffolding
     would discard the content it was given to work from — a gate's recorded
-    direction (§7) among it. Copied verbatim, because a scaffolded artifact
-    MUST carry every placeholder its template defines until the step fills
-    one: substituting anything here would fill a placeholder by script that
-    the contract says the step fills.
+    direction (§7) among it. Copied byte for byte, because a scaffolded
+    artifact MUST carry every placeholder its template defines until the step
+    fills one, and read as bytes for the same reason: text mode translates
+    line endings, so a CRLF template would reach the run as something other
+    than the file the contract named.
+
+    Named by its `{run}`-relative path rather than a resolved one, so the
+    write is bound to the run directory the way every read is — a scaffold is
+    the one thing here that creates a file, and following a link out of the
+    run would put an artifact where nothing in the run can see it.
     """
     if skill.template is None:
         return False
-    text = _read(skill.directory / skill.template)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    source = _skill_source(skill.step_id, skill.template)
     try:
-        # `x` is the no-overwrite rule enforced by the open rather than by a
-        # prior existence check: between a check and a write the file can
-        # appear, and the content this would discard is exactly what the rule
-        # protects.
-        with open(output_path, "x", encoding="utf-8", newline="") as stream:
-            stream.write(text)
-    except FileExistsError:
-        return False
+        text = (skill.directory / skill.template).read_bytes()
     except OSError as error:
-        raise AssemblyError(f"cannot scaffold {output_path}: {error}") from error
+        raise AssemblyError(f"cannot read {source}: {error}") from error
+    relative = _components(artifact)
+    with _containing(run_dir, relative, artifact, create=True) as (directory, path):
+        # `O_EXCL` is the no-overwrite rule enforced by the open rather than by
+        # a prior existence check: between a check and a write the file can
+        # appear, and the content this would discard is exactly what the rule
+        # protects. It refuses a link at the name too, so `O_NOFOLLOW` is the
+        # belt to its braces rather than the guard.
+        try:
+            descriptor = os.open(
+                relative[-1] if directory is not None else os.fspath(path / relative[-1]),
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | _NOFOLLOW,
+                0o666,
+                dir_fd=directory,
+            )
+        except FileExistsError:
+            return False
+        except OSError as error:
+            raise AssemblyError(f"cannot scaffold {artifact}: {error}") from error
+        try:
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(text)
+        except OSError as error:
+            raise AssemblyError(f"cannot scaffold {artifact}: {error}") from error
     return True
 
 

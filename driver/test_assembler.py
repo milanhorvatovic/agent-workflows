@@ -5,6 +5,8 @@ Run from the repo root: python3 -m unittest discover -s driver -t .
 
 from __future__ import annotations
 
+import os
+import signal
 import tempfile
 import unittest
 import unittest.mock
@@ -54,6 +56,10 @@ Read before concluding.
 """
 
 TEMPLATE = "# Out: [title]\n\n> **Run:** [run id]\n\n## Findings\n\n[what was found]\n"
+
+
+def _alarm(*_) -> None:
+    raise AssertionError("still blocked in open() — the non-regular-file guard regressed")
 
 
 class TreeTest(unittest.TestCase):
@@ -141,6 +147,22 @@ class LoadSkillTest(TreeTest):
             self.load()
         self.assertIn("references/checklist.md", str(caught.exception))
         self.assertIn("not a file", str(caught.exception))
+
+    def test_a_reference_named_inside_a_fence_is_an_example(self) -> None:
+        """The one fence model this repository reads declarations through: a
+        path inside an example is that example's, so loading it would put a
+        demonstration in the step's context — and refuse the skill outright
+        where the example names a file never meant to exist."""
+        self.write(
+            "skills/awf-make/SKILL.md",
+            SKILL.replace(
+                "Work through `references/checklist.md` before writing, and scaffold from\n"
+                "`references/out.template.md`.",
+                "Work through `references/checklist.md`.\n\n"
+                "```markdown\nA skill may name `references/illustrative.md` here.\n```",
+            ),
+        )
+        self.assertEqual(self.load().references, ("references/checklist.md",))
 
     def test_trailing_punctuation_is_not_part_of_the_path(self) -> None:
         self.write(
@@ -272,7 +294,7 @@ class ParityTest(TreeTest):
             self.write(relative, text.replace("        template: references/out.template.md\n", ""))
         skill = self.load()
         self.assertIsNone(skill.template)
-        self.assertFalse(assembler.scaffold(skill, self.run_dir / "out.md"))
+        self.assertFalse(assembler.scaffold(skill, self.run_dir, "{run}/out.md"))
         self.assertFalse((self.run_dir / "out.md").exists())
 
 
@@ -349,6 +371,25 @@ class ResolveTest(TreeTest):
         with self.assertRaises(assembler.AssemblyError) as caught:
             self.resolve("{run}/phase-{N}/phase-{P}.md", "{run}/out.md", 1, [])
         self.assertIn("different phases", str(caught.exception))
+
+    def test_a_phase_number_no_integer_can_hold_is_still_ordered(self) -> None:
+        """The manifest is a document the driver reads and did not necessarily
+        write, and `int()` caps at 4300 digits — so a phase past that must
+        order like every other one rather than leave the driver as a
+        traceback."""
+        manifest = [
+            "{run}/phase-2-log.md",
+            "{run}/phase-" + "9" * 5000 + "-log.md",
+            "{run}/phase-30-log.md",
+        ]
+        self.assertEqual(
+            self.resolve("{run}/phase-{P}-log.md", "{run}/delivery.md", None, manifest),
+            (
+                "{run}/phase-2-log.md",
+                "{run}/phase-30-log.md",
+                "{run}/phase-" + "9" * 5000 + "-log.md",
+            ),
+        )
 
     def test_an_escaped_token_is_text_rather_than_a_placeholder(self) -> None:
         self.assertEqual(
@@ -450,13 +491,16 @@ class AssembleTest(TreeTest):
             )
         self.assertIn("not a declared step", str(caught.exception))
 
-    def test_a_missing_role_definition_names_the_file(self) -> None:
+    def test_a_missing_role_definition_names_the_declared_path(self) -> None:
+        """Named the way a reader can look it up. What the process resolved
+        still rides along in the operating system's own text, as it does
+        everywhere else here; what the message leads with is the declaration."""
         (self.framework / "roles/analyst.md").unlink()
         with self.assertRaises(assembler.AssemblyError) as caught:
             assembler.assemble(
                 self.framework, self.run_dir, self.state([]), self.workflow(), "make"
             )
-        self.assertIn("analyst.md", str(caught.exception))
+        self.assertTrue(str(caught.exception).startswith("cannot read roles/analyst.md"))
 
     def test_the_role_frontmatter_is_not_spent_on_the_step(self) -> None:
         assembly = assembler.assemble(
@@ -505,6 +549,23 @@ class ContainmentTest(TreeTest):
                 )
         self.assertIn("is a link", str(caught.exception))
 
+    def test_an_artifact_that_is_not_a_regular_file_is_refused(self) -> None:
+        """`O_NOFOLLOW` says the name is not a link and nothing about what kind
+        of file it is. A FIFO in an artifact's place blocks the open until
+        something writes the other end — a command that hangs rather than
+        reporting, which is worse than any refusal."""
+        if not hasattr(os, "mkfifo"):  # pragma: no cover
+            self.skipTest("platform has no FIFOs")
+        os.mkfifo(self.run_dir / "in.md")
+        # An alarm rather than trust: if the guard regresses this test hangs
+        # forever, and a suite that never finishes reports nothing at all.
+        signal.signal(signal.SIGALRM, _alarm)
+        signal.alarm(5)
+        self.addCleanup(signal.alarm, 0)
+        with self.assertRaises(assembler.AssemblyError) as caught:
+            assembler._read_artifact(self.run_dir, "{run}/in.md")
+        self.assertIn("not a regular file", str(caught.exception))
+
     def test_a_linked_directory_on_the_way_to_an_artifact_is_not_followed(self) -> None:
         outside = self.base / "elsewhere"
         outside.mkdir()
@@ -515,7 +576,7 @@ class ContainmentTest(TreeTest):
                 continue
             with unittest.mock.patch.object(state, "_BINDS_TO_DIRECTORY", binds):
                 with self.assertRaises(assembler.AssemblyError):
-                    assembler._read_artifact(self.run_dir, "{run}/nested/in.md", None)
+                    assembler._read_artifact(self.run_dir, "{run}/nested/in.md")
 
 
 class ScaffoldTest(TreeTest):
@@ -524,22 +585,35 @@ class ScaffoldTest(TreeTest):
         template defines until the step fills it, so nothing is substituted
         here — filling one by script is filling it for the step."""
         output = self.run_dir / "out.md"
-        self.assertTrue(assembler.scaffold(self.load(), output))
+        self.assertTrue(assembler.scaffold(self.load(), self.run_dir, "{run}/out.md"))
         self.assertEqual(output.read_text(encoding="utf-8"), TEMPLATE)
         self.assertIn("[run id]", output.read_text(encoding="utf-8"))
+
+    def test_a_template_keeps_the_line_endings_it_was_authored_with(self) -> None:
+        """Byte for byte is the claim, and text mode does not keep it: reading
+        a CRLF template through it translates the endings, so the artifact
+        would reach the run as something other than the file the contract
+        named."""
+        crlf = b"# Out: [title]\r\n\r\n[what was found]\r\n"
+        (self.framework / "skills/awf-make/references/out.template.md").write_bytes(crlf)
+        self.assertTrue(assembler.scaffold(self.load(), self.run_dir, "{run}/out.md"))
+        self.assertEqual((self.run_dir / "out.md").read_bytes(), crlf)
 
     def test_scaffolding_never_overwrites_what_a_step_was_given(self) -> None:
         """A revision, a re-entry, or a gate's recorded direction is exactly
         the content a second scaffold would discard (§7, §8.3)."""
         output = self.run_dir / "out.md"
         output.write_text("# Out: real\n\n## Gate direction\n\nchange the title\n", encoding="utf-8")
-        self.assertFalse(assembler.scaffold(self.load(), output))
+        self.assertFalse(assembler.scaffold(self.load(), self.run_dir, "{run}/out.md"))
         self.assertIn("change the title", output.read_text(encoding="utf-8"))
 
     def test_a_nested_output_gets_the_directories_above_it(self) -> None:
-        output = self.run_dir / "reports" / "out.md"
-        self.assertTrue(assembler.scaffold(self.load(), output))
-        self.assertEqual(output.read_text(encoding="utf-8"), TEMPLATE)
+        self.assertTrue(
+            assembler.scaffold(self.load(), self.run_dir, "{run}/reports/out.md")
+        )
+        self.assertEqual(
+            (self.run_dir / "reports" / "out.md").read_text(encoding="utf-8"), TEMPLATE
+        )
 
     def test_a_template_that_cannot_be_read_is_reported(self) -> None:
         (self.framework / "skills/awf-make/references/out.template.md").unlink()
@@ -551,8 +625,26 @@ class ScaffoldTest(TreeTest):
             references=(),
         )
         with self.assertRaises(assembler.AssemblyError) as caught:
-            assembler.scaffold(skill, self.run_dir / "out.md")
-        self.assertIn("out.template.md", str(caught.exception))
+            assembler.scaffold(skill, self.run_dir, "{run}/out.md")
+        self.assertIn("skills/awf-make/references/out.template.md", str(caught.exception))
+
+    def test_a_scaffold_never_lands_outside_the_run(self) -> None:
+        """The one thing here that creates a file, held to the containment
+        every read is: a link on the way down would put a run's artifact where
+        nothing in the run can see it."""
+        outside = self.base / "elsewhere"
+        outside.mkdir()
+        try:
+            (self.run_dir / "reports").symlink_to(outside, target_is_directory=True)
+        except (OSError, NotImplementedError) as error:  # pragma: no cover
+            self.skipTest(f"symlinks unavailable: {error}")
+        for binds in (True, False):
+            if binds and not state._BINDS_TO_DIRECTORY:  # pragma: no cover
+                continue
+            with unittest.mock.patch.object(state, "_BINDS_TO_DIRECTORY", binds):
+                with self.assertRaises(assembler.AssemblyError):
+                    assembler.scaffold(self.load(), self.run_dir, "{run}/reports/out.md")
+        self.assertFalse((outside / "out.md").exists())
 
 
 class RepositoryTest(unittest.TestCase):
