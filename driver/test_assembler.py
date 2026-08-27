@@ -541,6 +541,34 @@ class AssembleTest(TreeTest):
         self.assertIn("the input", prompt)
         self.assertIn("[what was found]", prompt)
 
+    def test_two_declarations_resolving_to_one_artifact_send_it_once(self) -> None:
+        """A phase token and a literal phase meet at phase 1 — the shipped
+        `plan-validate` and `plan-revise` contracts both name
+        `{run}/phase-{N}-plan.md` beside `{run}/phase-1-plan.md` — and sending
+        the file twice spends the step's context on a plan it already has."""
+        workflow = load_workflow(REPO, "feature")
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        run_dir = Path(tmp.name) / "runs" / "r"
+        run_dir.mkdir(parents=True)
+        held = ["{run}/brief.md", "{run}/phase-1-plan.md", "{run}/phase-1-plan-validation.md"]
+        for artifact in held:
+            (run_dir / artifact.removeprefix("{run}/")).write_text("body\n", encoding="utf-8")
+        loaded = RunState(
+            run_id="r", workflow="feature", protocol="0.2", steps=[], gates=[],
+            artifacts=list(held), risk="R2", risk_rationale="x",
+        )
+        for step_id in ("plan-validate", "plan-revise"):
+            sources = [
+                material.source
+                for material in assembler.assemble(
+                    REPO, run_dir, loaded, workflow, step_id
+                ).materials
+                if material.kind == "input"
+            ]
+            self.assertEqual(sources, list(dict.fromkeys(sources)), step_id)
+            self.assertIn("{run}/phase-1-plan.md", sources)
+
     def test_an_optional_input_the_manifest_does_not_hold_is_left_out(self) -> None:
         assembly = assembler.assemble(
             self.framework, self.run_dir, self.state([]), self.workflow(), "make"

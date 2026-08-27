@@ -426,7 +426,14 @@ def _inputs(run_dir: Path, state: RunState, declaration: StepDeclaration) -> lis
                 f"step {declaration.id!r} requires {declared.artifact}, which this "
                 f"run has not produced (spec §9.1)"
             )
-        held.extend(satisfied)
+        # Each path once, in the order the declarations reach it. Two
+        # declarations resolve to one artifact wherever a phase token and a
+        # literal phase meet — the shipped `plan-validate`, `plan-revise`, and
+        # `implement-validate` contracts all name `{run}/phase-{N}-plan.md`
+        # beside `{run}/phase-1-plan.md`, which are the same file at phase 1 —
+        # and sending it twice spends the step's context, and the backend's
+        # tokens, on a plan it already has.
+        held.extend(path for path in satisfied if path not in held)
     return [Material("input", path, _read_artifact(run_dir, path)) for path in held]
 
 
