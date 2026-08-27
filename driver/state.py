@@ -290,6 +290,13 @@ def _write_request(run_dir: Path, request: str, runs: int | None) -> None:
     which `O_EXCL` reports as EEXIST as readily as a regular file. The file's
     own bytes are synced here; the directory entry naming it is persisted by
     the state save that follows, which fsyncs this same directory.
+
+    One direct write rather than the temp-and-replace the state file takes,
+    and the ordering is what makes that safe: nothing precedes this in a
+    directory created moments ago, and the document that would name a partial
+    copy is written afterwards — so a crash partway through leaves a run with
+    no state at all, which nothing resumes, rather than a manifest pointing at
+    half a request.
     """
     text = request.encode("utf-8")
     with run_directory(run_dir, runs) as directory:
