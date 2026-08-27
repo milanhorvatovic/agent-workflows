@@ -18,6 +18,7 @@ import unittest.mock
 from pathlib import Path
 
 from driver import cli
+from driver.test_assembler import ROLE, SKILL, STAGE_ONLY, TEMPLATE
 from driver.test_config import VALID
 from driver.test_workflow import STAGE, WORKFLOW
 
@@ -59,12 +60,21 @@ class CliTest(unittest.TestCase):
         self.assertIn("is not a directory", err)
 
     def write_framework(self) -> None:
-        stages = self.base / "workflows" / "stages"
-        stages.mkdir(parents=True)
-        (self.base / "workflows" / "demo.md").write_text(WORKFLOW, encoding="utf-8")
-        (stages / "intake.md").write_text(STAGE, encoding="utf-8")
+        """The whole of the protocol content a run reads: the composition, and
+        the roles and skills the step it resolves is assembled from."""
+        for relative, content in (
+            ("workflows/demo.md", WORKFLOW),
+            ("workflows/stages/intake.md", STAGE_ONLY),
+            ("skills/awf-make/SKILL.md", SKILL),
+            ("skills/awf-make/references/checklist.md", "- check this\n"),
+            ("skills/awf-make/references/out.template.md", TEMPLATE),
+            ("roles/analyst.md", ROLE),
+        ):
+            path = self.base / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
 
-    def test_run_creates_the_run_and_stops_at_execution(self) -> None:
+    def test_run_creates_the_run_and_stops_at_invocation(self) -> None:
         self.write_framework()
         code, out, err = self.invoke(
             "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
@@ -72,10 +82,57 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("created", out)
         self.assertIn("next is make (pending)", out)
-        self.assertIn("have not landed", err)
+        self.assertIn("assembled make (analyst)", out)
+        self.assertIn("invocation backend module has not landed", err)
         self.assertTrue(
             (self.base / "runs" / "2026-08-17-x" / "workflow-state.yaml").is_file()
         )
+
+    def test_creating_a_run_scaffolds_nothing(self) -> None:
+        """Assembly resolves what the step would read; the scaffold §8.3 asks
+        for belongs to the invocation that fills it, so a command stopping
+        short of one leaves the run directory holding its state alone."""
+        self.write_framework()
+        self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        run_dir = self.base / "runs" / "2026-08-17-x"
+        self.assertEqual(
+            sorted(path.name for path in run_dir.iterdir()), ["workflow-state.yaml"]
+        )
+
+    def test_a_step_blocked_on_a_required_input_is_reported_as_a_position(self) -> None:
+        """§9.1: a required input the run has not produced blocks the step —
+        which is where the run stands, not a defect in the installation, so it
+        takes the same exit as any other position the driver cannot advance."""
+        self.write_framework()
+        for relative, content in (
+            ("workflows/stages/intake.md", STAGE_ONLY),
+            ("skills/awf-make/SKILL.md", SKILL),
+        ):
+            (self.base / relative).write_text(
+                content.replace("required: false", "required: true"), encoding="utf-8"
+            )
+        code, out, err = self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("requires {run}/in.md", err)
+        # And never as the position: printing "next is make" ahead of the
+        # assembly reports a readiness the run does not have, then contradicts
+        # it on the next line.
+        self.assertNotIn("next is", out)
+
+    def test_a_skill_disagreeing_with_its_stage_is_a_framework_defect(self) -> None:
+        self.write_framework()
+        (self.base / "skills/awf-make/SKILL.md").write_text(
+            SKILL.replace("role: analyst", "role: planner"), encoding="utf-8"
+        )
+        code, _, err = self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("must agree", err)
 
     def test_run_without_a_workflow_is_a_usage_error(self) -> None:
         with contextlib.redirect_stderr(io.StringIO()):
@@ -111,7 +168,8 @@ class CliTest(unittest.TestCase):
         )
         self.assertEqual(code, 1)
         self.assertIn("next is make (pending)", out)
-        self.assertIn("have not landed", err)
+        self.assertIn("assembled make (analyst)", out)
+        self.assertIn("invocation backend module has not landed", err)
 
     def test_resume_on_a_missing_run_is_a_defect(self) -> None:
         """Reported at whichever level is actually absent: the runs root

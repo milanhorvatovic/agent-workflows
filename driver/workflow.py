@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from . import PROTOCOL, PROTOCOL_VERSION, implements
 from .config import ROLES
@@ -129,6 +129,26 @@ PHASE_SET = re.compile(r"(?<!\$)\{P\}")
 # manifest holds one artifact per phase a run has passed through, and every
 # one of them is the output its declaration describes.
 PHASE_TOKEN = re.compile(r"(?<!\$)\{[NP]\}")
+
+
+def family(declared: str) -> re.Pattern:
+    """The paths one declared path names, over every phase.
+
+    Every phase token in one declaration is the same phase, so the first
+    occurrence captures and the rest refer back to it — a fresh group each
+    time would match paths no phase can ever write, one phase in the
+    directory and another in the file. Phases are numbered from 1, so zero
+    is not one of them. Named rather than numbered, because a numeric
+    reference merges with a digit that starts the next literal: a template
+    ending `{N}0` would build a reference to group ten. The conformance
+    suite builds the same expression for the same reasons.
+    """
+    parts = [re.escape(part) for part in PHASE_TOKEN.split(declared)]
+    expression = parts[0]
+    for index, part in enumerate(parts[1:]):
+        expression += ("(?P<phase>[1-9][0-9]*)" if index == 0 else "(?P=phase)") + part
+    return re.compile(expression)
+
 
 # The schemas declare every structure below closed, and §9.5 makes unknown
 # keys inside one an authoring error while tolerating unknown siblings of
@@ -281,7 +301,7 @@ def load_workflow(framework: Path, name: str) -> Workflow:
     # Composition order, the first entry naming a stage winning: a list may
     # name one twice, and the stage composes where it is first read.
     slugs: list[str] = []
-    for match in STAGE_REFERENCE.finditer(_mask_fences(text)):
+    for match in STAGE_REFERENCE.finditer(mask_fences(text)):
         if match.group(1) not in slugs:
             slugs.append(match.group(1))
     if not slugs:
@@ -446,7 +466,22 @@ def _blank_quoted(text: str) -> str:
 # holds an imported path to the same shape, for the same reason — what a
 # contract names is what completion manifests and a later assembler
 # resolves, so a path leaving the run leaves it there too.
-RUN_RELATIVE = re.compile('^\\{run\\}(?:/(?!\\.{1,2}(?:/|$))(?!(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Mm][1-9¹²³]|[Ll][Pp][Tt][1-9¹²³])(?:\\.|/|$))[^/\\\\:?*"<>|\x00-\x1f\x7f-\x9f\u2028\u2029]+(?<![. ]))+(?![\\s\\S])')
+# One path segment of that shape, named once because two rules want it: a
+# declared artifact's, and a declared template's below. Its parts are a dot
+# entry refused, a Windows device basename refused whatever follows it, no
+# character a platform reads as a separator or a stream marker, and no
+# trailing dot or space for Windows normalization to strip into an alias.
+_SEGMENT = '(?!\\.{1,2}(?:/|$))(?!(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Mm][1-9¹²³]|[Ll][Pp][Tt][1-9¹²³])(?:\\.|/|$))[^/\\\\:?*"<>|\x00-\x1f\x7f-\x9f\u2028\u2029]+(?<![. ])'
+RUN_RELATIVE = re.compile('^\\{run\\}(?:/' + _SEGMENT + ')+(?![\\s\\S])')
+# A declared template resolves inside the skill package that declares it
+# (§8.3), so it is the same segments without the run anchor — relative
+# rather than anchored, and at least one of them. The schema constrains the
+# field to a non-empty string alone, which is why the shape is this
+# reader's: `references/CON` resolves to a device on Windows and
+# `references/t.md::$DATA` to an alternate data stream, neither of them the
+# package file the declaration names, and both reachable past the `..` and
+# drive checks that come before them.
+PACKAGE_RELATIVE = re.compile('^' + _SEGMENT + '(?:/' + _SEGMENT + ')*(?![\\s\\S])')
 
 
 def _check_artifact(value: str, at: str, what: str) -> None:
@@ -455,6 +490,33 @@ def _check_artifact(value: str, at: str, what: str) -> None:
         raise WorkflowError(
             f"{at}: {what} is not a path under {{run}}: {value!r} (spec §8.1)"
         )
+
+
+def _check_package_relative(value: str, at: str) -> None:
+    """A template is resolved inside the skill package that declares it, and
+    the schema constrains only that it is a non-empty string (§8.3).
+
+    So the shape is this reader's to hold, for the reason every artifact path
+    is held to `RUN_RELATIVE`: the executor joins the declared string to a
+    directory and copies what it finds into a run. A `..` segment or an
+    absolute form reads a file the package does not contain and writes it in
+    as the step's artifact — traversal by declaration rather than by link, and
+    the one path in a contract that nothing else checks.
+    """
+    # Any Windows drive or root component, not absoluteness: a drive-relative
+    # `D:secret.md` is not absolute, and joining it on a Windows host discards
+    # the skill directory and reads whatever that drive's working directory
+    # holds. Rejected on every platform, as the config paths are and for the
+    # same reason — a declaration must mean one thing everywhere.
+    windows_form = PureWindowsPath(value)
+    if windows_form.drive or windows_form.root:
+        raise WorkflowError(f"{at}: template is not package-relative: {value!r}")
+    # And the same segments an artifact path is held to, which is what carries
+    # the rest: dot entries, a device basename, a stream marker, a trailing dot
+    # or space. Escaping the package is one way to name something other than a
+    # file in it, and `references/CON` is the other.
+    if not PACKAGE_RELATIVE.match(value):
+        raise WorkflowError(f"{at}: template is not a package path: {value!r}")
 
 
 def _check_placeholders(value: str, at: str, what: str) -> None:
@@ -1167,7 +1229,7 @@ def _block_has_direct_key(
     return False
 
 
-def _mask_fences(text: str) -> str:
+def mask_fences(text: str) -> str:
     """Blank every fenced region, keeping offsets and line numbers intact.
 
     What is shown inside a code block is a demonstration, not structure — a
@@ -1291,7 +1353,7 @@ def _blocks(text: str, rel: str) -> list[tuple[int, dict]]:
             raise WorkflowError(
                 f"{rel}:{line}: metadata.workflow is not a mapping: {workflow!r}"
             )
-        _check_protocol(workflow, rel, line)
+        check_protocol(workflow, rel, line)
         found.append((offset, workflow))
     return found
 
@@ -1303,7 +1365,7 @@ def _closed(mapping: dict, allowed: frozenset[str], at: str, what: str) -> None:
         raise WorkflowError(f"{at}: {what} has unknown keys: {', '.join(unknown)}")
 
 
-def _check_protocol(block: dict, rel: str, line: int) -> None:
+def check_protocol(block: dict, rel: str, line: int) -> None:
     """§9: every `metadata.workflow` block declares the protocol version it
     was authored against, and §11 forbids a client silently interpreting
     structures from a version it does not implement — the rule the package's
@@ -1340,7 +1402,7 @@ def _gates(text: str, rel: str) -> set[str]:
     would read `##\tNotes` as part of this section and its bold bullets as
     gates the sequence rightly omits.
     """
-    masked = _mask_fences(text)
+    masked = mask_fences(text)
     openings = GATES_HEADING.findall(masked)
     if len(openings) > 1:
         raise WorkflowError(
@@ -1432,7 +1494,7 @@ def _steps(text: str, rel: str) -> dict[str, StepDeclaration]:
     # fenced example, sitting between a real heading and its contract, would
     # otherwise be the nearest heading and bind that contract to `fake`. The
     # mask keeps every offset, so the association below still holds.
-    masked = _mask_fences(text)
+    masked = mask_fences(text)
     headings = [
         (m.start(), m.group("id"), m.group("role")) for m in STEP_HEADING.finditer(masked)
     ]
@@ -1472,7 +1534,7 @@ def _steps(text: str, rel: str) -> dict[str, StepDeclaration]:
         _, step_id, heading_role = prior[-1]
         if step_id in steps:
             raise WorkflowError(f"{rel}: step {step_id!r} declares two step blocks")
-        step = _step_declaration(declaration, step_id, rel)
+        step = step_declaration(declaration, step_id, rel)
         # The heading is what a human executing the prose reads and the
         # contract what this driver executes; a disagreement would run the
         # step as a role its own stage does not name (the conformance suite
@@ -1505,7 +1567,15 @@ def _steps(text: str, rel: str) -> dict[str, StepDeclaration]:
     return steps
 
 
-def _step_declaration(declaration: dict, step_id: str, rel: str) -> StepDeclaration:
+def step_declaration(declaration: dict, step_id: str, rel: str) -> StepDeclaration:
+    """One `metadata.workflow.step` mapping as the contract it declares (§9.1).
+
+    Public because the same structure has two carriers (§9): a stage declares
+    it in a fenced block and the skill bound to that step restates it in
+    frontmatter. Both are read here so the two cannot come to accept different
+    things — which is the drift the parity rule exists to catch, and it could
+    not catch a difference the readers introduced themselves.
+    """
     at = f"{rel}: step {step_id!r}"
     _closed(declaration, STEP_KEYS, at, "step")
     role = declaration.get("role")
@@ -1545,6 +1615,21 @@ def _step_declaration(declaration: dict, step_id: str, rel: str) -> StepDeclarat
         raise WorkflowError(f"{at}: template is not a path: {template!r}")
     if isinstance(template, str):
         _check_placeholders(template, at, "template")
+        _check_package_relative(template, at)
+        # And no placeholder at all, which `_check_placeholders` alone permits:
+        # the four are defined for paths a run resolves, and a template is a
+        # file in a package that no run resolves anything in. `references/
+        # phase-{N}.md` would be opened as the literal name it is, so the
+        # declaration is refused where it is read rather than read as a file
+        # nobody wrote. Placeholders belong in a template's content, which is
+        # what §8.3 has the step fill.
+        token = PLACEHOLDER.search(template)
+        if token is not None:
+            raise WorkflowError(
+                f"{at}: template carries the placeholder {token.group(0)!r}, and a "
+                f"template names a file in a package rather than a path a run "
+                f"resolves: {template!r}"
+            )
     inputs: list[InputDeclaration] = []
     # Absence is the only thing that means "no declared inputs". A present
     # `inputs` that is not a list — `false`, `null`, a mapping — is an
