@@ -773,20 +773,26 @@ def scaffold(skill: Skill, run_dir: Path, artifact: str) -> bool:
                 raise
             with stream:
                 stream.write(text)
-        except OSError as error:
-            # The name this call created is removed with it. Left behind, an
-            # empty or partial scaffold is what the next `O_EXCL` reports as
-            # EEXIST — and this function reads that as an artifact the step
-            # already has, so a failed copy would be handed to the step as
-            # content to work from. Only the file this call created: the
-            # branch that found one already there returned above without
-            # reaching here, which is what makes the removal safe.
+        # Every escaping exception, not the ones this function reports on: a
+        # `KeyboardInterrupt` during the write or the close leaves the same
+        # empty or partial file an `OSError` would, and the next `O_EXCL`
+        # reports it as EEXIST — which this function reads as an artifact the
+        # step already has, so an interrupted copy would be handed to the step
+        # as content to work from. Only the file this call created: the branch
+        # that found one already there returned above without reaching here,
+        # which is what makes the removal safe. The cleanup must not raise
+        # over the failure it is cleaning up after, and only an `OSError`
+        # becomes this module's error — the state writer cleans up the same
+        # way, for the same reason.
+        except BaseException as error:
             with contextlib.suppress(OSError):
                 if directory is None:
                     os.unlink(path / relative[-1])
                 else:
                     os.unlink(relative[-1], dir_fd=directory)
-            raise AssemblyError(f"cannot scaffold {artifact}: {error}") from error
+            if isinstance(error, OSError):
+                raise AssemblyError(f"cannot scaffold {artifact}: {error}") from error
+            raise
     return True
 
 

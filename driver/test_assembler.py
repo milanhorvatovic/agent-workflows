@@ -942,6 +942,41 @@ class ScaffoldTest(TreeTest):
                     assembler.scaffold(self.load(), self.run_dir, "{run}/out.md")
                 self.assertIn("not a regular file", str(caught.exception))
 
+    def test_an_interrupted_write_leaves_no_scaffold_behind_either(self) -> None:
+        """A `KeyboardInterrupt` during the write leaves the same partial file
+        an `OSError` would, and the next `O_EXCL` reports it as EEXIST — read
+        here as an artifact the step already has."""
+        output = self.run_dir / "out.md"
+        skill = self.load()
+        real = os.fdopen
+
+        class Interrupted:
+            """A stream that opens and closes for real — so the descriptor is
+            still handed back — and is interrupted mid-write."""
+
+            def __init__(self, stream):
+                self.stream = stream
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *details):
+                return self.stream.__exit__(*details)
+
+            def write(self, _):
+                raise KeyboardInterrupt
+
+        def interrupting(descriptor, mode="r", *rest, **named):
+            stream = real(descriptor, mode, *rest, **named)
+            return Interrupted(stream) if mode.startswith("w") else stream
+
+        with unittest.mock.patch.object(os, "fdopen", interrupting):
+            with self.assertRaises(KeyboardInterrupt):
+                assembler.scaffold(skill, self.run_dir, "{run}/out.md")
+        self.assertFalse(output.exists())
+        self.assertTrue(assembler.scaffold(skill, self.run_dir, "{run}/out.md"))
+        self.assertEqual(output.read_text(encoding="utf-8"), TEMPLATE)
+
     def test_a_scaffold_never_lands_outside_the_run(self) -> None:
         """The one thing here that creates a file, held to the containment
         every read is: a link on the way down would put a run's artifact where
