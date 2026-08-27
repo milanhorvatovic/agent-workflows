@@ -6,6 +6,7 @@ Run from the repo root: python3 -m unittest discover -s driver -t .
 from __future__ import annotations
 
 import os
+import re
 import signal
 import tempfile
 import unittest
@@ -147,6 +148,19 @@ class LoadSkillTest(TreeTest):
             self.load()
         self.assertIn("references/checklist.md", str(caught.exception))
         self.assertIn("not a file", str(caught.exception))
+
+    def test_the_frontmatter_rule_is_the_conformance_suite_s(self) -> None:
+        """The two cannot share an implementation — the suite parses through a
+        YAML library this package may not import — so what they share is the
+        rule, pinned here. A driver reading frontmatter the suite would have
+        rejected runs a skill CI never validated."""
+        source = (REPO / "scripts" / "validate_conformance.py").read_text(encoding="utf-8")
+        declared = re.search(r"^FRONTMATTER = re\.compile\((?P<literal>.+?)\)$", source, re.M)
+        self.assertIsNotNone(declared, "the suite no longer declares FRONTMATTER this way")
+        self.assertEqual(
+            assembler.FRONTMATTER.pattern,
+            eval(declared.group("literal").split(", re.")[0]),  # noqa: S307 — a repo literal
+        )
 
     def test_a_reference_named_inside_a_fence_is_an_example(self) -> None:
         """The one fence model this repository reads declarations through: a

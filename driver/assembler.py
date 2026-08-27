@@ -56,10 +56,14 @@ SKILL_PREFIX = "awf-"
 SKILL_FILE = "SKILL.md"
 
 # Frontmatter is the skill's declaration carrier (§9): the first line opens it
-# and the next line holding `---` alone, trailing spaces aside, closes it.
-# Anchored at the start of the file, because the same three characters further
-# down are a thematic break in the body.
-FRONTMATTER = re.compile(r"\A---\n(?P<block>.*?\n)---[ \t]*(?:\n|\Z)", re.DOTALL)
+# and the next line holding `---` alone closes it. Anchored at the start of the
+# file, because the same three characters further down are a thematic break in
+# the body. The literal is the conformance suite's own, carried verbatim and
+# pinned by a test: the two cannot share an implementation — that one parses
+# through a YAML library this package may not import — so what they share is
+# the rule, and a driver reading frontmatter the suite would not have accepted
+# runs a skill CI never validated.
+FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 
 # A reference the skill's body names, wherever it names it — inside backticks
 # in every shipped body, but the backticks are typography rather than syntax
@@ -151,7 +155,7 @@ def load_skill(framework: Path, step_id: str, declaration: StepDeclaration) -> S
     if match is None:
         raise AssemblyError(f"{rel}: no frontmatter, and §9 declares in it")
     try:
-        data = loads(match.group("block"))
+        data = loads(match.group(1) + "\n")
     except ProtocolYamlError as error:
         raise AssemblyError(f"{rel}: frontmatter: {error}") from error
     body = text[match.end() :]
