@@ -38,6 +38,7 @@ from .state import _NOFOLLOW, _NONBLOCK, RunState, StateError, is_link, run_dire
 from .workflow import (
     PHASE,
     PHASE_SET,
+    PACKAGE_RELATIVE,
     RUN_RELATIVE,
     StepDeclaration,
     Workflow,
@@ -66,17 +67,16 @@ SKILL_FILE = "SKILL.md"
 # runs a skill CI never validated.
 FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 
-# A reference the skill's body names, wherever it names it — inside backticks
-# in every shipped body, but the backticks are typography rather than syntax
-# and a body that dropped them would still be naming the file. Dotted parts
-# are taken only where something follows the dot, so a sentence ending
-# "`references/shipping.md`." names shipping.md rather than a file that does
-# not exist. Slash-separated segments too: a package may nest its references,
-# and a pattern stopping at the first one would take `references/guides` out
-# of `references/guides/style.md` — not merely missing the file but refusing
-# the skill for naming a directory. Nothing here can spell `..`, since every
-# segment must open with a character the dot class excludes.
-REFERENCE = re.compile(r"references/[A-Za-z0-9_-]+(?:[./][A-Za-z0-9_-]+)*")
+# A reference the skill's body names, taken from the backticks every shipped
+# body puts it in. The delimiter is syntax rather than typography, which an
+# earlier cut of this had backwards: a package path may carry a space, so
+# there is no character an undelimited scan could stop at — a body naming
+# `references/review checklist.md` would yield `references/review`, and the
+# package would be refused for naming a file it never named. What the
+# backticks bound is then held to the one package-path rule rather than to a
+# filename grammar of this module's own, so the names a package may contain
+# and the names a body may cite cannot drift apart.
+REFERENCE = re.compile(r"`(references/[^`\n]+)`")
 
 RUN_PREFIX = "{run}/"
 
@@ -204,6 +204,11 @@ def load_skill(framework: Path, step_id: str, declaration: StepDeclaration) -> S
     for name in REFERENCE.findall(mask_fences(body)):
         if name == own_template or name in references:
             continue
+        # The same rule a declared template is held to, so a body citing
+        # something a package could never contain is reported as the broken
+        # package it is rather than looked for.
+        if not PACKAGE_RELATIVE.match(name):
+            raise AssemblyError(f"{rel}: names {name!r}, which is not a package path")
         if not _within(directory, name, _skill_source(step_id, name)).is_file():
             raise AssemblyError(f"{rel}: names {name}, which is not a file")
         references.append(name)

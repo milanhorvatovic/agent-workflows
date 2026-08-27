@@ -223,7 +223,30 @@ class LoadSkillTest(TreeTest):
         self.write("skills/awf-make/references/guides/style.md", "nested\n")
         self.assertEqual(self.load().references, ("references/guides/style.md",))
 
-    def test_trailing_punctuation_is_not_part_of_the_path(self) -> None:
+    def test_a_reference_name_may_carry_what_a_package_path_may(self) -> None:
+        """A package path may hold a space, so an undelimited scan has no
+        character to stop at: it would take `references/review` out of
+        `references/review checklist.md` and refuse the package for naming a
+        file it never named."""
+        self.write(
+            "skills/awf-make/SKILL.md",
+            SKILL.replace("references/checklist.md", "references/review checklist.md"),
+        )
+        self.write("skills/awf-make/references/review checklist.md", "- check\n")
+        self.assertEqual(self.load().references, ("references/review checklist.md",))
+
+    def test_a_cited_reference_is_held_to_the_package_path_rule(self) -> None:
+        self.write(
+            "skills/awf-make/SKILL.md",
+            SKILL.replace("references/checklist.md", "references/../../secret.md"),
+        )
+        with self.assertRaises(assembler.AssemblyError) as caught:
+            self.load()
+        self.assertIn("not a package path", str(caught.exception))
+
+    def test_punctuation_outside_the_backticks_is_not_part_of_the_path(self) -> None:
+        """The delimiter settles this rather than a rule about dots: a sentence
+        ending "`references/checklist.md`." names the file, not a longer one."""
         self.write(
             "skills/awf-make/SKILL.md",
             SKILL.replace("`references/checklist.md` before writing", "`references/checklist.md`."),
