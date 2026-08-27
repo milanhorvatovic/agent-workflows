@@ -130,6 +130,26 @@ PHASE_SET = re.compile(r"(?<!\$)\{P\}")
 # one of them is the output its declaration describes.
 PHASE_TOKEN = re.compile(r"(?<!\$)\{[NP]\}")
 
+
+def family(declared: str) -> re.Pattern:
+    """The paths one declared path names, over every phase.
+
+    Every phase token in one declaration is the same phase, so the first
+    occurrence captures and the rest refer back to it — a fresh group each
+    time would match paths no phase can ever write, one phase in the
+    directory and another in the file. Phases are numbered from 1, so zero
+    is not one of them. Named rather than numbered, because a numeric
+    reference merges with a digit that starts the next literal: a template
+    ending `{N}0` would build a reference to group ten. The conformance
+    suite builds the same expression for the same reasons.
+    """
+    parts = [re.escape(part) for part in PHASE_TOKEN.split(declared)]
+    expression = parts[0]
+    for index, part in enumerate(parts[1:]):
+        expression += ("(?P<phase>[1-9][0-9]*)" if index == 0 else "(?P=phase)") + part
+    return re.compile(expression)
+
+
 # The schemas declare every structure below closed, and §9.5 makes unknown
 # keys inside one an authoring error while tolerating unknown siblings of
 # the structures themselves. A typo is what the rule is for: `conditionl`
@@ -1472,7 +1492,7 @@ def _steps(text: str, rel: str) -> dict[str, StepDeclaration]:
         _, step_id, heading_role = prior[-1]
         if step_id in steps:
             raise WorkflowError(f"{rel}: step {step_id!r} declares two step blocks")
-        step = _step_declaration(declaration, step_id, rel)
+        step = step_declaration(declaration, step_id, rel)
         # The heading is what a human executing the prose reads and the
         # contract what this driver executes; a disagreement would run the
         # step as a role its own stage does not name (the conformance suite
@@ -1505,7 +1525,15 @@ def _steps(text: str, rel: str) -> dict[str, StepDeclaration]:
     return steps
 
 
-def _step_declaration(declaration: dict, step_id: str, rel: str) -> StepDeclaration:
+def step_declaration(declaration: dict, step_id: str, rel: str) -> StepDeclaration:
+    """One `metadata.workflow.step` mapping as the contract it declares (§9.1).
+
+    Public because the same structure has two carriers (§9): a stage declares
+    it in a fenced block and the skill bound to that step restates it in
+    frontmatter. Both are read here so the two cannot come to accept different
+    things — which is the drift the parity rule exists to catch, and it could
+    not catch a difference the readers introduced themselves.
+    """
     at = f"{rel}: step {step_id!r}"
     _closed(declaration, STEP_KEYS, at, "step")
     role = declaration.get("role")

@@ -35,7 +35,7 @@ from pathlib import Path
 
 from . import PROTOCOL, PROTOCOL_VERSION, implements
 from .protocol_yaml import ProtocolYamlError, dumps, loads
-from .workflow import PHASE, PHASE_SET, PHASE_TOKEN, RUN_RELATIVE, Workflow
+from .workflow import PHASE, PHASE_SET, RUN_RELATIVE, Workflow, family
 
 STATE_FILE = "workflow-state.yaml"
 
@@ -336,7 +336,7 @@ def _runs_directory(runs_dir: Path, create: bool = False):
 
 
 @contextlib.contextmanager
-def _run_directory(run_dir: Path, runs: int | None = None):
+def run_directory(run_dir: Path, runs: int | None = None):
     """Hold the run directory open and yield its descriptor, or `None` where
     the platform cannot bind operations to one.
 
@@ -372,7 +372,7 @@ def _run_directory(run_dir: Path, runs: int | None = None):
         # directory and no descriptor — would write there. So the parent is
         # bound here too, and the run named relative to it.
         with _runs_directory(run_dir.parent) as parent:
-            with _run_directory(run_dir, parent) as descriptor:
+            with run_directory(run_dir, parent) as descriptor:
                 yield descriptor
         return
     # Named relative to the runs descriptor, never by path: the parent is as
@@ -444,7 +444,7 @@ def load(run_dir: Path, runs: int | None = None) -> RunState:
         # state file at this one. The state file is the single document this
         # module owns, and a link in either place would hand that ownership
         # to a file outside the run.
-        with _run_directory(run_dir, runs) as directory:
+        with run_directory(run_dir, runs) as directory:
             target = STATE_FILE if directory is not None else os.fspath(path)
             # `O_NOFOLLOW` says the name is not a link and nothing about what
             # kind of file it is. A FIFO in the state file's place would
@@ -573,7 +573,7 @@ def save(state: RunState, run_dir: Path, runs: int | None = None) -> None:
         # is an open mapping to the schema and this codec reads and writes
         # what the protocol's own documents use, so the two can disagree.
         raise StateError(f"cannot write this run's state: {error}") from error
-    with _run_directory(run_dir, runs) as directory:
+    with run_directory(run_dir, runs) as directory:
         if directory is None:
             handle, temp_name = tempfile.mkstemp(
                 prefix=f".{STATE_FILE}.", dir=run_dir, text=False
@@ -1032,7 +1032,7 @@ def check_manifest(state: RunState, workflow: Workflow) -> None:
     # run that has passed through phases holds each phase's own artifact,
     # and every one of them is that declaration's output.
     families = [
-        _family(declaration.output_artifact)
+        family(declaration.output_artifact)
         for stage in workflow.stages
         for declaration in stage.steps.values()
     ]
@@ -1295,25 +1295,6 @@ def _import_skipped(state: RunState, workflow: Workflow) -> set[str]:
         for step in state.steps
         if step.status == "skipped" and step.id in produced
     }
-
-
-def _family(output: str) -> re.Pattern:
-    """The paths one declaration names, over every phase.
-
-    Every `{N}` in a declaration is the same executing phase, so the first
-    occurrence captures and the rest refer back to it — a fresh group each
-    time would match paths completion can never write, one phase in the
-    directory and another in the file. Phases are numbered from 1, so zero
-    is not one of them. Named rather than numbered, because a numeric
-    reference merges with a digit that starts the next literal: a template
-    ending `{N}0` would build a reference to group ten. The conformance
-    suite builds the same expression for the same reasons.
-    """
-    parts = [re.escape(part) for part in PHASE_TOKEN.split(output)]
-    expression = parts[0]
-    for index, part in enumerate(parts[1:]):
-        expression += ("(?P<phase>[1-9][0-9]*)" if index == 0 else "(?P=phase)") + part
-    return re.compile(expression)
 
 
 def _phase_free(artifact: str) -> str:
