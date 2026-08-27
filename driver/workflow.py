@@ -1616,6 +1616,20 @@ def step_declaration(declaration: dict, step_id: str, rel: str) -> StepDeclarati
     if isinstance(template, str):
         _check_placeholders(template, at, "template")
         _check_package_relative(template, at)
+        # And no placeholder at all, which `_check_placeholders` alone permits:
+        # the four are defined for paths a run resolves, and a template is a
+        # file in a package that no run resolves anything in. `references/
+        # phase-{N}.md` would be opened as the literal name it is, so the
+        # declaration is refused where it is read rather than read as a file
+        # nobody wrote. Placeholders belong in a template's content, which is
+        # what §8.3 has the step fill.
+        token = PLACEHOLDER.search(template)
+        if token is not None:
+            raise WorkflowError(
+                f"{at}: template carries the placeholder {token.group(0)!r}, and a "
+                f"template names a file in a package rather than a path a run "
+                f"resolves: {template!r}"
+            )
     inputs: list[InputDeclaration] = []
     # Absence is the only thing that means "no declared inputs". A present
     # `inputs` that is not a list — `false`, `null`, a mapping — is an

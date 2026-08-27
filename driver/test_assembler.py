@@ -763,6 +763,41 @@ class ScaffoldTest(TreeTest):
             self.assertIn("template", str(caught.exception))
         self.assertFalse((self.run_dir / "out.md").exists())
 
+    def test_a_template_path_carries_no_placeholder(self) -> None:
+        """The four are defined for paths a run resolves, and a template names
+        a file in a package that no run resolves anything in — so
+        `references/phase-{N}.md` would be opened as the literal name it is."""
+        for token in ("references/phase-{N}.md", "references/{P}.md", "{run}/t.md"):
+            self.write(
+                "skills/awf-make/SKILL.md",
+                SKILL.replace("template: references/out.template.md", f'template: "{token}"'),
+            )
+            with self.assertRaises(assembler.AssemblyError) as caught:
+                self.load()
+            self.assertIn("template", str(caught.exception))
+
+    def test_a_content_root_that_links_outside_the_framework_is_refused(self) -> None:
+        """Resolving a base before anchoring on it lets the anchor escape: a
+        linked `skills/` resolves outside, everything beneath resolves within
+        *that*, and the per-entry check passes while external instructions
+        enter the prompt."""
+        outside = self.base / "elsewhere"
+        for root in ("skills", "roles"):
+            moved = outside / root
+            moved.parent.mkdir(parents=True, exist_ok=True)
+            (self.framework / root).rename(moved)
+            try:
+                (self.framework / root).symlink_to(moved, target_is_directory=True)
+            except (OSError, NotImplementedError) as error:  # pragma: no cover
+                self.skipTest(f"symlinks unavailable: {error}")
+            with self.assertRaises(assembler.AssemblyError) as caught:
+                assembler.assemble(
+                    self.framework, self.run_dir, self.state([]), self.workflow(), "make"
+                )
+            self.assertIn("outside the directory declaring it", str(caught.exception))
+            (self.framework / root).unlink()
+            moved.rename(self.framework / root)
+
     def test_a_stage_declaring_an_escaping_template_never_composes(self) -> None:
         """The guard sits in the reader both carriers share, so the stage's
         copy is refused where it is read — before a run directory exists."""
@@ -839,7 +874,12 @@ class ScaffoldTest(TreeTest):
         )
         self.write("workflows/stages/references/out.template.md", "# From the stage\n")
         skill = self.load()
-        self.assertEqual(skill.template_dir, self.framework / "workflows" / "stages")
+        # Compared resolved: the content roots are verified level by level and
+        # come back resolved, which on macOS differs from the temp path as
+        # written (`/var` being a link to `/private/var`).
+        self.assertEqual(
+            skill.template_dir, (self.framework / "workflows" / "stages").resolve()
+        )
         self.assertTrue(assembler.scaffold(skill, self.run_dir, "{run}/out.md"))
         self.assertEqual(
             (self.run_dir / "out.md").read_text(encoding="utf-8"), "# From the stage\n"

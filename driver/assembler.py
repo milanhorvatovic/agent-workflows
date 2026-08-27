@@ -159,7 +159,7 @@ def load_skill(framework: Path, step_id: str, declaration: StepDeclaration) -> S
     # directory would leave the leaf, which is how a valid skill file outside
     # the framework reaches the prompt. Both, and the references and template
     # below inherit a directory already known to be inside.
-    directory = _within(framework / "skills", package, f"skills/{package}")
+    directory = _within(_content_root(framework, "skills"), package, f"skills/{package}")
     # Undecodable is malformed rather than absent, the distinction the
     # composition module draws for the same reason: UnicodeError is a
     # ValueError, and without it here a skill that is not UTF-8 leaves the
@@ -178,7 +178,12 @@ def load_skill(framework: Path, step_id: str, declaration: StepDeclaration) -> S
     declared = _skill_step(data, step_id, rel)
     _check_parity(declared, declaration, rel, step_id)
     template, template_dir = _template(
-        declared, declaration, rel, step_id, directory, framework / "workflows" / "stages"
+        declared,
+        declaration,
+        rel,
+        step_id,
+        directory,
+        _content_root(framework, "workflows", "stages"),
     )
     # Named in the body and present on disk, in that order: the body is what
     # says a reference belongs to this skill's method, and a path it names
@@ -432,7 +437,7 @@ def _role(framework: Path, role: str) -> str:
     # `roles/analyst.md -> /outside/secret` would put that file in front of the
     # configured backend. The role name is one of the six the contract already
     # holds it to, so the name cannot escape; the file it points at can.
-    text = _read(_within(framework / "roles", f"{role}.md", source), source)
+    text = _read(_within(_content_root(framework, "roles"), f"{role}.md", source), source)
     match = FRONTMATTER.match(text)
     return text[match.end() :] if match is not None else text
 
@@ -523,6 +528,22 @@ def _within(base: Path, relative: str, source: str) -> Path:
     if not resolved.is_relative_to(anchor):
         raise AssemblyError(f"{source} resolves outside the directory declaring it")
     return resolved
+
+
+def _content_root(framework: Path, *parts: str) -> Path:
+    """A directory the framework holds its content in, verified level by level.
+
+    Resolving a base before anchoring on it lets the anchor escape: a linked
+    `skills/` resolves outside the framework, everything beneath it resolves
+    within *that*, and the per-entry check below passes while external
+    instructions enter the prompt. Each level is therefore held to the one
+    above it, up to the configured framework itself — which may be a link, that
+    being the operator's configuration rather than an escape from it.
+    """
+    root = framework
+    for index, part in enumerate(parts):
+        root = _within(root, part, "/".join(parts[: index + 1]))
+    return root
 
 
 def _components(artifact: str) -> list[str]:
