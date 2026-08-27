@@ -125,6 +125,21 @@ class LoadSkillTest(TreeTest):
         self.assertEqual(skill.template, "references/out.template.md")
         self.assertEqual(skill.references, ("references/checklist.md",))
 
+    def test_a_stage_template_does_not_suppress_the_package_reference(self) -> None:
+        """The spelling is not the file: a stage-declared `references/x.md`
+        resolves under `workflows/stages/` while the body's names one under the
+        package, so dropping the reference for matching a string would withhold
+        a file the skill asked for."""
+        self.write("workflows/stages/intake.md", STAGE)
+        self.write(
+            "skills/awf-make/SKILL.md",
+            SKILL.replace("        template: references/out.template.md\n", ""),
+        )
+        self.write("workflows/stages/references/out.template.md", "# From the stage\n")
+        skill = self.load()
+        self.assertEqual(skill.template, "references/out.template.md")
+        self.assertIn("references/out.template.md", skill.references)
+
     def test_the_template_is_not_also_a_reference(self) -> None:
         """The step is given the template as the scaffold its output starts
         from; listing it again as reading material would put one structure in
@@ -960,7 +975,7 @@ class RepositoryTest(unittest.TestCase):
                     skill = assembler.load_skill(REPO, step_id, declaration)
                     self.assertTrue(skill.body.strip())
                     seen.add(step_id)
-        # The eighteen step-bound skills skills/README.md counts, reached
+        # The eighteen step-bound skills `skills/README.md` counts, reached
         # through the compositions rather than by listing the directory.
         self.assertEqual(len(seen), 18)
 

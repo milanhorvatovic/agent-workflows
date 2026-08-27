@@ -194,9 +194,15 @@ def load_skill(framework: Path, step_id: str, declaration: StepDeclaration) -> S
     # and loading it would put a demonstration in the step's context — or,
     # where the example names a file that was never meant to exist, refuse a
     # skill for illustrating something.
+    # Suppressed only where this package owns the template, because the
+    # spelling is not the file: a stage-declared `references/x.md` resolves
+    # under `workflows/stages/` while the body's names one under the package,
+    # and dropping the reference for matching a string would silently withhold
+    # a file the skill asked for.
+    own_template = template if template_dir == directory else None
     references: list[str] = []
     for name in REFERENCE.findall(mask_fences(body)):
-        if name == template or name in references:
+        if name == own_template or name in references:
             continue
         if not _within(directory, name, _skill_source(step_id, name)).is_file():
             raise AssemblyError(f"{rel}: names {name}, which is not a file")
