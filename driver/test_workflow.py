@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -936,6 +937,36 @@ class SyntheticTreeTest(unittest.TestCase):
             load_workflow(self.framework, "demo")
         self.assertIn("no step produces it", str(caught.exception))
 
+    def test_a_case_variant_of_the_request_is_refused_as_an_output(self) -> None:
+        """`{run}/REQUEST.md` is a different declaration and the same file
+        wherever the filesystem folds case — macOS and Windows by default — so
+        an exact comparison would hand a step the one artifact §8.7 says
+        nothing in the run rewrites. §8.6 already settled that string equality
+        is the wrong test where platforms fold; this is that rule applied to a
+        name rather than a directory."""
+        for variant in ("{run}/REQUEST.md", "{run}/Request.md", "{run}/request.MD"):
+            with self.subTest(artifact=variant):
+                self.write(
+                    "workflows/stages/intake.md",
+                    STAGE.replace('artifact: "{run}/out.md"', f'artifact: "{variant}"'),
+                )
+                with self.assertRaises(WorkflowError) as caught:
+                    load_workflow(self.framework, "demo")
+                self.assertIn("no step produces it", str(caught.exception))
+
+    def test_a_path_merely_resembling_the_request_is_allowed(self) -> None:
+        """The fold answers one name, not a family: `{run}/requests.md` and a
+        request under a subdirectory are different files on every filesystem,
+        and refusing them would take paths the protocol never reserved."""
+        for allowed in ("{run}/requests.md", "{run}/sub/request.md"):
+            with self.subTest(artifact=allowed):
+                self.write(
+                    "workflows/stages/intake.md",
+                    STAGE.replace('artifact: "{run}/out.md"', f'artifact: "{allowed}"'),
+                )
+                workflow = load_workflow(self.framework, "demo")
+                self.assertEqual(workflow.step("make").output_artifact, allowed)
+
     def test_the_request_is_refused_only_as_an_output(self) -> None:
         """Declaring it as an input is what the entry step does — the refusal
         is about producing it, not about naming it."""
@@ -1064,26 +1095,43 @@ class SyntheticTreeTest(unittest.TestCase):
             schema["$defs"]["member"]["properties"]["step"]["pattern"],
         )
 
-    def test_the_refused_output_is_the_schema_constant(self) -> None:
+    def test_the_refused_output_matches_the_schema(self) -> None:
         """The step schema refuses `{run}/request.md` as an output and this
         reader refuses it too, from either side of the same rule — so a rename
         reaching one and not the other would leave the driver accepting a
-        declaration its own schema rejects."""
+        declaration its own schema rejects. Pinned by agreement on what each
+        answers rather than by a shared string, since one is a pattern and the
+        other a fold: what has to match is the set of paths they refuse."""
         import json
 
-        from driver import REQUEST_ARTIFACT
+        from driver import REQUEST_ARTIFACT, names_request
 
         schema = json.loads(
             (REPO / "protocol" / "schemas" / "step.schema.json").read_text(
                 encoding="utf-8"
             )
         )
-        excluded = schema["properties"]["step"]["properties"]["output"]["properties"][
-            "artifact"
-        ]["not"]["anyOf"]
-        self.assertIn(
-            REQUEST_ARTIFACT, [entry.get("const") for entry in excluded]
-        )
+        patterns = [
+            re.compile(entry["pattern"])
+            for entry in schema["properties"]["step"]["properties"]["output"][
+                "properties"
+            ]["artifact"]["not"]["anyOf"]
+            if "pattern" in entry
+        ]
+
+        def schema_refuses(artifact: str) -> bool:
+            return any(pattern.search(artifact) for pattern in patterns)
+
+        for artifact in (
+            REQUEST_ARTIFACT,
+            "{run}/REQUEST.md",
+            "{run}/Request.MD",
+            "{run}/requests.md",
+            "{run}/sub/request.md",
+            "{run}/brief.md",
+        ):
+            with self.subTest(artifact=artifact):
+                self.assertEqual(names_request(artifact), schema_refuses(artifact))
 
     def test_unknown_keys_inside_a_declared_structure_are_errors(self) -> None:
         """§9.5: unknown keys inside a declared structure are authoring

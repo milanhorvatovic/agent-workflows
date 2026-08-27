@@ -71,11 +71,11 @@
                     "pattern": "\\{P\\}"
                   },
                   {
-                    "const": "{run}/request.md"
+                    "pattern": "^\\{run\\}/[Rr][Ee][Qq][Uu][Ee][Ss][Tt]\\.[Mm][Dd](?![\\s\\S])"
                   }
                 ]
               },
-              "description": "The artifact produced. May not carry {P}, which resolves to one path per phase: a step produces one artifact, and a phase-set of outputs is a stage that repeats rather than a step that fans out (spec sections 8.1 and 9.1). May not be `{run}/request.md` either: the request is what the run was created from, no step produces it, and a step claiming it would overwrite mid-run the words the entry step exists to restate (spec section 8.7)."
+              "description": "The artifact produced. May not carry {P}, which resolves to one path per phase: a step produces one artifact, and a phase-set of outputs is a stage that repeats rather than a step that fans out (spec sections 8.1 and 9.1). May not name `{run}/request.md` either, ASCII case aside — `{run}/REQUEST.md` is the same file wherever the filesystem folds case: the request is what the run was created from, no step produces it, and a step claiming it would overwrite mid-run the words the entry step exists to restate (spec section 8.7)."
             },
             "template": {
               "type": "string",

@@ -19,7 +19,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path, PureWindowsPath
 
-from . import PROTOCOL, PROTOCOL_VERSION, REQUEST_ARTIFACT, implements
+from . import PROTOCOL, PROTOCOL_VERSION, REQUEST_ARTIFACT, implements, names_request
 from .config import ROLES
 from .protocol_yaml import WHITESPACE, ProtocolYamlError, loads
 
@@ -1603,10 +1603,15 @@ def step_declaration(declaration: dict, step_id: str, rel: str) -> StepDeclarati
     # revise depends on when it returns to a step that reads it again. The
     # step schema forbids it, and this reader holds the framework it was
     # pointed at, which no conformance run has necessarily seen.
-    if artifact == REQUEST_ARTIFACT:
+    #
+    # ASCII case aside, because `{run}/REQUEST.md` is a different declaration
+    # and the same file wherever the filesystem folds case — which is where
+    # most of this protocol's readers run.
+    if names_request(artifact):
         raise WorkflowError(
-            f"{at}: output artifact is {artifact} — the request is what the run "
-            f"was created from and no step produces it (spec §8.7)"
+            f"{at}: output artifact is {artifact}, which names {REQUEST_ARTIFACT} — "
+            f"the request is what the run was created from and no step produces "
+            f"it (spec §8.7)"
         )
     # §8.1 and §9.1: `{P}` resolves to one path per phase, and a step
     # produces one artifact — a phase set of outputs is a stage that

@@ -28,6 +28,29 @@ PROTOCOL_VERSION = re.compile(r"^[0-9]+\.[0-9]+$")
 REQUEST_FILE = "request.md"
 REQUEST_ARTIFACT = f"{{run}}/{REQUEST_FILE}"
 
+# Only A–Z, never `str.lower`. The rule is about filesystems that fold ASCII
+# case, and Unicode lowering answers a wider question than the one asked: it
+# would map characters no filesystem aliases into the path, and leave others
+# it does. §8.6 already settled that string equality is the wrong test where
+# platforms fold — it decides self-import by directory identity for the same
+# reason — and this is that reasoning applied to a name rather than a
+# directory.
+_ASCII_FOLD = str.maketrans(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"
+)
+
+
+def names_request(artifact: str) -> bool:
+    """Whether a declared path names the run's request, ASCII case aside.
+
+    `{run}/REQUEST.md` is a different string and the same file wherever the
+    filesystem folds case — macOS and Windows by default — so a rule that
+    compared exactly would let a step declare the request as its output, or a
+    lineage record name it as an import, and overwrite the one artifact §8.7
+    says nothing in the run rewrites.
+    """
+    return artifact.translate(_ASCII_FOLD) == REQUEST_ARTIFACT
+
 
 def implements(version: str) -> bool:
     """Whether this driver implements a well-formed declared version (§11).

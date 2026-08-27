@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import signal
 import stat
 import tempfile
@@ -1719,15 +1720,21 @@ class LoadValidationTest(StateTestCase):
         # The request's path is a literal in three schema constraints and a
         # constant here, and the two enforce the same rule from either side —
         # so a rename that reached one and not the others would leave the
-        # driver writing a manifest its own schema refuses, silently.
+        # driver writing a manifest its own schema refuses, silently. The
+        # manifest wants the canonical path exactly; the import exclusion is
+        # pinned by behaviour rather than by string, since it is a pattern
+        # covering every ASCII case of the same name.
         self.assertEqual(
             state.REQUEST_ARTIFACT,
             schema["properties"]["artifacts"]["contains"]["const"],
         )
-        self.assertEqual(
-            state.REQUEST_ARTIFACT,
-            schema["$defs"]["importRecord"]["properties"]["artifact"]["not"]["const"],
+        excluded = re.compile(
+            schema["$defs"]["importRecord"]["properties"]["artifact"]["not"]["pattern"]
         )
+        for named in (state.REQUEST_ARTIFACT, "{run}/REQUEST.md", "{run}/Request.MD"):
+            self.assertTrue(excluded.match(named), named)
+        for other in ("{run}/requests.md", "{run}/sub/request.md", "{run}/brief.md"):
+            self.assertIsNone(excluded.match(other), other)
 
     def test_imports_load_validate_and_round_trip(self) -> None:
         # Named for the run the document names, which the write requires.
@@ -1770,6 +1777,16 @@ class LoadValidationTest(StateTestCase):
             "imported request": (
                 self.MANIFEST
                 + f'imports:\n  - artifact: "{state.REQUEST_ARTIFACT}"\n'
+                '    from: earlier-run\n    at: "2026-08-16T09:00:00Z"\n'
+            ),
+            # And ASCII case aside: the copy lands at the path the record
+            # names, and `{run}/REQUEST.md` is that same file wherever the
+            # filesystem folds case, so an exact comparison would let a lineage
+            # record overwrite the request it cannot name.
+            "imported request, cased": (
+                self.MANIFEST
+                + '  - "{run}/REQUEST.md"\n'
+                'imports:\n  - artifact: "{run}/REQUEST.md"\n'
                 '    from: earlier-run\n    at: "2026-08-16T09:00:00Z"\n'
             ),
             # §8.6 and §10 bound the list, and the suite holds the shipped

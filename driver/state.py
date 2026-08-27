@@ -38,7 +38,14 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import PROTOCOL, PROTOCOL_VERSION, REQUEST_ARTIFACT, REQUEST_FILE, implements
+from . import (
+    PROTOCOL,
+    PROTOCOL_VERSION,
+    REQUEST_ARTIFACT,
+    REQUEST_FILE,
+    implements,
+    names_request,
+)
 from .protocol_yaml import ProtocolYamlError, dumps, loads
 from .workflow import PHASE, PHASE_SET, RUN_RELATIVE, Workflow, family
 
@@ -1700,9 +1707,15 @@ def _validate_imports(
         # outright: an import adopts an artifact a step of the source run
         # produced, and the request has no producing step. Checked ahead of the
         # manifest, since it is in every manifest and would otherwise pass the
-        # test that catches an unmanifested lineage.
-        if artifact == REQUEST_ARTIFACT:
-            raise bad(f"import {artifact!r} — the request is never imported (spec §8.7)")
+        # test that catches an unmanifested lineage. ASCII case aside: the copy
+        # lands at the path the record names, and `{run}/REQUEST.md` is that
+        # same file wherever the filesystem folds case, so an exact comparison
+        # would let a lineage record overwrite the request it cannot name.
+        if names_request(artifact):
+            raise bad(
+                f"import {artifact!r} names {REQUEST_ARTIFACT} — the request is "
+                f"never imported (spec §8.7)"
+            )
         if artifact not in manifest:
             raise bad(f"import {artifact!r} is not in the manifest (spec §8.6)")
         if not isinstance(source, str) or not PLAIN_NAME.match(source):
