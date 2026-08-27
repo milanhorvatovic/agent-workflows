@@ -1,0 +1,539 @@
+"""Context assembly: what one step is given to execute, and the scaffold its
+output starts from (protocol/spec.md §8.3, §9.1).
+
+Assembly is deterministic by construction — the same run, step, and framework
+produce the same bytes. Nothing here decides what a step needs: the role comes
+from the step's contract, the instructions from the skill that declares that
+contract, the reference files from the ones the skill's own body names, and
+the material from the artifacts the contract declares as inputs, resolved
+against this run's manifest. An executor materializes only what is declared
+(§9.1), so a skill whose prose reaches for an artifact its contract omits gets
+prose and no artifact — which is the defect the completeness rule exists to
+make visible, not one to paper over here.
+
+The framework directory is a checkout of the protocol content: `workflows/`
+and `workflows/stages/` as the composition module reads them, and `roles/` and
+`skills/` as this one does. The `.agents/skills/` copies `setup/` installs into
+a consuming project are for that project's harness to route to; the driver
+executes from the framework it was configured with.
+
+What this module does not do: it never invokes anything (the backend module
+owns that), never satisfies an input from an earlier run (§8.4's cache is
+judgment, and it lands with the artifact-manager work), and never writes
+content into an artifact — `scaffold` puts the structure §8.3 asks for in
+place, and every placeholder in it is the step's to fill.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+from dataclasses import dataclass
+from pathlib import Path
+
+from . import PROTOCOL, PROTOCOL_VERSION, implements
+from .protocol_yaml import ProtocolYamlError, loads
+from .state import _NOFOLLOW, RunState, StateError, is_link, run_directory
+from .workflow import (
+    PHASE,
+    PHASE_SET,
+    StepDeclaration,
+    Workflow,
+    WorkflowError,
+    family,
+    step_declaration,
+)
+
+# Skill packages carry the framework's vendor prefix, and a step-bound skill
+# is named for the step it declares (skills/README.md). The name is how the
+# pair is found; what makes it the binding is the contract inside, which
+# `_check_parity` holds to the stage's own — the same two-part rule the
+# conformance suite applies to this repository's copy of the same files.
+SKILL_PREFIX = "awf-"
+SKILL_FILE = "SKILL.md"
+
+# Frontmatter is the skill's declaration carrier (§9): the first line opens it
+# and the next line holding `---` alone, trailing spaces aside, closes it.
+# Anchored at the start of the file, because the same three characters further
+# down are a thematic break in the body.
+FRONTMATTER = re.compile(r"\A---\n(?P<block>.*?\n)---[ \t]*(?:\n|\Z)", re.DOTALL)
+
+# A reference the skill's body names, wherever it names it — inside backticks
+# in every shipped body, but the backticks are typography rather than syntax
+# and a body that dropped them would still be naming the file. Dotted parts
+# are taken only where something follows the dot, so a sentence ending
+# "`references/shipping.md`." names shipping.md rather than a file that does
+# not exist.
+REFERENCE = re.compile(r"references/[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*")
+
+RUN_PREFIX = "{run}/"
+
+
+class AssemblyError(Exception):
+    """The framework content a step needs is missing, malformed, or disagrees
+    with the stage that composes it."""
+
+
+class BlockedError(AssemblyError):
+    """§9.1: a required input is missing, which blocks the step.
+
+    Distinct from the rest because it says nothing is wrong with the
+    installation — the run has simply not produced this artifact yet, which is
+    a position to report rather than a defect to fix.
+    """
+
+
+@dataclass(frozen=True)
+class Material:
+    """One piece of the assembled context: where it came from and what it says.
+
+    `source` is the path as a reader would cite it — `roles/planner.md`,
+    `skills/awf-plan-create/references/bugfix.md`, `{run}/brief.md` — so every
+    line of an assembled prompt traces back to a file.
+    """
+
+    kind: str  # "role" | "skill" | "reference" | "input" | "template"
+    source: str
+    text: str
+
+
+@dataclass(frozen=True)
+class Skill:
+    """The skill package a step executes from."""
+
+    step_id: str
+    directory: Path
+    body: str
+    # The template the step's output is scaffolded from (§8.3), skill-relative
+    # as declared, or None where the step scaffolds nothing — which is what a
+    # step writing an artifact an earlier step already created declares.
+    template: str | None
+    # The reference files the body names, in first-mention order, minus the
+    # template: that one reaches the step as the scaffold rather than as
+    # reading material, and including it twice would put the same structure in
+    # the prompt under two labels.
+    references: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class Assembly:
+    """Everything one invocation of one step is given."""
+
+    step_id: str
+    role: str
+    # The step's declared output with `{N}` resolved — the artifact this
+    # invocation is expected to leave behind.
+    output: str
+    output_path: Path
+    materials: tuple[Material, ...]
+    prompt: str
+
+
+def load_skill(framework: Path, step_id: str, declaration: StepDeclaration) -> Skill:
+    """Read the skill bound to `step_id` and hold it to the stage's contract."""
+    directory = framework / "skills" / f"{SKILL_PREFIX}{step_id}"
+    rel = f"skills/{SKILL_PREFIX}{step_id}/{SKILL_FILE}"
+    try:
+        text = (directory / SKILL_FILE).read_text(encoding="utf-8")
+    # Undecodable is malformed rather than absent, the distinction the
+    # composition module draws for the same reason: UnicodeError is a
+    # ValueError, and without it here a skill that is not UTF-8 leaves the
+    # driver as a traceback instead of the defect it is.
+    except (OSError, UnicodeError) as error:
+        raise AssemblyError(f"cannot read {rel}: {error}") from error
+    match = FRONTMATTER.match(text)
+    if match is None:
+        raise AssemblyError(f"{rel}: no frontmatter, and §9 declares in it")
+    try:
+        data = loads(match.group("block"))
+    except ProtocolYamlError as error:
+        raise AssemblyError(f"{rel}: frontmatter: {error}") from error
+    body = text[match.end() :]
+    declared = _skill_step(data, step_id, rel)
+    _check_parity(declared, declaration, rel, step_id)
+    template = _template(declared, declaration, rel, step_id)
+    # Named in the body and present on disk, in that order: the body is what
+    # says a reference belongs to this skill's method, and a path it names
+    # that nothing backs is a broken package rather than an optional extra —
+    # the step would be told to load a file the executor cannot hand it.
+    references: list[str] = []
+    for name in REFERENCE.findall(body):
+        if name == template or name in references:
+            continue
+        if not (directory / name).is_file():
+            raise AssemblyError(f"{rel}: names {name}, which is not a file")
+        references.append(name)
+    return Skill(
+        step_id=step_id,
+        directory=directory,
+        body=body,
+        template=template,
+        references=tuple(references),
+    )
+
+
+def _skill_step(data: object, step_id: str, rel: str) -> StepDeclaration:
+    """The `metadata.workflow.step` a skill's frontmatter declares (§9.1)."""
+    metadata = data.get("metadata") if isinstance(data, dict) else None
+    workflow = metadata.get("workflow") if isinstance(metadata, dict) else None
+    if not isinstance(workflow, dict):
+        raise AssemblyError(
+            f"{rel}: no `metadata.workflow` declaration — a step-bound skill "
+            f"carries the contract it executes (spec §9.1)"
+        )
+    # §9 holds every block to the version it was authored against, and §11
+    # forbids interpreting one from a version this driver does not implement.
+    # The composition module checks the stages' blocks; this is the same rule
+    # applied to the other carrier, since a skill from a mismatched release
+    # ships prose written against contracts this run does not execute.
+    version = workflow.get("protocol")
+    if not isinstance(version, str) or not PROTOCOL_VERSION.fullmatch(version):
+        raise AssemblyError(f"{rel}: declaration without a protocol version: {version!r}")
+    if not implements(version):
+        raise AssemblyError(
+            f"{rel}: declaration is protocol {version}, and this driver "
+            f"implements {PROTOCOL} (spec §11)"
+        )
+    declaration = workflow.get("step")
+    if not isinstance(declaration, dict):
+        raise AssemblyError(f"{rel}: `metadata.workflow.step` is not a mapping")
+    # Parsed by the composition module's own reader, so the two carriers are
+    # held to one definition of what a step declaration is; re-implementing it
+    # here is how the copies would come to accept different things.
+    try:
+        return step_declaration(declaration, step_id, rel)
+    except WorkflowError as error:
+        raise AssemblyError(str(error)) from error
+
+
+def _check_parity(
+    declared: StepDeclaration, composed: StepDeclaration, rel: str, step_id: str
+) -> None:
+    """Two copies of one contract must agree (spec §9.1).
+
+    The stage is what composes the run and the skill is what the step executes
+    from, so a disagreement is not a preference to resolve: the run would
+    execute prose written against inputs it was never given, or a role its own
+    stage does not name. Conformance holds this repository's copies to it; the
+    driver holds the framework it was pointed at, which no CI has seen.
+
+    The template is compared separately (`_template`) — either carrier may
+    declare it and the shipped stages declare none, so equality here would
+    fault every real pairing.
+    """
+    for what, mine, theirs in (
+        ("role", declared.role, composed.role),
+        ("inputs", declared.inputs, composed.inputs),
+        ("output artifact", declared.output_artifact, composed.output_artifact),
+        ("edges", declared.edges, composed.edges),
+    ):
+        if mine != theirs:
+            raise AssemblyError(
+                f"{rel}: step {step_id!r} declares {what} {mine!r}, and the stage "
+                f"composing it declares {theirs!r} — two copies of one contract "
+                f"must agree (spec §9.1)"
+            )
+
+
+def _template(
+    declared: StepDeclaration, composed: StepDeclaration, rel: str, step_id: str
+) -> str | None:
+    """The template the output is scaffolded from, from whichever carrier
+    declares it (§8.3).
+
+    The path is skill-relative whichever one names it: a template is a skill
+    asset, and `references/` is a directory only a skill package has. A stage
+    declaring one therefore names the same file, and a disagreement is the
+    parity failure above by another name — checked here rather than there
+    because absence on one side is the ordinary case, not a mismatch.
+    """
+    if (
+        declared.output_template is not None
+        and composed.output_template is not None
+        and declared.output_template != composed.output_template
+    ):
+        raise AssemblyError(
+            f"{rel}: step {step_id!r} declares template "
+            f"{declared.output_template!r}, and the stage composing it declares "
+            f"{composed.output_template!r} — two copies of one contract must agree"
+        )
+    return declared.output_template or composed.output_template
+
+
+def resolve(artifact: str, declaration: StepDeclaration, state: RunState) -> tuple[str, ...]:
+    """The `{run}`-relative paths one declared artifact names in this run (§8.1).
+
+    `{N}` is the phase the step is executing and resolves to exactly one path.
+    `{P}` is every phase *other than* this step's that the run has produced
+    this artifact for, resolved against the manifest — which is what §8.1
+    makes the answer, so a phase the manifest does not record is not one `{P}`
+    names. Which phase is the step's own is settled by the step's own output
+    and never by run state: `run.phase` still names the last phase while the
+    stages after it run, so a step whose output carries no phase excludes
+    nothing and reads them all.
+    """
+    phase = state.phase if state.phase is not None else 1
+    if not PHASE_SET.search(artifact):
+        return (PHASE.sub(str(phase), artifact),)
+    # One declaration, two different phases, is not something `family` can
+    # express — it makes every token in a path the same phase — so a path
+    # mixing them would silently resolve as though they agreed.
+    if PHASE.search(artifact):
+        raise AssemblyError(
+            f"step {declaration.id!r}: input {artifact!r} carries both {{N}} and "
+            f"{{P}}, which name different phases (spec §8.1)"
+        )
+    excluded = str(phase) if PHASE.search(declaration.output_artifact) else None
+    pattern = family(artifact)
+    found: dict[int, str] = {}
+    for entry in state.artifacts:
+        match = pattern.fullmatch(entry)
+        if match is not None and match.group("phase") != excluded:
+            found[int(match.group("phase"))] = entry
+    return tuple(found[number] for number in sorted(found))
+
+
+def assemble(
+    framework: Path,
+    run_dir: Path,
+    state: RunState,
+    workflow: Workflow,
+    step_id: str,
+    runs: int | None = None,
+) -> Assembly:
+    """Everything `step_id` is given to execute, in one deterministic order."""
+    declaration = workflow.step(step_id)
+    if declaration is None:
+        raise AssemblyError(f"{step_id!r} is not a declared step (spec §9.1)")
+    skill = load_skill(framework, step_id, declaration)
+    materials = [
+        Material("role", f"roles/{declaration.role}.md", _role(framework, declaration.role)),
+        Material("skill", f"skills/{SKILL_PREFIX}{step_id}/{SKILL_FILE}", skill.body),
+    ]
+    for name in skill.references:
+        materials.append(
+            Material("reference", _skill_source(step_id, name), _read(skill.directory / name))
+        )
+    materials.extend(_inputs(run_dir, state, declaration, runs))
+    if skill.template is not None:
+        materials.append(
+            Material(
+                "template",
+                _skill_source(step_id, skill.template),
+                _read(skill.directory / skill.template),
+            )
+        )
+    output = resolve(declaration.output_artifact, declaration, state)[0]
+    return Assembly(
+        step_id=step_id,
+        role=declaration.role,
+        output=output,
+        output_path=_under(run_dir, output),
+        materials=tuple(materials),
+        prompt=_render(state, skill, declaration, output, materials),
+    )
+
+
+def _inputs(
+    run_dir: Path, state: RunState, declaration: StepDeclaration, runs: int | None
+) -> list[Material]:
+    """Every declared input this run can satisfy, in declaration order.
+
+    The manifest decides what the run holds (§8.2) — it records what steps
+    produced and what the run imported (§8.6), which is exactly the set an
+    input may resolve to. A required input the manifest does not name blocks
+    the step (§9.1); an optional one is simply absent, and an optional one
+    satisfied from an earlier run is §8.4's cache, which this module does not
+    reach for: nothing here judges freshness.
+    """
+    materials: list[Material] = []
+    manifest = set(state.artifacts)
+    for declared in declaration.inputs:
+        paths = resolve(declared.artifact, declaration, state)
+        held = [path for path in paths if path in manifest]
+        if declared.required and not held:
+            raise BlockedError(
+                f"step {declaration.id!r} requires {declared.artifact}, which this "
+                f"run has not produced (spec §9.1)"
+            )
+        for path in held:
+            materials.append(Material("input", path, _read_artifact(run_dir, path, runs)))
+    return materials
+
+
+def _role(framework: Path, role: str) -> str:
+    """A role definition's body, its frontmatter dropped.
+
+    The frontmatter is the index's routing surface rather than instruction —
+    reproducing the `description` a generator wrote from the body would spend
+    the step's context restating what follows it.
+    """
+    text = _read(framework / "roles" / f"{role}.md")
+    match = FRONTMATTER.match(text)
+    return text[match.end() :] if match is not None else text
+
+
+def _skill_source(step_id: str, name: str) -> str:
+    return f"skills/{SKILL_PREFIX}{step_id}/{name}"
+
+
+def _read(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
+        raise AssemblyError(f"cannot read {path}: {error}") from error
+
+
+def _components(artifact: str) -> list[str]:
+    """A declared `{run}`-relative path as the components under the run.
+
+    The prefix is the schema's — every declared artifact is anchored at
+    `{run}/`, with no absolute form and no dot segments (§8.6, the pattern the
+    composition module holds every declaration to) — so stripping it is the
+    whole of the mapping and there is nothing left to normalize away.
+    """
+    if not artifact.startswith(RUN_PREFIX):
+        raise AssemblyError(f"{artifact!r} is not a {{run}}-relative artifact path")
+    return artifact[len(RUN_PREFIX) :].split("/")
+
+
+def _under(run_dir: Path, artifact: str) -> Path:
+    return run_dir.joinpath(*_components(artifact))
+
+
+def _read_artifact(run_dir: Path, artifact: str, runs: int | None) -> str:
+    """Read one of this run's artifacts, bound to the run's own directory.
+
+    An artifact's path is schema-constrained and cannot escape by spelling —
+    no absolute form, no `..` — but a link inside the run directory redirects
+    without changing the path, and what this module does with what it reads is
+    put it in a prompt. Where the platform can bind a file operation to a
+    directory already open, every component is opened relative to the one
+    above it and `O_NOFOLLOW` faults a link at the open itself; where it
+    cannot, the components are checked instead, which closes the case a link
+    is already in place and leaves the window state.py documents for the same
+    compromise.
+    """
+    relative = _components(artifact)
+    try:
+        with run_directory(run_dir, runs) as directory:
+            if directory is None:
+                return _read_checked(run_dir, relative, artifact)
+            return _read_bound(directory, relative, artifact)
+    except StateError as error:
+        raise AssemblyError(str(error)) from error
+
+
+def _read_bound(directory: int, relative: list[str], artifact: str) -> str:
+    opened: list[int] = [directory]
+    try:
+        for name in relative[:-1]:
+            opened.append(
+                os.open(
+                    name, os.O_RDONLY | os.O_DIRECTORY | _NOFOLLOW, dir_fd=opened[-1]
+                )
+            )
+        descriptor = os.open(relative[-1], os.O_RDONLY | _NOFOLLOW, dir_fd=opened[-1])
+    except OSError as error:
+        raise AssemblyError(f"cannot read {artifact}: {error}") from error
+    finally:
+        for handle in opened[1:]:
+            os.close(handle)
+    try:
+        stream = os.fdopen(descriptor, "r", encoding="utf-8")
+    except OSError as error:
+        # `fdopen` takes ownership only once it returns one, so a failure here
+        # leaves the descriptor this function's to close — the leak `status`
+        # was found to have, in the one place it can still happen.
+        os.close(descriptor)
+        raise AssemblyError(f"cannot read {artifact}: {error}") from error
+    try:
+        with stream:
+            return stream.read()
+    except (OSError, UnicodeError) as error:
+        raise AssemblyError(f"cannot read {artifact}: {error}") from error
+
+
+def _read_checked(run_dir: Path, relative: list[str], artifact: str) -> str:
+    path = run_dir
+    for name in relative:
+        path = path / name
+        if is_link(path):
+            raise AssemblyError(f"cannot read {artifact}: {path} is a link")
+    # Reported by the path a declaration names rather than by the one the
+    # filesystem resolved, so the same failure reads the same way on either
+    # platform — the bound branch never holds an absolute path to report.
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
+        raise AssemblyError(f"cannot read {artifact}: {error}") from error
+
+
+def scaffold(skill: Skill, output_path: Path) -> bool:
+    """Create the step's output from its template (§8.3); return whether it wrote.
+
+    Scaffolding creates and MUST NOT overwrite: a step revising, re-entering,
+    or appending is given the artifact it already has, and re-scaffolding
+    would discard the content it was given to work from — a gate's recorded
+    direction (§7) among it. Copied verbatim, because a scaffolded artifact
+    MUST carry every placeholder its template defines until the step fills
+    one: substituting anything here would fill a placeholder by script that
+    the contract says the step fills.
+    """
+    if skill.template is None:
+        return False
+    text = _read(skill.directory / skill.template)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        # `x` is the no-overwrite rule enforced by the open rather than by a
+        # prior existence check: between a check and a write the file can
+        # appear, and the content this would discard is exactly what the rule
+        # protects.
+        with open(output_path, "x", encoding="utf-8", newline="") as stream:
+            stream.write(text)
+    except FileExistsError:
+        return False
+    except OSError as error:
+        raise AssemblyError(f"cannot scaffold {output_path}: {error}") from error
+    return True
+
+
+def _render(
+    state: RunState,
+    skill: Skill,
+    declaration: StepDeclaration,
+    output: str,
+    materials: list[Material],
+) -> str:
+    """One step's context as the text a prompt-in/text-out backend sends.
+
+    Every material appears under a heading naming its file, its content
+    unaltered but for the blank lines around it, so a reader — human or agent
+    — can trace any line back to what declared it. Reproducing rather than
+    summarizing is deliberate for the artifacts most of all: an artifact is
+    the protocol's handoff medium (§8.2), and a driver that condensed one
+    would be deciding what the next step gets to see.
+    """
+    phase = state.phase if state.phase is not None else 1
+    lines = [
+        f"# agent-workflows step: {skill.step_id}",
+        "",
+        f"- Run: {state.run_id}",
+        f"- Workflow: {state.workflow}",
+        f"- Phase: {phase}",
+        f"- Role: {declaration.role}",
+        f"- Output: {output}",
+        "",
+        "Each section below holds the content of one file, named in its "
+        "heading; a heading inside a section belongs to that file.",
+    ]
+    for material in materials:
+        lines += [
+            "",
+            "---",
+            "",
+            f"## {material.kind}: {material.source}",
+            "",
+            material.text.strip("\n"),
+        ]
+    return "\n".join(lines) + "\n"
