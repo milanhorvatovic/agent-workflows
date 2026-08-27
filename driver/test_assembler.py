@@ -58,6 +58,12 @@ Read before concluding.
 
 TEMPLATE = "# Out: [title]\n\n> **Run:** [run id]\n\n## Findings\n\n[what was found]\n"
 
+# The shipped shape: the skill declares the template and the stage does not.
+# A template resolves against the file declaring it, so both declaring one
+# names two files and is refused — the tests that exercise the stage's
+# carrier write `STAGE` back in themselves.
+STAGE_ONLY = STAGE.replace("        template: references/out.template.md\n", "")
+
 
 def _alarm(*_) -> None:
     raise AssertionError("still blocked in open() — the non-regular-file guard regressed")
@@ -75,7 +81,7 @@ class TreeTest(unittest.TestCase):
         self.run_dir = self.base / "runs" / "demo-run"
         self.run_dir.mkdir(parents=True)
         self.write("workflows/demo.md", WORKFLOW)
-        self.write("workflows/stages/intake.md", STAGE)
+        self.write("workflows/stages/intake.md", STAGE_ONLY)
         self.write("skills/awf-make/SKILL.md", SKILL)
         self.write("skills/awf-make/references/checklist.md", "- check this\n")
         self.write("skills/awf-make/references/out.template.md", TEMPLATE)
@@ -287,11 +293,14 @@ class ParityTest(TreeTest):
     def test_a_differing_edge_is_refused(self) -> None:
         self.assert_refused(("PASS: check", "PASS: make"), "edges")
 
-    def test_a_differing_template_is_refused(self) -> None:
-        self.assert_refused(
-            ("template: references/out.template.md", "template: references/other.template.md"),
-            "template",
-        )
+    def test_both_carriers_declaring_a_template_is_refused(self) -> None:
+        """The rest of the contract is two copies of one thing and agreement
+        is string equality; a template is not, because the same string under
+        two bases names two files."""
+        self.write("workflows/stages/intake.md", STAGE)
+        with self.assertRaises(assembler.AssemblyError) as caught:
+            self.load()
+        self.assertIn("both declare a template", str(caught.exception))
 
     def test_the_skill_supplies_the_template_the_stage_omits(self) -> None:
         """Which is every shipped pairing: no stage declares a template, and
@@ -303,17 +312,19 @@ class ParityTest(TreeTest):
         self.assertEqual(self.load().template, "references/out.template.md")
 
     def test_the_stage_supplies_the_template_the_skill_omits(self) -> None:
+        self.write("workflows/stages/intake.md", STAGE)
         self.write(
             "skills/awf-make/SKILL.md",
             SKILL.replace("        template: references/out.template.md\n", ""),
         )
+        self.write("workflows/stages/references/out.template.md", TEMPLATE)
         self.assertEqual(self.load().template, "references/out.template.md")
 
     def test_neither_declaring_a_template_scaffolds_nothing(self) -> None:
         """What `risk-route`, `plan-revise`, and `ideate-revise` declare: the
         artifact they write was created by the step before them."""
         for relative, text in (
-            ("workflows/stages/intake.md", STAGE),
+            ("workflows/stages/intake.md", STAGE_ONLY),
             ("skills/awf-make/SKILL.md", SKILL),
         ):
             self.write(relative, text.replace("        template: references/out.template.md\n", ""))
@@ -484,7 +495,10 @@ class AssembleTest(TreeTest):
 
     def test_a_required_input_the_run_has_not_produced_blocks_the_step(self) -> None:
         """§9.1, and not a defect: the run has simply not got there yet."""
-        self.write("workflows/stages/intake.md", STAGE.replace("required: false", "required: true"))
+        self.write(
+            "workflows/stages/intake.md",
+            STAGE_ONLY.replace("required: false", "required: true"),
+        )
         self.write("skills/awf-make/SKILL.md", SKILL.replace("required: false", "required: true"))
         with self.assertRaises(assembler.BlockedError) as caught:
             assembler.assemble(
@@ -682,7 +696,7 @@ class ScaffoldTest(TreeTest):
             "references/CON",
             "references/NUL.md",
             "references/out.md::$DATA",
-            "references/out.md ",
+            '"references/out.md "',
         ):
             self.write("skills/awf-make/SKILL.md", SKILL.replace(
                 "template: references/out.template.md", f"template: {escape}"
@@ -730,12 +744,21 @@ class ScaffoldTest(TreeTest):
         if not Path("/dev/fd").is_dir():  # pragma: no cover
             self.skipTest("no /dev/fd to count descriptors with")
         output = self.run_dir / "out.md"
+        skill = self.load()
         descriptors = len(os.listdir("/dev/fd"))
-        with unittest.mock.patch.object(
-            os, "fdopen", side_effect=OSError("no space left on device")
-        ):
+        # Only the write fails: `fdopen` is on the framework read path too,
+        # and a template that cannot be read is a different failure than a
+        # scaffold that cannot be written.
+        real = os.fdopen
+
+        def failing(descriptor, mode="r", *rest, **named):
+            if mode.startswith("w"):
+                raise OSError("no space left on device")
+            return real(descriptor, mode, *rest, **named)
+
+        with unittest.mock.patch.object(os, "fdopen", failing):
             with self.assertRaises(assembler.AssemblyError) as caught:
-                assembler.scaffold(self.load(), self.run_dir, "{run}/out.md")
+                assembler.scaffold(skill, self.run_dir, "{run}/out.md")
         self.assertIn("cannot scaffold", str(caught.exception))
         self.assertFalse(output.exists())
         # `fdopen` takes ownership only once it returns a stream, so the
@@ -744,7 +767,7 @@ class ScaffoldTest(TreeTest):
         self.assertEqual(len(os.listdir("/dev/fd")), descriptors)
         # And the retry that follows writes the whole template rather than
         # reporting the wreckage of the first attempt as already scaffolded.
-        self.assertTrue(assembler.scaffold(self.load(), self.run_dir, "{run}/out.md"))
+        self.assertTrue(assembler.scaffold(skill, self.run_dir, "{run}/out.md"))
         self.assertEqual(output.read_text(encoding="utf-8"), TEMPLATE)
 
     def test_a_stage_declared_template_resolves_beside_the_stage(self) -> None:
@@ -752,6 +775,7 @@ class ScaffoldTest(TreeTest):
         suite states that and tests a stage's template living beside the
         stage — so resolving both carriers against the package would read a
         different file than the one CI checked."""
+        self.write("workflows/stages/intake.md", STAGE)
         self.write(
             "skills/awf-make/SKILL.md",
             SKILL.replace("        template: references/out.template.md\n", ""),

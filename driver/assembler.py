@@ -38,6 +38,7 @@ from .state import _NOFOLLOW, _NONBLOCK, RunState, StateError, is_link, run_dire
 from .workflow import (
     PHASE,
     PHASE_SET,
+    RUN_RELATIVE,
     StepDeclaration,
     Workflow,
     WorkflowError,
@@ -152,14 +153,13 @@ def load_skill(framework: Path, step_id: str, declaration: StepDeclaration) -> S
     """Read the skill bound to `step_id` and hold it to the stage's contract."""
     directory = framework / "skills" / f"{SKILL_PREFIX}{step_id}"
     rel = f"skills/{SKILL_PREFIX}{step_id}/{SKILL_FILE}"
-    try:
-        text = (directory / SKILL_FILE).read_text(encoding="utf-8")
     # Undecodable is malformed rather than absent, the distinction the
     # composition module draws for the same reason: UnicodeError is a
     # ValueError, and without it here a skill that is not UTF-8 leaves the
-    # driver as a traceback instead of the defect it is.
-    except (OSError, UnicodeError) as error:
-        raise AssemblyError(f"cannot read {rel}: {error}") from error
+    # driver as a traceback instead of the defect it is. `_read` reports
+    # both, and refuses a FIFO in the file's place rather than blocking on
+    # it.
+    text = _read(directory / SKILL_FILE, rel)
     match = FRONTMATTER.match(text)
     if match is None:
         raise AssemblyError(f"{rel}: no frontmatter, and §9 declares in it")
@@ -279,20 +279,20 @@ def _template(
     declaration was checked against, which is a stage passing CI and a driver
     reading somewhere else.
 
-    A disagreement between the two carriers is the parity failure above by
-    another name, checked here rather than there because absence on one side is
-    the ordinary case; it is compared as the declared string, since two
-    carriers naming the same relative path still mean two different files.
+    Which is also why a template may be declared by one carrier only. The rest
+    of the contract is two copies of one thing and agreement is string
+    equality; a template is not, because the same string under two bases names
+    two files. Equal spellings would then read as agreement while the stage was
+    validated against one file and this module read the other — so both
+    declaring is refused whatever they say, and the parity rule the rest of the
+    contract follows is the reason rather than the exception.
     """
-    if (
-        declared.output_template is not None
-        and composed.output_template is not None
-        and declared.output_template != composed.output_template
-    ):
+    if declared.output_template is not None and composed.output_template is not None:
         raise AssemblyError(
-            f"{rel}: step {step_id!r} declares template "
-            f"{declared.output_template!r}, and the stage composing it declares "
-            f"{composed.output_template!r} — two copies of one contract must agree"
+            f"{rel}: step {step_id!r} and the stage composing it both declare a "
+            f"template ({declared.output_template!r}, {composed.output_template!r}) "
+            f"— a template resolves against the file declaring it, so one carrier "
+            f"declares it or the two name different files (spec §8.3)"
         )
     if declared.output_template is not None:
         return declared.output_template, skill_dir
@@ -437,16 +437,42 @@ def _template_source(skill: Skill) -> str:
     return f"workflows/stages/{skill.template}"
 
 
-def _read(path: Path, source: str) -> str:
+def _read_bytes(path: Path, source: str) -> bytes:
     """Framework content, reported by the path a declaration names.
 
     An absolute path is what the process happens to have resolved; `source` is
     what the reader can look up — the same form every other refusal in this
     module carries.
+
+    Opened non-blocking and checked for a regular file before it is read, as
+    an artifact is: a FIFO anywhere the framework is read — a skill body, a
+    role, a template — would block the open until something wrote the other
+    end, and a command that never returns is worse than one reporting a
+    defective framework.
     """
     try:
-        return path.read_text(encoding="utf-8")
-    except (OSError, UnicodeError) as error:
+        descriptor = os.open(path, os.O_RDONLY | _NONBLOCK)
+    except OSError as error:
+        raise AssemblyError(f"cannot read {source}: {error}") from error
+    try:
+        stream = os.fdopen(descriptor, "rb")
+    except OSError as error:
+        os.close(descriptor)
+        raise AssemblyError(f"cannot read {source}: {error}") from error
+    try:
+        with stream:
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                raise AssemblyError(f"{source} is not a regular file")
+            return stream.read()
+    except OSError as error:
+        raise AssemblyError(f"cannot read {source}: {error}") from error
+
+
+def _read(path: Path, source: str) -> str:
+    """The same, decoded — every framework file this module reads is UTF-8."""
+    try:
+        return _read_bytes(path, source).decode("utf-8")
+    except UnicodeError as error:
         raise AssemblyError(f"cannot read {source}: {error}") from error
 
 
@@ -480,7 +506,13 @@ def _components(artifact: str) -> list[str]:
     composition module holds every declaration to) — so stripping it is the
     whole of the mapping and there is nothing left to normalize away.
     """
-    if not artifact.startswith(RUN_PREFIX):
+    # The whole pattern, not the prefix alone. This is a boundary rather than
+    # an internal step: `scaffold` takes its artifact from a caller, and a
+    # value like `{run}/../../out.md` splits into components `..` opens as
+    # directories — creating the scaffold outside the run, which is the escape
+    # the pattern exists to refuse. Backslash traversal is the same escape on
+    # Windows, and the same pattern bars it.
+    if not RUN_RELATIVE.match(artifact):
         raise AssemblyError(f"{artifact!r} is not a {{run}}-relative artifact path")
     return artifact[len(RUN_PREFIX) :].split("/")
 
@@ -572,10 +604,14 @@ def _is_regular_at(directory: int | None, path: Path | None, name: str) -> bool:
             if directory is not None
             else (path / name).lstat().st_mode
         )
-    except OSError:
-        # Gone between the failed create and this look, so there is nothing
-        # standing in the artifact's place to refuse.
-        return True
+    except OSError as error:
+        # Nothing here is evidence of a regular file. A permission or I/O
+        # failure says the name could not be read, and reporting that as an
+        # artifact already in place hands the step a scaffold nobody wrote;
+        # ENOENT says the name vanished between the create that found it taken
+        # and this look, which is a race to report rather than a state to
+        # claim. Both leave through the caller's own failure path.
+        raise AssemblyError(f"cannot check {name}: {error}") from error
     return stat.S_ISREG(mode)
 
 
@@ -635,10 +671,7 @@ def scaffold(skill: Skill, run_dir: Path, artifact: str) -> bool:
     if skill.template is None:
         return False
     source = _template_source(skill)
-    try:
-        text = _within(skill.template_dir, skill.template, source).read_bytes()
-    except OSError as error:
-        raise AssemblyError(f"cannot read {source}: {error}") from error
+    text = _read_bytes(_within(skill.template_dir, skill.template, source), source)
     relative = _components(artifact)
     with _containing(run_dir, relative, artifact, create=True) as (directory, path):
         # `O_EXCL` is the no-overwrite rule enforced by the open rather than by

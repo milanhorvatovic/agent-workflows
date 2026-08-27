@@ -18,7 +18,7 @@ import unittest.mock
 from pathlib import Path
 
 from driver import cli
-from driver.test_assembler import ROLE, SKILL, TEMPLATE
+from driver.test_assembler import ROLE, SKILL, STAGE_ONLY, TEMPLATE
 from driver.test_config import VALID
 from driver.test_workflow import STAGE, WORKFLOW
 
@@ -64,7 +64,7 @@ class CliTest(unittest.TestCase):
         the roles and skills the step it resolves is assembled from."""
         for relative, content in (
             ("workflows/demo.md", WORKFLOW),
-            ("workflows/stages/intake.md", STAGE),
+            ("workflows/stages/intake.md", STAGE_ONLY),
             ("skills/awf-make/SKILL.md", SKILL),
             ("skills/awf-make/references/checklist.md", "- check this\n"),
             ("skills/awf-make/references/out.template.md", TEMPLATE),
@@ -107,7 +107,7 @@ class CliTest(unittest.TestCase):
         takes the same exit as any other position the driver cannot advance."""
         self.write_framework()
         for relative, content in (
-            ("workflows/stages/intake.md", STAGE),
+            ("workflows/stages/intake.md", STAGE_ONLY),
             ("skills/awf-make/SKILL.md", SKILL),
         ):
             (self.base / relative).write_text(
