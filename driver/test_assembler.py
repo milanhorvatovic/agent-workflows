@@ -592,6 +592,48 @@ class AssembleTest(TreeTest):
             self.assertEqual(sources, list(dict.fromkeys(sources)), step_id)
             self.assertIn("{run}/phase-1-plan.md", sources)
 
+    def entry_run(self, manifest: list[str]) -> tuple[Path, RunState]:
+        """A `feature` run standing where a real one starts: the request on
+        disk, and a manifest the caller decides."""
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        run_dir = Path(tmp.name) / "runs" / "r"
+        run_dir.mkdir(parents=True)
+        (run_dir / state.REQUEST_FILE).write_text(
+            "Sessions must survive a server restart.\n", encoding="utf-8"
+        )
+        return run_dir, RunState(
+            run_id="r", workflow="feature", protocol="0.2", steps=[], gates=[],
+            artifacts=list(manifest),
+        )
+
+    def test_the_entry_step_is_given_the_request_the_run_started_from(self) -> None:
+        """The gap §8.7 closes, at the level it mattered. `awf-brief-confirm`
+        says outright that what it restates is the request, and while no
+        surface carried one the assembler handed it prose and no artifact —
+        correct against §9.1's completeness rule and useless to a backend,
+        whose first invocation is this step. The request is now the step's
+        required input, so a run created with one assembles rather than
+        blocks, and the words that started the run reach the prompt."""
+        workflow = load_workflow(REPO, "feature")
+        run_dir, loaded = self.entry_run([state.REQUEST_ARTIFACT])
+        assembly = assembler.assemble(REPO, run_dir, loaded, workflow, "brief-confirm")
+        self.assertIn(
+            state.REQUEST_ARTIFACT,
+            [material.source for material in assembly.materials if material.kind == "input"],
+        )
+        self.assertIn("Sessions must survive a server restart.", assembly.prompt)
+
+    def test_the_entry_step_blocks_where_the_run_holds_no_request(self) -> None:
+        """Declared `required`, so §9.1's blocking rule is what a run without
+        one meets — a position to report rather than a step run against
+        nothing."""
+        workflow = load_workflow(REPO, "feature")
+        run_dir, loaded = self.entry_run([])
+        with self.assertRaises(assembler.BlockedError) as caught:
+            assembler.assemble(REPO, run_dir, loaded, workflow, "brief-confirm")
+        self.assertIn(state.REQUEST_ARTIFACT, str(caught.exception))
+
     def test_an_optional_input_the_manifest_does_not_hold_is_left_out(self) -> None:
         assembly = assembler.assemble(
             self.framework, self.run_dir, self.state([]), self.workflow(), "make"

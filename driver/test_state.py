@@ -15,6 +15,11 @@ from driver.workflow import load_workflow
 
 REPO = Path(__file__).resolve().parent.parent
 
+# What every run in these tests is created from (spec §8.7). The content is
+# arbitrary — what matters to `create_run` is that there is some — so the tests
+# that care about the bytes pass their own.
+REQUEST = "make the thing work\n"
+
 
 class StateTestCase(unittest.TestCase):
     def setUp(self) -> None:
@@ -32,7 +37,7 @@ class StateTestCase(unittest.TestCase):
 
 class CreateRunTest(StateTestCase):
     def test_bootstraps_the_entry_stage_records_alone(self) -> None:
-        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2")
+        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST)
         self.assertEqual(run_dir, self.runs / "2026-08-17-x")
         self.assertTrue((run_dir / state.STATE_FILE).is_file())
         self.assertEqual(
@@ -40,30 +45,115 @@ class CreateRunTest(StateTestCase):
             [("make", "pending"), ("check", "skipped")],
         )
         self.assertIsNone(created.risk)
-        self.assertEqual(created.artifacts, [])
+        # The request is in the manifest from the first write (§8.2, §8.7) —
+        # nothing else is, since no step has run.
+        self.assertEqual(created.artifacts, [state.REQUEST_ARTIFACT])
+
+    def test_creation_writes_the_request_and_manifests_it(self) -> None:
+        """§8.7: the request lands when the run is created and before any step
+        runs, and the manifest is where a reader finds it (§8.2) — which is
+        what lets the entry step declare it as the input it restates instead of
+        reaching for something outside the run."""
+        run_dir, created = state.create_run(
+            self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST
+        )
+        self.assertEqual(
+            (run_dir / state.REQUEST_FILE).read_text(encoding="utf-8"), REQUEST
+        )
+        self.assertIn(state.REQUEST_ARTIFACT, created.artifacts)
+        self.assertIn(state.REQUEST_ARTIFACT, state.load(run_dir).artifacts)
+
+    def test_the_request_is_written_verbatim(self) -> None:
+        """The request is what the run was given rather than something authored
+        against a structure, so nothing normalizes it: a CRLF body reaches the
+        entry step as the bytes that started the run, which a text-mode write
+        would have translated."""
+        body = "line one\r\nline two"
+        run_dir, _ = state.create_run(
+            self.runs, "2026-08-17-x", self.workflow, "0.2", body
+        )
+        self.assertEqual(
+            (run_dir / state.REQUEST_FILE).read_bytes(), body.encode("utf-8")
+        )
+
+    def test_the_request_lands_on_both_platform_paths(self) -> None:
+        """The write is bound to the run directory where the platform can bind
+        a file operation to one, and named through the checked path where it
+        cannot — the trade `run_directory` documents, and the branch a Linux
+        runner never takes on its own."""
+        import unittest.mock
+
+        for binds in (True, False):
+            if binds and not state._BINDS_TO_DIRECTORY:  # pragma: no cover
+                continue
+            with self.subTest(binds=binds):
+                with unittest.mock.patch.object(state, "_BINDS_TO_DIRECTORY", binds):
+                    run_dir, created = state.create_run(
+                        self.runs, f"bound-{binds}", self.workflow, "0.2", REQUEST
+                    )
+                self.assertEqual(
+                    (run_dir / state.REQUEST_FILE).read_text(encoding="utf-8"), REQUEST
+                )
+                self.assertIn(state.REQUEST_ARTIFACT, created.artifacts)
+
+    def test_an_empty_request_is_refused_before_anything_is_created(self) -> None:
+        """§8.7 has every run hold a request and the entry step declare it
+        required, so a run created around an empty one exists only to block at
+        its first step. Refused before the directory is made, which is what
+        leaves the id usable."""
+        for empty in ("", "   \n\t"):
+            with self.subTest(request=empty):
+                with self.assertRaises(state.StateError) as caught:
+                    state.create_run(
+                        self.runs, "2026-08-17-x", self.workflow, "0.2", empty
+                    )
+                self.assertIn("request is empty", str(caught.exception))
+                self.assertFalse((self.runs / "2026-08-17-x").exists())
+
+    def test_a_request_that_cannot_be_written_leaves_the_id_usable(self) -> None:
+        """The request is written before the state that manifests it, so its
+        own failure is the earliest one a creation can have — and the directory
+        made moments before goes with it, or §8.1's refusal burns the id for a
+        call that reported failure."""
+        import unittest.mock
+
+        with unittest.mock.patch.object(
+            state, "_write_request", side_effect=OSError("no space")
+        ):
+            with self.assertRaises(OSError):
+                state.create_run(
+                    self.runs, "2026-08-19-x", self.workflow, "0.2", REQUEST
+                )
+        self.assertFalse((self.runs / "2026-08-19-x").exists())
+        run_dir, _ = state.create_run(
+            self.runs, "2026-08-19-x", self.workflow, "0.2", REQUEST
+        )
+        self.assertTrue((run_dir / state.REQUEST_FILE).is_file())
 
     def test_round_trips_through_load(self) -> None:
-        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2")
+        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST)
         loaded = state.load(run_dir)
         self.assertEqual(loaded, created)
 
     def test_refuses_an_existing_run_directory(self) -> None:
-        state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2")
+        state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST)
         with self.assertRaises(state.StateError) as caught:
-            state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2")
+            state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST)
         self.assertIn("already exists", str(caught.exception))
 
     def test_a_failed_first_save_leaves_the_id_usable(self) -> None:
-        """§8.1 refuses a pre-existing run directory, so an empty one left
-        behind by a failed first write would burn the id: the retry meets
-        "already exists" and the run it names has no state to resume."""
+        """§8.1 refuses a pre-existing run directory, so one left behind by a
+        failed first write would burn the id: the retry meets "already exists"
+        and the run it names has no state to resume. Cleanup takes both files
+        creation writes — the request landed before this save, and a directory
+        still holding it is not empty for `rmdir` to take."""
         import unittest.mock
 
         with unittest.mock.patch.object(state, "save", side_effect=OSError("no space")):
             with self.assertRaises(OSError):
-                state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.2")
+                state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.2", REQUEST)
         self.assertFalse((self.runs / "2026-08-19-x").exists())
-        run_dir, created = state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.2")
+        run_dir, created = state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.2", REQUEST)
         self.assertTrue((run_dir / state.STATE_FILE).is_file())
         self.assertEqual(created.run_id, "2026-08-19-x")
 
@@ -85,9 +175,9 @@ class CreateRunTest(StateTestCase):
 
         with unittest.mock.patch.object(os, "fsync", fsync):
             with self.assertRaises(OSError):
-                state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.2")
+                state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.2", REQUEST)
         self.assertFalse((self.runs / "2026-08-19-x").exists())
-        run_dir, created = state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.2")
+        run_dir, created = state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.2", REQUEST)
         self.assertTrue((run_dir / state.STATE_FILE).is_file())
 
     def test_a_sync_that_fails_after_the_bootstrap_leaves_the_id_usable(self) -> None:
@@ -123,9 +213,9 @@ class CreateRunTest(StateTestCase):
             state, _sync_descriptor=sync_descriptor, _sync_directory=sync_directory
         ):
             with self.assertRaises(OSError):
-                state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.2")
+                state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.2", REQUEST)
         self.assertFalse((self.runs / "2026-08-19-x").exists())
-        run_dir, _ = state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.2")
+        run_dir, _ = state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.2", REQUEST)
         self.assertTrue((run_dir / state.STATE_FILE).is_file())
 
     def test_a_rollback_never_reaches_outside_the_runs_root(self) -> None:
@@ -154,7 +244,7 @@ class CreateRunTest(StateTestCase):
         handlers hold one and call this writer — so a field put wrong in
         memory was written out and refused at the next load, the run left
         holding a document its own driver rejects."""
-        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2")
+        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST)
         before = (run_dir / state.STATE_FILE).read_text(encoding="utf-8")
         created.record("make").status = "underway"
         with self.assertRaises(state.StateError) as caught:
@@ -169,8 +259,8 @@ class CreateRunTest(StateTestCase):
         The write had no such rule, so a record carried to the wrong
         directory published a file that its own loader then refuses —
         corrupting the run it was written over."""
-        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2")
-        other, _ = state.create_run(self.runs, "2026-08-18-y", self.workflow, "0.2")
+        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST)
+        other, _ = state.create_run(self.runs, "2026-08-18-y", self.workflow, "0.2", REQUEST)
         untouched = (other / state.STATE_FILE).read_text(encoding="utf-8")
         with self.assertRaises(state.StateError) as caught:
             state.save(created, other)
@@ -182,7 +272,7 @@ class CreateRunTest(StateTestCase):
         is what carries one to an exit code rather than a traceback. A
         value the YAML subset does not carry reached the writer and left it
         as whatever the writer raised."""
-        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2")
+        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST)
         created.instrumentation = {"duration": 1.5}
         created.has_instrumentation = True
         with self.assertRaises(state.StateError) as caught:
@@ -196,7 +286,13 @@ class CreateRunTest(StateTestCase):
         for protocol in ("0.9", "1.0", "0.2.0", "", "zero"):
             with self.subTest(protocol=protocol):
                 with self.assertRaises(state.StateError) as caught:
-                    state.create_run(self.runs, f"run-{abs(hash(protocol))}", self.workflow, protocol)
+                    state.create_run(
+                        self.runs,
+                        f"run-{abs(hash(protocol))}",
+                        self.workflow,
+                        protocol,
+                        REQUEST,
+                    )
                 self.assertIn("this driver implements", str(caught.exception))
 
     def test_a_trailing_newline_does_not_pass_a_pattern(self) -> None:
@@ -205,7 +301,7 @@ class CreateRunTest(StateTestCase):
         break that the schema refuses and the next save would write out."""
         self.assertFalse(state._is_timestamp("2026-08-03T13:40:00Z\n"))
         with self.assertRaises(state.StateError) as caught:
-            state.create_run(self.runs, "trailing", self.workflow, "0.2\n")
+            state.create_run(self.runs, "trailing", self.workflow, "0.2\n", REQUEST)
         self.assertIn("this driver implements", str(caught.exception))
 
     def test_a_run_id_carrying_a_surrogate_is_refused(self) -> None:
@@ -214,7 +310,7 @@ class CreateRunTest(StateTestCase):
         pattern and raises inside `mkdir` or the write, which is the
         traceback these guards exist to prevent."""
         with self.assertRaises(state.StateError) as caught:
-            state.create_run(self.runs, "\ud800", self.workflow, "0.2")
+            state.create_run(self.runs, "\ud800", self.workflow, "0.2", REQUEST)
         self.assertIn("not a run id", str(caught.exception))
         with self.assertRaises(state.StateError):
             state.open_run(self.runs, "run\udfffid")
@@ -261,18 +357,18 @@ class CreateRunTest(StateTestCase):
         ):
             with self.subTest(run_id=run_id):
                 with self.assertRaises(state.StateError):
-                    state.create_run(self.runs, run_id, self.workflow, "0.2")
+                    state.create_run(self.runs, run_id, self.workflow, "0.2", REQUEST)
 
 
 class PositionTest(StateTestCase):
     def test_active_record_takes_precedence_over_position(self) -> None:
-        _, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2")
+        _, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST)
         created.steps.append(state.StepRecord(id="later", status="pending"))
         created.record("later").status = "active"
         self.assertEqual(created.position().id, "later")
 
     def test_position_is_the_first_record_neither_done_nor_skipped(self) -> None:
-        _, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2")
+        _, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST)
         self.assertEqual(created.position().id, "make")
         created.record("make").status = "done"
         self.assertIsNone(created.position())
@@ -280,7 +376,7 @@ class PositionTest(StateTestCase):
     def test_a_blocked_gate_is_the_position(self) -> None:
         """§7: a gate waiting on a human is `blocked`, and a resume returns
         to it rather than past it."""
-        _, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2")
+        _, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST)
         created.record("make").status = "done"
         created.record("check").status = "blocked"
         self.assertEqual(created.position().id, "check")
@@ -290,7 +386,7 @@ class TransitionTest(StateTestCase):
     def setUp(self) -> None:
         super().setUp()
         self.run_dir, self.state = state.create_run(
-            self.runs, "2026-08-17-x", self.workflow, "0.2"
+            self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST
         )
 
     def test_start_marks_the_record_active(self) -> None:
@@ -310,7 +406,7 @@ class TransitionTest(StateTestCase):
             two_steps, encoding="utf-8"
         )
         workflow = load_workflow(self.base, "demo")
-        _, created = state.create_run(self.runs, "two-steps", workflow, "0.2")
+        _, created = state.create_run(self.runs, "two-steps", workflow, "0.2", REQUEST)
         state.start_step(created, workflow, "make")
         with self.assertRaises(state.StateError) as caught:
             state.start_step(created, workflow, "also")
@@ -340,9 +436,11 @@ class TransitionTest(StateTestCase):
         state.start_step(self.state, self.workflow, "make")
         state.complete_step(self.state, self.workflow, "make")
         self.assertEqual(self.state.record("make").status, "done")
-        self.assertEqual(self.state.artifacts, ["{run}/out.md"])
+        self.assertEqual(self.state.artifacts, [state.REQUEST_ARTIFACT, "{run}/out.md"])
         state.save(self.state, self.run_dir)
-        self.assertEqual(state.load(self.run_dir).artifacts, ["{run}/out.md"])
+        self.assertEqual(
+            state.load(self.run_dir).artifacts, [state.REQUEST_ARTIFACT, "{run}/out.md"]
+        )
 
     def test_complete_resolves_the_phase_placeholder(self) -> None:
         phased = STAGE.replace('artifact: "{run}/out.md"', 'artifact: "{run}/phase-{N}-out.md"')
@@ -351,7 +449,9 @@ class TransitionTest(StateTestCase):
         self.state.phase = 2
         state.start_step(self.state, self.workflow, "make")
         state.complete_step(self.state, workflow, "make")
-        self.assertEqual(self.state.artifacts, ["{run}/phase-2-out.md"])
+        self.assertEqual(
+            self.state.artifacts, [state.REQUEST_ARTIFACT, "{run}/phase-2-out.md"]
+        )
 
     def test_a_shell_style_token_is_text_and_not_the_phase(self) -> None:
         """`${N}` is shell text, which is why the declaration reader accepts
@@ -367,7 +467,9 @@ class TransitionTest(StateTestCase):
         self.state.phase = 2
         state.start_step(self.state, self.workflow, "make")
         state.complete_step(self.state, workflow, "make")
-        self.assertEqual(self.state.artifacts, ["{run}/phase-${N}-out.md"])
+        self.assertEqual(
+            self.state.artifacts, [state.REQUEST_ARTIFACT, "{run}/phase-${N}-out.md"]
+        )
         state.check_manifest(self.state, workflow)
 
     def test_completing_a_step_that_is_not_active_is_refused(self) -> None:
@@ -384,7 +486,7 @@ class TransitionTest(StateTestCase):
             state.complete_step(self.state, self.workflow, "check")
         self.assertIn("not a declared step", str(caught.exception))
         self.assertEqual(gate.status, "active")
-        self.assertEqual(self.state.artifacts, [])
+        self.assertEqual(self.state.artifacts, [state.REQUEST_ARTIFACT])
 
     def complete(self, state_obj, workflow, step_id: str) -> None:
         """A verdict routes from a `done` step (§9.1), so the source goes
@@ -427,7 +529,7 @@ class TransitionTest(StateTestCase):
         )
         (self.base / "workflows" / "stages" / "intake.md").write_text(three, encoding="utf-8")
         workflow = load_workflow(self.base, "demo")
-        _, created = state.create_run(self.runs, "overlay", workflow, "0.2")
+        _, created = state.create_run(self.runs, "overlay", workflow, "0.2", REQUEST)
         created.record("spare").status = "skipped"  # the class left it out
         self.complete(created, workflow, "make")
         self.assertEqual(
@@ -473,7 +575,7 @@ class TransitionTest(StateTestCase):
         "resetting a fixed shape would both miss a dependent and run a step
         the overlay excludes"."""
         workflow = self.build_dependents()
-        _, created = state.create_run(self.runs, "dependents", workflow, "0.2")
+        _, created = state.create_run(self.runs, "dependents", workflow, "0.2", REQUEST)
         for step_id in ("make", "reads", "apart"):
             state.start_step(created, workflow, step_id)
             state.complete_step(created, workflow, step_id)
@@ -504,7 +606,7 @@ class TransitionTest(StateTestCase):
         ]
         run = state.RunState(
             run_id="planning-run", workflow="feature", protocol="0.2",
-            steps=records, gates=[], artifacts=[],
+            steps=records, gates=[], artifacts=[state.REQUEST_ARTIFACT],
         )
         invalidated = state._invalidated_by(run, workflow, "plan-revise")
         order = [record.id for record in records]
@@ -581,7 +683,7 @@ class TransitionTest(StateTestCase):
             gate_first, encoding="utf-8"
         )
         workflow = load_workflow(self.base, "demo")
-        _, created = state.create_run(self.runs, "gate-first", workflow, "0.2")
+        _, created = state.create_run(self.runs, "gate-first", workflow, "0.2", REQUEST)
         self.assertEqual([s.id for s in created.steps], ["check", "make", "close"])
         # The gate is ahead of the step in the sequence, so the run reaches
         # it first and its decision stands before the step runs at all —
@@ -614,7 +716,7 @@ class TransitionTest(StateTestCase):
             encoding="utf-8",
         )
         workflow = load_workflow(self.base, "pair")
-        _, created = state.create_run(self.runs, "pair-run", workflow, "0.2")
+        _, created = state.create_run(self.runs, "pair-run", workflow, "0.2", REQUEST)
         # Creation bootstraps the entry stage alone (§10), so the targeted
         # stage's step has no record to resolve to yet.
         self.complete(created, workflow, "make")
@@ -649,7 +751,7 @@ class DurabilityTest(StateTestCase):
             seen.add(kwargs.get("dst_dir_fd"))
             return real_rename(source, target, **kwargs)
 
-        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2")
+        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST)
         order.clear()
         with unittest.mock.patch.multiple(
             os, fsync=fsync, replace=replace, rename=rename
@@ -668,7 +770,7 @@ class DurabilityTest(StateTestCase):
         import errno
         import unittest.mock
 
-        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2")
+        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST)
         real = os.fsync
 
         def failing(code):
@@ -700,7 +802,7 @@ class DurabilityTest(StateTestCase):
 
         if not state._SYNCS_DIRECTORIES:  # pragma: no cover
             self.skipTest("this platform does not sync directories")
-        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2")
+        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST)
         real = os.open
 
         def failing(path, flags, *args, **kwargs):
@@ -739,7 +841,7 @@ class DurabilityTest(StateTestCase):
 
         with unittest.mock.patch.object(os, "fsync", fsync):
             run_dir, _ = state.create_run(
-                self.runs, "2026-08-17-x", self.workflow, "0.2"
+                self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST
             )
         runs = os.stat(self.runs)
         self.assertIn((runs.st_ino, runs.st_dev), synced)
@@ -777,7 +879,7 @@ class StartPositionTest(StateTestCase):
         checks that ran before this one report their own cases — a second
         active record, and a status a start would erase."""
         workflow = self.two_steps()
-        _, created = state.create_run(self.runs, "2026-08-17-x", workflow, "0.2")
+        _, created = state.create_run(self.runs, "2026-08-17-x", workflow, "0.2", REQUEST)
         with self.assertRaises(state.StateError) as caught:
             state.start_step(created, workflow, "also")
         self.assertIn("make", str(caught.exception))
@@ -1077,7 +1179,7 @@ class RejectedRunTest(StateTestCase):
                         at="2026-08-16T09:00:00Z",
                     )
                 ],
-                artifacts=[],
+                artifacts=[state.REQUEST_ARTIFACT],
             )
 
         # A phase list states which phases must complete before which
@@ -1135,7 +1237,7 @@ class AcceptedClassTest(StateTestCase):
                         at="2026-08-16T09:00:00Z",
                     )
                 ],
-                artifacts=[],
+                artifacts=[state.REQUEST_ARTIFACT],
             )
 
         with self.assertRaises(state.StateError) as caught:
@@ -1180,7 +1282,7 @@ class AcceptedClassTest(StateTestCase):
                             at="2026-08-16T09:00:00Z",
                         )
                     ],
-                    artifacts=[],
+                    artifacts=[state.REQUEST_ARTIFACT],
                 )
                 with self.assertRaises(state.StateError) as caught:
                     state.check_gates(state_obj, self.workflow)
@@ -1398,11 +1500,22 @@ class ManifestTest(StateTestCase):
         imported, and a path no composed step declares is neither — content
         nothing wrote, which a later input or phase-set resolution would
         then read as an artifact the run holds."""
-        _, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2")
+        _, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST)
         created.artifacts.append("{run}/forged.md")
         with self.assertRaises(state.StateError) as caught:
             state.check_manifest(created, self.workflow)
         self.assertIn("forged.md", str(caught.exception))
+
+    def test_the_request_is_manifested_and_no_step_declares_it(self) -> None:
+        """The third category §8.2 records: the request is neither produced nor
+        imported, so no `output` names it — and holding it to the declarations
+        would report the one artifact every run must carry as the one nothing
+        wrote, refusing every run at its first check."""
+        _, created = state.create_run(
+            self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST
+        )
+        self.assertIn(state.REQUEST_ARTIFACT, created.artifacts)
+        state.check_manifest(created, self.workflow)
 
     def test_one_declaration_names_one_phase(self) -> None:
         """Every `{N}` in a declaration is the same executing phase, so a
@@ -1414,7 +1527,7 @@ class ManifestTest(StateTestCase):
         )
         (self.base / "workflows" / "stages" / "intake.md").write_text(twice, encoding="utf-8")
         workflow = load_workflow(self.base, "demo")
-        _, created = state.create_run(self.runs, "twice", workflow, "0.2")
+        _, created = state.create_run(self.runs, "twice", workflow, "0.2", REQUEST)
         created.artifacts.append("{run}/phase-1/report-1.md")
         state.check_manifest(created, workflow)
         for forged in ("{run}/phase-1/report-2.md", "{run}/phase-0/report-0.md"):
@@ -1433,7 +1546,7 @@ class ManifestTest(StateTestCase):
         )
         (self.base / "workflows" / "stages" / "intake.md").write_text(phased, encoding="utf-8")
         workflow = load_workflow(self.base, "demo")
-        _, created = state.create_run(self.runs, "phased", workflow, "0.2")
+        _, created = state.create_run(self.runs, "phased", workflow, "0.2", REQUEST)
         created.phase = 2
         created.artifacts.extend(["{run}/phase-1-out.md", "{run}/phase-2-out.md"])
         state.check_manifest(created, workflow)
@@ -1557,16 +1670,32 @@ class LoadValidationTest(StateTestCase):
         (run_dir / state.STATE_FILE).write_text(text, encoding="utf-8")
         return run_dir
 
+    # Every run holds the request it was created from (§8.7), so the smallest
+    # conforming manifest is the one naming it — and each case below adds its
+    # own entries under this header, so what the load rejects is that case's
+    # own fault rather than a manifest short of the request.
+    MANIFEST = 'artifacts:\n  - "{run}/request.md"\n'
     BASE = (
         "run:\n  id: demo-run\n  workflow: demo\n  protocol: \"0.2\"\n"
         "steps:\n  - id: make\n    status: pending\n"
-        "gates: []\nartifacts: []\n"
+        "gates: []\n" + MANIFEST
     )
 
     def test_loads_the_minimal_document(self) -> None:
         loaded = state.load(self.write_state(self.BASE))
         self.assertEqual(loaded.run_id, "demo-run")
         self.assertFalse(loaded.has_instrumentation)
+
+    def test_a_manifest_without_the_request_is_refused(self) -> None:
+        """Every run holds the request it was created from (§8.7), and the
+        manifest is where a reader finds it — the `contains` the run-state
+        schema carries, mirrored here because this driver reads state it did
+        not write. A document without it describes a run whose entry step could
+        never have been given what it restates."""
+        run_dir = self.write_state(self.BASE.replace(self.MANIFEST, "artifacts: []\n"))
+        with self.assertRaises(state.StateError) as caught:
+            state.load(run_dir)
+        self.assertIn(state.REQUEST_ARTIFACT, str(caught.exception))
 
     def test_the_patterns_are_the_schema_patterns(self) -> None:
         """The literals mirror the run-state schema's own — the schema is the
@@ -1594,8 +1723,8 @@ class LoadValidationTest(StateTestCase):
         run_dir.mkdir(parents=True)
         (run_dir / state.STATE_FILE).write_text(
             self.BASE.replace(
-                "artifacts: []\n",
-                'artifacts:\n  - "{run}/brief.md"\n'
+                self.MANIFEST,
+                self.MANIFEST + '  - "{run}/brief.md"\n'
                 "imports:\n"
                 '  - artifact: "{run}/brief.md"\n'
                 "    from: 2026-08-12-plan-slug\n"
@@ -1612,34 +1741,46 @@ class LoadValidationTest(StateTestCase):
     def test_import_rejections(self) -> None:
         cases = {
             "unmanifested import": (
-                'artifacts: []\n'
-                'imports:\n  - artifact: "{run}/brief.md"\n'
+                self.MANIFEST
+                + 'imports:\n  - artifact: "{run}/brief.md"\n'
                 "    from: earlier-run\n    at: \"2026-08-16T09:00:00Z\"\n"
             ),
             "self-import": (
-                'artifacts:\n  - "{run}/brief.md"\n'
+                self.MANIFEST
+                + '  - "{run}/brief.md"\n'
                 'imports:\n  - artifact: "{run}/brief.md"\n'
                 "    from: demo-run\n    at: \"2026-08-16T09:00:00Z\"\n"
             ),
-            "empty imports": ('artifacts: []\nimports: []\n'),
+            "empty imports": (self.MANIFEST + "imports: []\n"),
+            # §8.7: the request has no producing step for §8.6's closure rule
+            # to reach, so it is never adopted from another run — and it is in
+            # every manifest, so the unmanifested-lineage check cannot catch it.
+            "imported request": (
+                self.MANIFEST
+                + f'imports:\n  - artifact: "{state.REQUEST_ARTIFACT}"\n'
+                '    from: earlier-run\n    at: "2026-08-16T09:00:00Z"\n'
+            ),
             # §8.6 and §10 bound the list, and the suite holds the shipped
             # documents to both: one record per artifact, one source run.
             "one artifact twice": (
-                'artifacts:\n  - "{run}/brief.md"\n'
+                self.MANIFEST
+                + '  - "{run}/brief.md"\n'
                 'imports:\n  - artifact: "{run}/brief.md"\n'
                 '    from: earlier-run\n    at: "2026-08-16T09:00:00Z"\n'
                 '  - artifact: "{run}/brief.md"\n'
                 '    from: earlier-run\n    at: "2026-08-16T10:00:00Z"\n'
             ),
             "two source runs": (
-                'artifacts:\n  - "{run}/brief.md"\n  - "{run}/plan.md"\n'
+                self.MANIFEST
+                + '  - "{run}/brief.md"\n  - "{run}/plan.md"\n'
                 'imports:\n  - artifact: "{run}/brief.md"\n'
                 '    from: earlier-run\n    at: "2026-08-16T09:00:00Z"\n'
                 '  - artifact: "{run}/plan.md"\n'
                 '    from: other-run\n    at: "2026-08-16T10:00:00Z"\n'
             ),
             "import timestamp is prose": (
-                'artifacts:\n  - "{run}/brief.md"\n'
+                self.MANIFEST
+                + '  - "{run}/brief.md"\n'
                 'imports:\n  - artifact: "{run}/brief.md"\n'
                 '    from: earlier-run\n    at: "yesterday"\n'
             ),
@@ -1659,7 +1800,8 @@ class LoadValidationTest(StateTestCase):
             "{run}",
         ):
             cases[f"unsafe path {unsafe}"] = (
-                f'artifacts:\n  - "{unsafe}"\n'
+                self.MANIFEST
+                + f'  - "{unsafe}"\n'
                 f'imports:\n  - artifact: "{unsafe}"\n'
                 '    from: earlier-run\n    at: "2026-08-16T09:00:00Z"\n'
             )
@@ -1667,7 +1809,7 @@ class LoadValidationTest(StateTestCase):
             run_dir = self.runs / f"imp-{abs(hash(name))}"
             run_dir.mkdir(parents=True)
             (run_dir / state.STATE_FILE).write_text(
-                self.BASE.replace("artifacts: []\n", tail), encoding="utf-8"
+                self.BASE.replace(self.MANIFEST, tail), encoding="utf-8"
             )
             with self.subTest(case=name):
                 with self.assertRaises(state.StateError):
@@ -1854,7 +1996,7 @@ class LoadValidationTest(StateTestCase):
         loaded = state.RunState(
             run_id="demo-run", workflow="demo", protocol="0.2",
             steps=[state.StepRecord(id="make", status="pending")],
-            gates=[], artifacts=[],
+            gates=[], artifacts=[state.REQUEST_ARTIFACT],
         )
         with self.assertRaises(state.StateError) as caught:
             state.load(self.runs / "demo-run")
@@ -1882,7 +2024,7 @@ class LoadValidationTest(StateTestCase):
             state.open_run(self.runs, "demo-run")
         self.assertIn("not the runs directory", str(caught.exception))
         with self.assertRaises(state.StateError) as caught:
-            state.create_run(self.runs, "2026-08-24-x", self.workflow, "0.2")
+            state.create_run(self.runs, "2026-08-24-x", self.workflow, "0.2", REQUEST)
         self.assertIn("not the runs directory", str(caught.exception))
         self.assertFalse((outside / "2026-08-24-x").exists())
 
@@ -1892,7 +2034,7 @@ class LoadValidationTest(StateTestCase):
         self.runs.parent.mkdir(parents=True, exist_ok=True)
         self.symlink(self.runs, self.base / "nowhere")
         with self.assertRaises(state.StateError) as caught:
-            state.create_run(self.runs, "2026-08-24-x", self.workflow, "0.2")
+            state.create_run(self.runs, "2026-08-24-x", self.workflow, "0.2", REQUEST)
         self.assertIn("not the runs directory", str(caught.exception))
         self.assertFalse((self.base / "nowhere").exists())
 
@@ -1910,7 +2052,7 @@ class LoadValidationTest(StateTestCase):
         loaded = state.RunState(
             run_id="demo-run", workflow="demo", protocol="0.2",
             steps=[state.StepRecord(id="make", status="pending")],
-            gates=[], artifacts=[],
+            gates=[], artifacts=[state.REQUEST_ARTIFACT],
         )
         with unittest.mock.patch.object(state, "_BINDS_TO_DIRECTORY", False):
             for name, call in {
@@ -1932,7 +2074,7 @@ class LoadValidationTest(StateTestCase):
         child it reaches being an ordinary directory inside the target."""
         import shutil
 
-        run_dir, _ = state.create_run(self.runs, "demo-run", self.workflow, "0.2")
+        run_dir, _ = state.create_run(self.runs, "demo-run", self.workflow, "0.2", REQUEST)
         _, loaded = state.open_run(self.runs, "demo-run")
         outside = self.base / "elsewhere"
         (outside / "demo-run").mkdir(parents=True)
@@ -1950,7 +2092,7 @@ class LoadValidationTest(StateTestCase):
         import shutil
         import unittest.mock
 
-        run_dir, _ = state.create_run(self.runs, "demo-run", self.workflow, "0.2")
+        run_dir, _ = state.create_run(self.runs, "demo-run", self.workflow, "0.2", REQUEST)
         _, loaded = state.open_run(self.runs, "demo-run")
         outside = self.base / "elsewhere"
         (outside / "demo-run").mkdir(parents=True)

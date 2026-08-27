@@ -1,16 +1,16 @@
 """Command-line surface: `python3 -m driver <run|resume|status> --config <path>`,
-with `run` naming the workflow and the new run's id, and `resume` naming the
-run to resume.
+with `run` naming the workflow, the new run's id, and the request that starts
+it, and `resume` naming the run to resume.
 
 Exit codes: 0 success, 1 the command cannot run yet — a module it needs has
 not landed, or the step it resolved is blocked on an input the run has not
 produced (spec §9.1) — and 2 bad usage or a defective config, environment, or
-framework. `run` creates the run — directory and bootstrap state — resolves
-its first step and assembles the context that step would execute from, then
-exits 1 at the point invocation would start; `resume` resolves the position
-the same way. The created run is durable either way, which is the point: the
-state machine's writes are real, and the later modules pick up exactly where
-these commands stop.
+framework. `run` creates the run — directory, the request it was created from
+(spec §8.7), and bootstrap state — resolves its first step and assembles the
+context that step would execute from, then exits 1 at the point invocation
+would start; `resume` resolves the position the same way. The created run is
+durable either way, which is the point: the state machine's writes are real,
+and the later modules pick up exactly where these commands stop.
 """
 
 from __future__ import annotations
@@ -112,6 +112,23 @@ def build_parser() -> argparse.ArgumentParser:
         type=_run_id,
         help="the new run's id: becomes its directory name under {artifacts}/runs/",
     )
+    # Two arguments rather than one taking `@file`, so a request whose text
+    # happens to start with the prefix is not read as a path — and so argparse
+    # is what enforces exactly one of them, since the request is never
+    # optional: spec §8.7 has every run hold one, and the entry step declares
+    # it required.
+    request = run.add_mutually_exclusive_group(required=True)
+    request.add_argument(
+        "--request",
+        help="the request that starts the run, as text: written verbatim to "
+        "{run}/request.md before any step runs (spec §8.7)",
+    )
+    request.add_argument(
+        "--request-file",
+        type=Path,
+        help="the request that starts the run, read from a UTF-8 file — a ticket "
+        "export, a specification, anything a shell argument would mangle",
+    )
     resume = subparsers.add_parser("resume", help="resume a run from its first unfinished step")
     # The protocol permits concurrent runs (spec §8.1), so which run to
     # resume can never be inferred; the id is part of the contract.
@@ -141,13 +158,24 @@ def main(argv: list[str] | None = None) -> int:
     if arguments.command == "status":
         return _status(config)
     if arguments.command == "run":
-        return _run(config, arguments.workflow, arguments.run_id)
+        if arguments.request_file is None:
+            return _run(config, arguments.workflow, arguments.run_id, arguments.request)
+        try:
+            # `ValueError` is the decode: the request becomes a markdown
+            # artifact a step is handed, so bytes that are not text are a
+            # defect to report rather than something to carry into a prompt.
+            request = arguments.request_file.read_text(encoding="utf-8")
+        except (OSError, ValueError) as error:
+            print(f"driver: {arguments.request_file}: {error}", file=sys.stderr)
+            return 2
+        return _run(config, arguments.workflow, arguments.run_id, request)
     return _resume(config, arguments.run_id)
 
 
-def _run(config: Config, workflow_name: str, run_id: str) -> int:
-    """Create the run — directory and bootstrap state (spec §8.1, §10) —
-    then stop where execution would start."""
+def _run(config: Config, workflow_name: str, run_id: str, request: str) -> int:
+    """Create the run — directory, the request it was created from, and
+    bootstrap state (spec §8.1, §8.7, §10) — then stop where execution would
+    start."""
     try:
         workflow = load_workflow(config.framework_dir, workflow_name)
     except WorkflowError as error:
@@ -155,7 +183,7 @@ def _run(config: Config, workflow_name: str, run_id: str) -> int:
         return 2
     try:
         run_dir, created = run_state.create_run(
-            config.runs_dir, run_id, workflow, PROTOCOL
+            config.runs_dir, run_id, workflow, PROTOCOL, request
         )
     except (run_state.StateError, OSError) as error:
         print(f"driver: {error}", file=sys.stderr)
