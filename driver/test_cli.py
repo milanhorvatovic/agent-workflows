@@ -113,11 +113,15 @@ class CliTest(unittest.TestCase):
             (self.base / relative).write_text(
                 content.replace("required: false", "required: true"), encoding="utf-8"
             )
-        code, _, err = self.invoke(
+        code, out, err = self.invoke(
             "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
         )
         self.assertEqual(code, 1)
         self.assertIn("requires {run}/in.md", err)
+        # And never as the position: printing "next is make" ahead of the
+        # assembly reports a readiness the run does not have, then contradicts
+        # it on the next line.
+        self.assertNotIn("next is", out)
 
     def test_a_skill_disagreeing_with_its_stage_is_a_framework_defect(self) -> None:
         self.write_framework()

@@ -178,6 +178,17 @@ class LoadSkillTest(TreeTest):
         )
         self.assertEqual(self.load().references, ("references/checklist.md",))
 
+    def test_a_nested_reference_is_the_file_not_the_directory(self) -> None:
+        """A pattern stopping at the first segment takes `references/guides`
+        out of `references/guides/style.md` — not merely missing the file but
+        refusing the skill for naming a directory."""
+        self.write(
+            "skills/awf-make/SKILL.md",
+            SKILL.replace("references/checklist.md", "references/guides/style.md"),
+        )
+        self.write("skills/awf-make/references/guides/style.md", "nested\n")
+        self.assertEqual(self.load().references, ("references/guides/style.md",))
+
     def test_trailing_punctuation_is_not_part_of_the_path(self) -> None:
         self.write(
             "skills/awf-make/SKILL.md",
@@ -664,6 +675,13 @@ class ScaffoldTest(TreeTest):
             "D:secret.md",
             "\\\\host\\share\\secret.md",
             "\\secret.md",
+            # Escaping the package is one way to name something other than a
+            # file in it; a device basename and a stream marker are the others,
+            # and both survive the join that `..` was barred from.
+            "references/CON",
+            "references/NUL.md",
+            "references/out.md::$DATA",
+            "references/out.md ",
         ):
             self.write("skills/awf-make/SKILL.md", SKILL.replace(
                 "template: references/out.template.md", f"template: {escape}"
@@ -682,7 +700,7 @@ class ScaffoldTest(TreeTest):
         )
         with self.assertRaises(WorkflowError) as caught:
             self.workflow()
-        self.assertIn("escapes the package", str(caught.exception))
+        self.assertIn("not a package path", str(caught.exception))
 
     def test_a_link_at_the_output_name_reads_the_same_on_both_platforms(self) -> None:
         """`O_EXCL` answers EEXIST for a link as readily as for a file, and the
@@ -708,7 +726,10 @@ class ScaffoldTest(TreeTest):
         EEXIST, and this function reads that as an artifact the step already
         has — so a failed copy would be handed to the step as content to work
         from."""
+        if not Path("/dev/fd").is_dir():  # pragma: no cover
+            self.skipTest("no /dev/fd to count descriptors with")
         output = self.run_dir / "out.md"
+        descriptors = len(os.listdir("/dev/fd"))
         with unittest.mock.patch.object(
             os, "fdopen", side_effect=OSError("no space left on device")
         ):
@@ -716,6 +737,10 @@ class ScaffoldTest(TreeTest):
                 assembler.scaffold(self.load(), self.run_dir, "{run}/out.md")
         self.assertIn("cannot scaffold", str(caught.exception))
         self.assertFalse(output.exists())
+        # `fdopen` takes ownership only once it returns a stream, so the
+        # simulated failure above leaves the descriptor this module opened —
+        # and repeated failures would accumulate one apiece.
+        self.assertEqual(len(os.listdir("/dev/fd")), descriptors)
         # And the retry that follows writes the whole template rather than
         # reporting the wreckage of the first attempt as already scaffolded.
         self.assertTrue(assembler.scaffold(self.load(), self.run_dir, "{run}/out.md"))

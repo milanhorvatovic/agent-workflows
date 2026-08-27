@@ -70,8 +70,12 @@ FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 # and a body that dropped them would still be naming the file. Dotted parts
 # are taken only where something follows the dot, so a sentence ending
 # "`references/shipping.md`." names shipping.md rather than a file that does
-# not exist.
-REFERENCE = re.compile(r"references/[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*")
+# not exist. Slash-separated segments too: a package may nest its references,
+# and a pattern stopping at the first one would take `references/guides` out
+# of `references/guides/style.md` — not merely missing the file but refusing
+# the skill for naming a directory. Nothing here can spell `..`, since every
+# segment must open with a character the dot class excludes.
+REFERENCE = re.compile(r"references/[A-Za-z0-9_-]+(?:[./][A-Za-z0-9_-]+)*")
 
 RUN_PREFIX = "{run}/"
 
@@ -588,7 +592,17 @@ def scaffold(skill: Skill, run_dir: Path, artifact: str) -> bool:
         except OSError as error:
             raise AssemblyError(f"cannot scaffold {artifact}: {error}") from error
         try:
-            with os.fdopen(descriptor, "wb") as stream:
+            # `fdopen` takes ownership only once it returns a stream, so a
+            # failure there leaves the descriptor this function's to close —
+            # the leak repeated failures would otherwise accumulate one at a
+            # time. Wrapping the open in the same block as the write keeps one
+            # cleanup path for both, which is what the two failures need.
+            try:
+                stream = os.fdopen(descriptor, "wb")
+            except BaseException:
+                os.close(descriptor)
+                raise
+            with stream:
                 stream.write(text)
         except OSError as error:
             # The name this call created is removed with it. Left behind, an

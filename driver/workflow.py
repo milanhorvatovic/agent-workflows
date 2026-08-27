@@ -466,7 +466,22 @@ def _blank_quoted(text: str) -> str:
 # holds an imported path to the same shape, for the same reason — what a
 # contract names is what completion manifests and a later assembler
 # resolves, so a path leaving the run leaves it there too.
-RUN_RELATIVE = re.compile('^\\{run\\}(?:/(?!\\.{1,2}(?:/|$))(?!(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Mm][1-9¹²³]|[Ll][Pp][Tt][1-9¹²³])(?:\\.|/|$))[^/\\\\:?*"<>|\x00-\x1f\x7f-\x9f\u2028\u2029]+(?<![. ]))+(?![\\s\\S])')
+# One path segment of that shape, named once because two rules want it: a
+# declared artifact's, and a declared template's below. Its parts are a dot
+# entry refused, a Windows device basename refused whatever follows it, no
+# character a platform reads as a separator or a stream marker, and no
+# trailing dot or space for Windows normalization to strip into an alias.
+_SEGMENT = '(?!\\.{1,2}(?:/|$))(?!(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Mm][1-9¹²³]|[Ll][Pp][Tt][1-9¹²³])(?:\\.|/|$))[^/\\\\:?*"<>|\x00-\x1f\x7f-\x9f\u2028\u2029]+(?<![. ])'
+RUN_RELATIVE = re.compile('^\\{run\\}(?:/' + _SEGMENT + ')+(?![\\s\\S])')
+# A declared template resolves inside the skill package that declares it
+# (§8.3), so it is the same segments without the run anchor — relative
+# rather than anchored, and at least one of them. The schema constrains the
+# field to a non-empty string alone, which is why the shape is this
+# reader's: `references/CON` resolves to a device on Windows and
+# `references/t.md::$DATA` to an alternate data stream, neither of them the
+# package file the declaration names, and both reachable past the `..` and
+# drive checks that come before them.
+PACKAGE_RELATIVE = re.compile('^' + _SEGMENT + '(?:/' + _SEGMENT + ')*(?![\\s\\S])')
 
 
 def _check_artifact(value: str, at: str, what: str) -> None:
@@ -496,11 +511,12 @@ def _check_package_relative(value: str, at: str) -> None:
     windows_form = PureWindowsPath(value)
     if windows_form.drive or windows_form.root:
         raise WorkflowError(f"{at}: template is not package-relative: {value!r}")
-    for segment in value.replace("\\", "/").split("/"):
-        if segment in ("", ".", ".."):
-            raise WorkflowError(
-                f"{at}: template segment {segment!r} escapes the package: {value!r}"
-            )
+    # And the same segments an artifact path is held to, which is what carries
+    # the rest: dot entries, a device basename, a stream marker, a trailing dot
+    # or space. Escaping the package is one way to name something other than a
+    # file in it, and `references/CON` is the other.
+    if not PACKAGE_RELATIVE.match(value):
+        raise WorkflowError(f"{at}: template is not a package path: {value!r}")
 
 
 def _check_placeholders(value: str, at: str, what: str) -> None:

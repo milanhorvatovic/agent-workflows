@@ -208,26 +208,28 @@ def _report_position(
             return 2
         print(f"run {loaded.run_id}: nothing left to run")
         return 0
-    print(f"run {loaded.run_id}: next is {position.id} ({position.status})")
     # What is missing depends on what the position is. A gate waits on a
     # human (§7) — blocked where it has been reached and is waiting, pending
     # where the run has yet to arrive — and no context assembler or backend
     # can clear that: the gate handler is the module it needs. Which kind a
     # record is comes from the composition rather than from its status,
     # since a gate is `pending` before it is reached like any other member.
+    # A gate is where the run stands whatever else is true, so it reports the
+    # position and stops; nothing about it is assembled.
     if workflow.member_kind(position.id) == "gate":
+        print(f"run {loaded.run_id}: next is {position.id} ({position.status})")
         print(
             "driver: cannot decide it yet — the gate handler module has not landed",
             file=sys.stderr,
         )
         return 1
-    # The context a step would execute from is resolved here rather than left
-    # to the module that will send it, because assembling is what says the
-    # position is *runnable*: a required input the run has not produced blocks
-    # the step (§9.1), and reporting "next is X" while X cannot start reports
-    # a readiness the run does not have. Nothing is written — the scaffold
-    # §8.3 asks for belongs to the invocation that fills it, not to a command
-    # that stops before one.
+    # The context a step would execute from is resolved before the position is
+    # reported, not after, because assembling is what says the position is
+    # *runnable*: a required input the run has not produced blocks the step
+    # (§9.1), and printing "next is X" ahead of that reports a readiness the
+    # run does not have — then contradicts it on the next line. Nothing is
+    # written — the scaffold §8.3 asks for belongs to the invocation that
+    # fills it, not to a command that stops before one.
     try:
         assembly = assembler.assemble(
             config.framework_dir, run_dir, loaded, workflow, position.id
@@ -238,6 +240,7 @@ def _report_position(
     except assembler.AssemblyError as error:
         print(f"driver: {error}", file=sys.stderr)
         return 2
+    print(f"run {loaded.run_id}: next is {position.id} ({position.status})")
     print(
         f"assembled {assembly.step_id} ({assembly.role}): "
         f"{len(assembly.materials)} files, {len(assembly.prompt)} characters"
