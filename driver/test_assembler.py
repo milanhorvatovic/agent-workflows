@@ -317,7 +317,7 @@ class ParityTest(TreeTest):
 
     def test_the_skill_supplies_the_template_the_stage_omits(self) -> None:
         """Which is every shipped pairing: no stage declares a template, and
-        all nineteen that scaffold declare it on the skill."""
+        all fifteen step-bound skills that scaffold declare it themselves."""
         self.write(
             "workflows/stages/intake.md",
             STAGE.replace("        template: references/out.template.md\n", ""),
@@ -835,6 +835,19 @@ class ScaffoldTest(TreeTest):
             assembler.scaffold(self.load(), self.run_dir, "{run}/out.md")
         self.assertIn("outside the directory declaring it", str(caught.exception))
         self.assertFalse((self.run_dir / "out.md").exists())
+
+    def test_a_symlink_loop_in_the_framework_is_a_defect_not_a_traceback(self) -> None:
+        """Below Python 3.13 `resolve()` raises `RuntimeError` for a loop, and
+        that is not an `OSError` — so it would escape the command surface as a
+        traceback rather than the framework-defect exit. Raised through a patch
+        rather than a real loop, since the interpreters that return the path
+        instead would leave the guard unexercised."""
+        with unittest.mock.patch.object(
+            Path, "resolve", side_effect=RuntimeError("Symlink loop from ...")
+        ):
+            with self.assertRaises(assembler.AssemblyError) as caught:
+                assembler.scaffold(self.load(), self.run_dir, "{run}/out.md")
+        self.assertIn("Symlink loop", str(caught.exception))
 
     def test_an_existing_output_that_is_not_a_regular_file_is_refused(self) -> None:
         """EEXIST says the name is taken, not that what holds it is the

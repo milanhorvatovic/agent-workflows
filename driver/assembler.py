@@ -503,10 +503,15 @@ def _within(base: Path, relative: str, source: str) -> Path:
     declarations, applied again here because the framework the driver was
     pointed at is not the one CI checked.
     """
+    # `RuntimeError` beside `OSError`: on the Python versions this driver
+    # supports below 3.13, `resolve()` raises it for a symlink loop rather
+    # than returning the path. It is not an `OSError`, so a loop anywhere in
+    # the framework would escape the command surface as a traceback instead of
+    # the framework-defect exit the README documents.
     try:
         anchor = base.resolve()
         resolved = (base / relative).resolve()
-    except OSError as error:
+    except (OSError, RuntimeError) as error:
         raise AssemblyError(f"cannot read {source}: {error}") from error
     if not resolved.is_relative_to(anchor):
         raise AssemblyError(f"{source} resolves outside the directory declaring it")
