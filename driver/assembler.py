@@ -420,7 +420,12 @@ def _role(framework: Path, role: str) -> str:
     the step's context restating what follows it.
     """
     source = f"roles/{role}.md"
-    text = _read(framework / source, source)
+    # Held under `roles/` the way a reference is held under its package: this
+    # is prompt material like any other, and a framework carrying
+    # `roles/analyst.md -> /outside/secret` would put that file in front of the
+    # configured backend. The role name is one of the six the contract already
+    # holds it to, so the name cannot escape; the file it points at can.
+    text = _read(_within(framework / "roles", f"{role}.md", source), source)
     match = FRONTMATTER.match(text)
     return text[match.end() :] if match is not None else text
 

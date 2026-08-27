@@ -541,6 +541,24 @@ class AssembleTest(TreeTest):
             )
         self.assertTrue(str(caught.exception).startswith("cannot read roles/analyst.md"))
 
+    def test_a_role_that_links_outside_the_framework_is_refused(self) -> None:
+        """A role definition is prompt material like any other, so a framework
+        carrying `roles/analyst.md -> /outside/secret` would put that file in
+        front of the configured backend."""
+        outside = self.base / "secret.md"
+        outside.write_text("SECRET\n", encoding="utf-8")
+        target = self.framework / "roles/analyst.md"
+        target.unlink()
+        try:
+            target.symlink_to(outside)
+        except (OSError, NotImplementedError) as error:  # pragma: no cover
+            self.skipTest(f"symlinks unavailable: {error}")
+        with self.assertRaises(assembler.AssemblyError) as caught:
+            assembler.assemble(
+                self.framework, self.run_dir, self.state([]), self.workflow(), "make"
+            )
+        self.assertIn("outside the directory declaring it", str(caught.exception))
+
     def test_the_role_frontmatter_is_not_spent_on_the_step(self) -> None:
         assembly = assembler.assemble(
             self.framework, self.run_dir, self.state([]), self.workflow(), "make"
