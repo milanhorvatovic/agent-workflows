@@ -483,6 +483,19 @@ def _containing(run_dir: Path, relative: list[str], artifact: str, create: bool)
         raise AssemblyError(str(error)) from error
 
 
+def _is_link_at(directory: int | None, path: Path | None, name: str) -> bool:
+    """Whether `name` in the held directory is a link, read without following
+    it — bound to the descriptor where there is one."""
+    if directory is None:
+        return is_link(path / name)
+    try:
+        return stat.S_ISLNK(os.lstat(name, dir_fd=directory).st_mode)
+    except OSError:
+        # Gone between the failed create and this look: nothing is there to
+        # redirect, so it is not the case this guard exists for.
+        return False
+
+
 def _read_artifact(run_dir: Path, artifact: str) -> str:
     """Read one of this run's artifacts, bound to the run's own directory."""
     relative = _components(artifact)
@@ -558,6 +571,15 @@ def scaffold(skill: Skill, run_dir: Path, artifact: str) -> bool:
                 dir_fd=directory,
             )
         except FileExistsError:
+            # `O_EXCL` answers EEXIST for a link as readily as for a file, and
+            # the two mean opposite things: an artifact already there is the
+            # step's to work from, while a link at the name redirects the run's
+            # own artifact somewhere the run cannot see. The checked branch
+            # refuses that before it opens anything, so the bound one asks
+            # after — without it the same tree would report "already
+            # scaffolded" on one platform and a defect on the other.
+            if _is_link_at(directory, path, relative[-1]):
+                raise AssemblyError(f"cannot scaffold {artifact}: the name is a link")
             return False
         except OSError as error:
             raise AssemblyError(f"cannot scaffold {artifact}: {error}") from error

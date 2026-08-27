@@ -655,6 +655,25 @@ class ScaffoldTest(TreeTest):
             self.workflow()
         self.assertIn("escapes the package", str(caught.exception))
 
+    def test_a_link_at_the_output_name_reads_the_same_on_both_platforms(self) -> None:
+        """`O_EXCL` answers EEXIST for a link as readily as for a file, and the
+        two mean opposite things — an artifact the step works from, against a
+        name redirecting the run's own artifact out of the run."""
+        outside = self.base / "elsewhere.md"
+        outside.write_text("SECRET\n", encoding="utf-8")
+        try:
+            (self.run_dir / "out.md").symlink_to(outside)
+        except (OSError, NotImplementedError) as error:  # pragma: no cover
+            self.skipTest(f"symlinks unavailable: {error}")
+        for binds in (True, False):
+            if binds and not state._BINDS_TO_DIRECTORY:  # pragma: no cover
+                continue
+            with unittest.mock.patch.object(state, "_BINDS_TO_DIRECTORY", binds):
+                with self.assertRaises(assembler.AssemblyError) as caught:
+                    assembler.scaffold(self.load(), self.run_dir, "{run}/out.md")
+                self.assertIn("link", str(caught.exception))
+        self.assertEqual(outside.read_text(encoding="utf-8"), "SECRET\n")
+
     def test_a_scaffold_never_lands_outside_the_run(self) -> None:
         """The one thing here that creates a file, held to the containment
         every read is: a link on the way down would put a run's artifact where
