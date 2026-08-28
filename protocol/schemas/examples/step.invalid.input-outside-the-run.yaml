@@ -1,0 +1,16 @@
+# Deliberately broken: an input declared outside the run directory.
+# Spec §8.1 addresses every step input and output relative to `{run}`, and the
+# executor joins the declared string to the run directory — so a schema that
+# left the shape open would accept a contract naming a file the run does not
+# contain, and an executor materializing only what is declared would read it.
+# The same normalized run-relative shape binds inputs and outputs alike.
+# One fault, so this fixture proves the input side and
+# `step.invalid.output-alias.yaml` proves the output side (spec §8.1).
+protocol: "0.2"
+step:
+  role: analyst
+  inputs:
+    - artifact: "{run}/../outside.md"
+      required: true
+  output:
+    artifact: "{run}/out.md"

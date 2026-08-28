@@ -1106,6 +1106,32 @@ class SyntheticTreeTest(unittest.TestCase):
             schema["$defs"]["member"]["properties"]["step"]["pattern"],
         )
 
+    def test_a_declared_artifact_takes_the_schema_path_shape(self) -> None:
+        """§8.1 addresses every input and output relative to `{run}`, and the
+        driver has always held declarations to that shape. The step schema left
+        it open, so a schema-only consumer accepted `/etc/passwd` as an output
+        and `{run}/request.md.` beside it — the trailing dot Windows strips,
+        which names the request without spelling it and which no fold reaches.
+        Three copies of one pattern now: the driver's, a lineage record's, and
+        a declaration's."""
+        import json
+
+        from driver.workflow import RUN_RELATIVE
+
+        schema = json.loads(
+            (REPO / "protocol" / "schemas" / "step.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        step = schema["properties"]["step"]["properties"]
+        self.assertEqual(
+            RUN_RELATIVE.pattern, step["output"]["properties"]["artifact"]["pattern"]
+        )
+        self.assertEqual(
+            RUN_RELATIVE.pattern,
+            step["inputs"]["items"]["properties"]["artifact"]["pattern"],
+        )
+
     def test_the_refused_output_matches_the_schema(self) -> None:
         """The step schema refuses `{run}/request.md` as an output and this
         reader refuses it too, from either side of the same rule — so a rename

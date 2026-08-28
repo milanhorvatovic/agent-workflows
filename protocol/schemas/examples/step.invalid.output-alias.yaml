@@ -1,0 +1,16 @@
+# Deliberately broken: an output declared as a Windows alias of the request.
+# `{run}/request.md.` is not `{run}/request.md` to a comparison and is the same
+# file to Windows, which strips a trailing dot — so an exclusion that only knew
+# the name, however many cases and folds it covered, would hand a step the one
+# artifact §8.7 says nothing in the run rewrites. The schema constrains every
+# declared artifact to the normalized run-relative shape a lineage record
+# already carries, which refuses this and the NTFS stream form beside it.
+# One fault: the path is well-formed in every other respect (spec §8.1, §8.7).
+protocol: "0.2"
+step:
+  role: analyst
+  inputs:
+    - artifact: "{run}/request.md"
+      required: true
+  output:
+    artifact: "{run}/request.md."
