@@ -39,14 +39,22 @@ def names_request(artifact: str) -> bool:
     is the wrong test where platforms fold: it decides self-import by directory
     identity for the same reason, and this is that reasoning applied to a name.
 
-    `casefold` rather than an A–Z table, which an earlier cut of this used on
-    the argument that Unicode folding answers a wider question than filesystems
-    ask. It answers a *narrower* one than that argument assumed. Folding is
-    what these filesystems do, and three characters fold into this path that no
-    ASCII table reaches: `ſ` (U+017F) folds to `s`, and `ﬅ` and `ﬆ` each fold to
-    `st`, so `{run}/requeſt.md` and `{run}/requeﬆ.md` name the request too. Those
-    three are the whole of it for this path — every codepoint was enumerated —
-    and `casefold` covers them without a table to keep current.
+    `casefold` reserves more than any one filesystem aliases, and that is the
+    choice rather than an accident. Three non-ASCII characters fold into this
+    path — every codepoint was enumerated — and they do not divide evenly.
+    `ſ` (U+017F) upper-cases to `S`, one code unit to one, which is what an
+    upcase table expresses: `{run}/requeſt.md` genuinely is the request on
+    NTFS, and an A–Z table would have missed it. `ﬅ` and `ﬆ` fold to `st`, one
+    character to two, which such a table cannot do — so those two stay distinct
+    on the filesystems this driver is known to run on, and refusing them
+    reserves a name nothing aliases.
+
+    Reserving them anyway, because the two errors are not the same size. A name
+    wrongly refused is a declaration that fails loudly and gets renamed; a name
+    wrongly allowed, on some filesystem that does fold wider than NTFS, silently
+    overwrites the request mid-run — which is the failure §8.7 exists to
+    prevent, and the one no reader would see. The approximation is static by
+    necessity: these are declarations, checked without a filesystem to ask.
     """
     return artifact.casefold() == REQUEST_ARTIFACT
 

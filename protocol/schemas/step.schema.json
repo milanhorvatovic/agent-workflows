@@ -77,7 +77,7 @@
                   }
                 ]
               },
-              "description": "The artifact produced. May not carry {P}, which resolves to one path per phase: a step produces one artifact, and a phase-set of outputs is a stage that repeats rather than a step that fans out (spec sections 8.1 and 9.1). May not name `{run}/request.md` either, case folding aside — `{run}/REQUEST.md`, and the folded spellings `{run}/requeſt.md` and `{run}/requeﬆ.md`, are the same file wherever the filesystem folds case: the request is what the run was created from, no step produces it, and a step claiming it would overwrite mid-run the words the entry step exists to restate (spec section 8.7)."
+              "description": "The artifact produced. May not carry {P}, which resolves to one path per phase: a step produces one artifact, and a phase-set of outputs is a stage that repeats rather than a step that fans out (spec sections 8.1 and 9.1). May not name `{run}/request.md` either, nor any spelling that case-folds to it — `{run}/REQUEST.md` and `{run}/requeſt.md` are the same file wherever a filesystem folds case, and the ligature spellings are reserved with them, deliberately wider than any single filesystem's table: the request is what the run was created from, no step produces it, and a step claiming it would overwrite mid-run the words the entry step exists to restate (spec section 8.7)."
             },
             "template": {
               "type": "string",
