@@ -1,5 +1,5 @@
 # Deliberately broken: a step declaring the request as its output under a
-# different ASCII case. `{run}/REQUEST.md` is a different string and the same
+# different case. `{run}/REQUEST.md` is a different string and the same
 # file wherever the filesystem folds case — macOS and Windows by default — so
 # an exclusion that compared exactly would hand a step the one artifact §8.7
 # says nothing in the run rewrites. §8.6 settled the same point for run ids:

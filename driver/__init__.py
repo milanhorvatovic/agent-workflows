@@ -28,28 +28,27 @@ PROTOCOL_VERSION = re.compile(r"^[0-9]+\.[0-9]+$")
 REQUEST_FILE = "request.md"
 REQUEST_ARTIFACT = f"{{run}}/{REQUEST_FILE}"
 
-# Only A–Z, never `str.lower`. The rule is about filesystems that fold ASCII
-# case, and Unicode lowering answers a wider question than the one asked: it
-# would map characters no filesystem aliases into the path, and leave others
-# it does. §8.6 already settled that string equality is the wrong test where
-# platforms fold — it decides self-import by directory identity for the same
-# reason — and this is that reasoning applied to a name rather than a
-# directory.
-_ASCII_FOLD = str.maketrans(
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"
-)
-
-
 def names_request(artifact: str) -> bool:
-    """Whether a declared path names the run's request, ASCII case aside.
+    """Whether a declared path names the run's request, case folding aside.
 
     `{run}/REQUEST.md` is a different string and the same file wherever the
     filesystem folds case — macOS and Windows by default — so a rule that
     compared exactly would let a step declare the request as its output, or a
     lineage record name it as an import, and overwrite the one artifact §8.7
-    says nothing in the run rewrites.
+    says nothing in the run rewrites. §8.6 already settled that string equality
+    is the wrong test where platforms fold: it decides self-import by directory
+    identity for the same reason, and this is that reasoning applied to a name.
+
+    `casefold` rather than an A–Z table, which an earlier cut of this used on
+    the argument that Unicode folding answers a wider question than filesystems
+    ask. It answers a *narrower* one than that argument assumed. Folding is
+    what these filesystems do, and three characters fold into this path that no
+    ASCII table reaches: `ſ` (U+017F) folds to `s`, and `ﬅ` and `ﬆ` each fold to
+    `st`, so `{run}/requeſt.md` and `{run}/requeﬆ.md` name the request too. Those
+    three are the whole of it for this path — every codepoint was enumerated —
+    and `casefold` covers them without a table to keep current.
     """
-    return artifact.translate(_ASCII_FOLD) == REQUEST_ARTIFACT
+    return artifact.casefold() == REQUEST_ARTIFACT
 
 
 def implements(version: str) -> bool:

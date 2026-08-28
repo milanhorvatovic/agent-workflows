@@ -1731,7 +1731,13 @@ class LoadValidationTest(StateTestCase):
         excluded = re.compile(
             schema["$defs"]["importRecord"]["properties"]["artifact"]["not"]["pattern"]
         )
-        for named in (state.REQUEST_ARTIFACT, "{run}/REQUEST.md", "{run}/Request.MD"):
+        for named in (
+            state.REQUEST_ARTIFACT,
+            "{run}/REQUEST.md",
+            "{run}/Request.MD",
+            "{run}/requeſt.md",
+            "{run}/requeﬆ.md",
+        ):
             self.assertTrue(excluded.match(named), named)
         for other in ("{run}/requests.md", "{run}/sub/request.md", "{run}/brief.md"):
             self.assertIsNone(excluded.match(other), other)
@@ -1787,6 +1793,15 @@ class LoadValidationTest(StateTestCase):
                 self.MANIFEST
                 + '  - "{run}/REQUEST.md"\n'
                 'imports:\n  - artifact: "{run}/REQUEST.md"\n'
+                '    from: earlier-run\n    at: "2026-08-16T09:00:00Z"\n'
+            ),
+            # And folded: `ſ` folds to `s` on the filesystems that fold at all,
+            # so this names the request as surely as an upper-case spelling and
+            # no ASCII table reaches it.
+            "imported request, folded": (
+                self.MANIFEST
+                + '  - "{run}/requeſt.md"\n'
+                'imports:\n  - artifact: "{run}/requeſt.md"\n'
                 '    from: earlier-run\n    at: "2026-08-16T09:00:00Z"\n'
             ),
             # §8.6 and §10 bound the list, and the suite holds the shipped

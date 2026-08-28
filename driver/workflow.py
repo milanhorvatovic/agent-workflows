@@ -1604,7 +1604,7 @@ def step_declaration(declaration: dict, step_id: str, rel: str) -> StepDeclarati
     # step schema forbids it, and this reader holds the framework it was
     # pointed at, which no conformance run has necessarily seen.
     #
-    # ASCII case aside, because `{run}/REQUEST.md` is a different declaration
+    # Case folding aside, because `{run}/REQUEST.md` is a different declaration
     # and the same file wherever the filesystem folds case — which is where
     # most of this protocol's readers run.
     if names_request(artifact):

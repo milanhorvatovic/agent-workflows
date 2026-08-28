@@ -1,6 +1,6 @@
 # INVALID on purpose — schema validation MUST reject this fixture:
 # - imports[0].artifact is `{run}/REQUEST.md`, which names the request under a
-#   different ASCII case. The copy lands at the path the record names, and that
+#   different case. The copy lands at the path the record names, and that
 #   path is the run's own `request.md` wherever the filesystem folds case, so an
 #   exclusion comparing exactly would let a lineage record overwrite the one
 #   artifact §8.7 says nothing in the run rewrites (spec §8.6, §8.7).

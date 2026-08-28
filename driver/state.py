@@ -1707,7 +1707,7 @@ def _validate_imports(
         # outright: an import adopts an artifact a step of the source run
         # produced, and the request has no producing step. Checked ahead of the
         # manifest, since it is in every manifest and would otherwise pass the
-        # test that catches an unmanifested lineage. ASCII case aside: the copy
+        # test that catches an unmanifested lineage. Case folding aside: the copy
         # lands at the path the record names, and `{run}/REQUEST.md` is that
         # same file wherever the filesystem folds case, so an exact comparison
         # would let a lineage record overwrite the request it cannot name.

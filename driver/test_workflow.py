@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import re
 import tempfile
 import unittest
@@ -944,7 +945,17 @@ class SyntheticTreeTest(unittest.TestCase):
         nothing in the run rewrites. §8.6 already settled that string equality
         is the wrong test where platforms fold; this is that rule applied to a
         name rather than a directory."""
-        for variant in ("{run}/REQUEST.md", "{run}/Request.md", "{run}/request.MD"):
+        for variant in (
+            "{run}/REQUEST.md",
+            "{run}/Request.md",
+            "{run}/request.MD",
+            # Folds no ASCII table reaches: `ſ` folds to `s`, and the `ﬅ`/`ﬆ`
+            # ligatures each fold to the `st` pair — one character standing for
+            # two, which a per-character class cannot express either.
+            "{run}/requeſt.md",
+            "{run}/requeﬆ.md",
+            "{run}/requeﬅ.MD",
+        ):
             with self.subTest(artifact=variant):
                 self.write(
                     "workflows/stages/intake.md",
@@ -1122,16 +1133,38 @@ class SyntheticTreeTest(unittest.TestCase):
         def schema_refuses(artifact: str) -> bool:
             return any(pattern.search(artifact) for pattern in patterns)
 
-        for artifact in (
-            REQUEST_ARTIFACT,
-            "{run}/REQUEST.md",
-            "{run}/Request.MD",
+        # Every ASCII case of the path, every fold equivalent that reaches it —
+        # `ſ` for `s`, and the `ﬅ`/`ﬆ` ligatures for the `st` pair, which are the
+        # whole of what folds into this name — and neighbours that must stay
+        # legal. The pattern and the fold have to answer identically on all of
+        # them, or one surface refuses what the other accepts.
+        alternatives = {
+            "r": "rR", "e": "eE", "q": "qQ", "u": "uU",
+            "s": "sSſ", "t": "tT", "m": "mM", "d": "dD",
+        }
+        candidates = [
+            "{run}/" + "".join(combination)
+            for combination in itertools.product(
+                *(alternatives.get(character, character) for character in "request.md")
+            )
+        ]
+        candidates += [
+            f"{{run}}/{prefix}{ligature}{suffix}"
+            for ligature in ("ﬅ", "ﬆ")
+            for prefix in ("reque", "REQUE", "ReQuE")
+            for suffix in (".md", ".MD", ".Md")
+        ]
+        candidates += [
             "{run}/requests.md",
             "{run}/sub/request.md",
             "{run}/brief.md",
-        ):
-            with self.subTest(artifact=artifact):
-                self.assertEqual(names_request(artifact), schema_refuses(artifact))
+            "{run}/reques.md",
+            "{run}/request.md.bak",
+        ]
+        self.assertIn(REQUEST_ARTIFACT, candidates)
+        for artifact in candidates:
+            if names_request(artifact) != schema_refuses(artifact):
+                self.fail(f"schema and fold disagree on {artifact!r}")
 
     def test_unknown_keys_inside_a_declared_structure_are_errors(self) -> None:
         """§9.5: unknown keys inside a declared structure are authoring
