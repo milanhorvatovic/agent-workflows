@@ -6,7 +6,7 @@ run:
   phase: 0
   risk: R2
   risk_rationale: "one module"
-  protocol: "0.2"
+  protocol: "0.3"
 steps: []
 gates: []
 artifacts:

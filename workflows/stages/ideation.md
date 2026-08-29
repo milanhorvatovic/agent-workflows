@@ -12,7 +12,7 @@ The sequence (spec §9.4) declares the members in record order — the revising 
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     stage:
       sequence:
         - step: ground
@@ -31,7 +31,7 @@ Analyze the codebase areas the brief touches: structure, patterns, dependencies,
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: analyst
       inputs:
@@ -48,7 +48,7 @@ Generate three to five genuinely distinct approaches — advantages, risks, code
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: planner
       inputs:
@@ -71,7 +71,7 @@ Runs with fresh context in every mode (spec §4). Validates the ideation against
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: validator
       inputs:
@@ -90,7 +90,7 @@ Addresses the validation findings and rewrites the ideation artifact; re-validat
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: planner
       inputs:
@@ -113,7 +113,7 @@ The revise loop (`ideate-validate` → `ideate-revise`) exits only on a passing 
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     loop:
       exit_criteria:
         - artifact: "{run}/ideation-validation.md"

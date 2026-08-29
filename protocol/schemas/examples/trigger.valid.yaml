@@ -2,7 +2,7 @@
 # kind defaults to manual; interval carries `every`, cron carries `cron` —
 # each valid only for its own kind, never both (spec §9.3).
 # `until` stops a recurring trigger when the command's output equals the value.
-protocol: "0.2"
+protocol: "0.3"
 trigger:
   kind: interval
   every: 5m

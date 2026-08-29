@@ -6,7 +6,7 @@
 # string equality is the wrong test where platforms fold. One fault, so this
 # fixture proves the case rule and `step.invalid.request-output.yaml` proves
 # the path itself (spec §8.7).
-protocol: "0.2"
+protocol: "0.3"
 step:
   role: analyst
   inputs:

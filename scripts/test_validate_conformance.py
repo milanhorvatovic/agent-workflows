@@ -194,7 +194,7 @@ STEP_BLOCK = """\
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: analyst
       inputs:
@@ -211,7 +211,7 @@ TRIGGER_BLOCK = """\
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     trigger:
       kind: manual
 ```
@@ -248,7 +248,7 @@ def stage_file(block: str) -> str:
         frontmatter("build")
         + "\n### builder (analyst)\n\nProse.\n\n"
         + block
-        + "\n```yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n"
+        + "\n```yaml\nmetadata:\n  workflow:\n    protocol: \"0.3\"\n"
         + "    stage:\n      sequence:\n        - step: builder\n```\n"
     )
 
@@ -262,7 +262,7 @@ def skill_frontmatter(name: str, extra: str = "license: MIT\n") -> str:
 SKILL_WORKFLOW = """\
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: analyst
       inputs:
@@ -288,35 +288,35 @@ class ValidateConformanceTest(unittest.TestCase):
             self.write(f"protocol/schemas/{name}.schema.json", json.dumps(schema))
         self.write(
             "protocol/schemas/examples/stage.valid.yaml",
-            'protocol: "0.2"\nstage:\n  sequence:\n    - step: thing\n',
+            'protocol: "0.3"\nstage:\n  sequence:\n    - step: thing\n',
         )
         self.write(
             "protocol/schemas/examples/stage.invalid.yaml",
-            'protocol: "0.2"\nstage:\n  sequence:\n    - step: thing\n      gate: also-a-gate\n',
+            'protocol: "0.3"\nstage:\n  sequence:\n    - step: thing\n      gate: also-a-gate\n',
         )
         self.write(
             "protocol/schemas/examples/step.valid.yaml",
-            'protocol: "0.2"\nstep:\n  role: analyst\n  output:\n    artifact: "{run}/a.md"\n',
+            'protocol: "0.3"\nstep:\n  role: analyst\n  output:\n    artifact: "{run}/a.md"\n',
         )
         self.write(
             "protocol/schemas/examples/step.invalid.yaml",
-            'protocol: "0.2"\nstep:\n  role: orchestrator\n',
+            'protocol: "0.3"\nstep:\n  role: orchestrator\n',
         )
         self.write(
             "protocol/schemas/examples/loop.valid.yaml",
-            'protocol: "0.2"\nloop:\n  exit_criteria: []\n  max_iterations: 3\n',
+            'protocol: "0.3"\nloop:\n  exit_criteria: []\n  max_iterations: 3\n',
         )
         self.write(
             "protocol/schemas/examples/loop.invalid.yaml",
-            'protocol: "0.2"\nloop:\n  exit_criteria: []\n',
+            'protocol: "0.3"\nloop:\n  exit_criteria: []\n',
         )
         self.write(
             "protocol/schemas/examples/trigger.valid.yaml",
-            'protocol: "0.2"\ntrigger:\n  kind: manual\n',
+            'protocol: "0.3"\ntrigger:\n  kind: manual\n',
         )
         self.write(
             "protocol/schemas/examples/trigger.invalid.yaml",
-            'protocol: "0.2"\ntrigger:\n  kind: quantum\n',
+            'protocol: "0.3"\ntrigger:\n  kind: quantum\n',
         )
         self.write(
             "protocol/schemas/examples/run-state.valid.yaml",
@@ -380,7 +380,7 @@ class ValidateConformanceTest(unittest.TestCase):
     def test_block_declaring_no_structure_reported(self) -> None:
         self.write(
             "workflows/demo.md",
-            frontmatter("demo") + '\n```yaml\nmetadata:\n  workflow:\n    protocol: "0.2"\n```\n',
+            frontmatter("demo") + '\n```yaml\nmetadata:\n  workflow:\n    protocol: "0.3"\n```\n',
         )
         self.assert_problem("declares none of: step, loop, trigger")
 
@@ -447,7 +447,7 @@ class ValidateConformanceTest(unittest.TestCase):
     def test_valid_fixture_failing_its_schema_reported(self) -> None:
         self.write(
             "protocol/schemas/examples/trigger.valid.yaml",
-            'protocol: "0.2"\ntrigger:\n  kind: quantum\n',
+            'protocol: "0.3"\ntrigger:\n  kind: quantum\n',
         )
         output = self.assert_problem("trigger.valid.yaml")
         self.assertIn("[trigger]", output)
@@ -455,7 +455,7 @@ class ValidateConformanceTest(unittest.TestCase):
     def test_invalid_fixture_passing_its_schema_reported(self) -> None:
         self.write(
             "protocol/schemas/examples/trigger.invalid.yaml",
-            'protocol: "0.2"\ntrigger:\n  kind: manual\n',
+            'protocol: "0.3"\ntrigger:\n  kind: manual\n',
         )
         self.assert_problem("the negative test proves nothing")
 
@@ -469,7 +469,7 @@ class ValidateConformanceTest(unittest.TestCase):
         # is validated like the required one rather than merely present.
         self.write(
             "protocol/schemas/examples/trigger.valid.manual.yaml",
-            'protocol: "0.2"\ntrigger:\n  kind: quantum\n',
+            'protocol: "0.3"\ntrigger:\n  kind: quantum\n',
         )
         output = self.assert_problem("trigger.valid.manual.yaml")
         self.assertIn("[trigger]", output)
@@ -479,7 +479,7 @@ class ValidateConformanceTest(unittest.TestCase):
         # that validates proves nothing, exactly as the required pair's does.
         self.write(
             "protocol/schemas/examples/trigger.invalid.pairing.yaml",
-            'protocol: "0.2"\ntrigger:\n  kind: manual\n',
+            'protocol: "0.3"\ntrigger:\n  kind: manual\n',
         )
         self.assert_problem("the negative test proves nothing")
 
@@ -543,7 +543,7 @@ class ValidateConformanceTest(unittest.TestCase):
             "```yaml\n"
             "metadata:\n"
             "  workflow:\n"
-            '    protocol: "0.2"\n'
+            '    protocol: "0.3"\n'
             "    loop:\n"
             "      exit_criteria:\n"
             '        - command: "echo ${HOME}"\n'
@@ -714,7 +714,7 @@ Prose.
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: analyst
       inputs:
@@ -730,7 +730,7 @@ metadata:
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     stage:
       sequence:
         - step: thing
@@ -743,7 +743,7 @@ description: A description.
 license: MIT
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: analyst
       inputs:
@@ -844,7 +844,7 @@ metadata:
         run can be populated from."""
         self.write(
             "workflows/stages/demo.md",
-            self.STAGE.replace("\n```yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n    stage:\n      sequence:\n        - step: thing\n```\n", ""),
+            self.STAGE.replace("\n```yaml\nmetadata:\n  workflow:\n    protocol: \"0.3\"\n    stage:\n      sequence:\n        - step: thing\n```\n", ""),
         )
         self.assert_problem("0 stage sequence blocks")
 
@@ -957,12 +957,12 @@ metadata:
         quoted = "\n".join(
             "> " + line if line else ">"
             for line in (
-                "```yaml", "metadata:", "  workflow:", '    protocol: "0.2"',
+                "```yaml", "metadata:", "  workflow:", '    protocol: "0.3"',
                 "    stage:", "      sequence:", "        - step: thing", "```",
             )
         )
         plain_sequence = (
-            "\n```yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n    stage:\n"
+            "\n```yaml\nmetadata:\n  workflow:\n    protocol: \"0.3\"\n    stage:\n"
             "      sequence:\n        - step: thing\n```\n"
         )
         assert plain_sequence in self.STAGE
@@ -981,7 +981,7 @@ metadata:
             "workflows/stages/gated.md",
             self.GATED_STAGE + "\n## Notes\n\nAn unclosed example:\n\n"
             "````markdown\n```yaml\nmetadata:\n  workflow:\n"
-            "    protocol: \"0.2\"\n    stage:\n      sequence:\n"
+            "    protocol: \"0.3\"\n    stage:\n      sequence:\n"
             "        - step: phantom\n```\n## Gates\n\n- **fake-gate** — x.\n",
         )
         code, output = self.run_main()
@@ -994,8 +994,8 @@ metadata:
         self.write(
             "workflows/stages/demo.md",
             self.STAGE.replace(
-                "```yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n    stage:",
-                "~~~yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n    stage:",
+                "```yaml\nmetadata:\n  workflow:\n    protocol: \"0.3\"\n    stage:",
+                "~~~yaml\nmetadata:\n  workflow:\n    protocol: \"0.3\"\n    stage:",
             ).replace(
                 "        - step: thing\n```",
                 "        - step: thing\n~~~",
@@ -1014,14 +1014,14 @@ metadata:
             "  ```yaml\n"
             "  metadata:\n"
             "    workflow:\n"
-            '      protocol: "0.2"\n'
+            '      protocol: "0.3"\n'
             "      stage:\n"
             "        sequence:\n"
             "          - step: thing\n"
             "  ```\n"
         )
         plain_sequence = (
-            "\n```yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n    stage:\n"
+            "\n```yaml\nmetadata:\n  workflow:\n    protocol: \"0.3\"\n    stage:\n"
             "      sequence:\n        - step: thing\n```\n"
         )
         assert plain_sequence in self.STAGE
@@ -1039,14 +1039,14 @@ metadata:
             "  ```yaml\n"
             "  metadata:\n"
             "    workflow:\n"
-            '      protocol: "0.2"\n'
+            '      protocol: "0.3"\n'
             "      stage:\n"
             "        sequence:\n"
             "          - step: thing\n"
             "  ```\n"
         )
         plain_sequence = (
-            "\n```yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n    stage:\n"
+            "\n```yaml\nmetadata:\n  workflow:\n    protocol: \"0.3\"\n    stage:\n"
             "      sequence:\n        - step: thing\n```\n"
         )
         assert plain_sequence in self.STAGE
@@ -1088,7 +1088,7 @@ metadata:
             "workflows/stages/demo.md",
             self.STAGE + "\nAn example of a whole stage block:\n\n"
             "````markdown\n```yaml\nmetadata:\n  workflow:\n"
-            "    protocol: \"0.2\"\n    stage:\n      sequence:\n"
+            "    protocol: \"0.3\"\n    stage:\n      sequence:\n"
             "        - step: example-step\n```\n````\n",
         )
         code, output = self.run_main()
@@ -1110,7 +1110,7 @@ metadata:
         self.write(
             "workflows/stages/demo.md",
             self.STAGE + "\n```yaml\nmetadata:\n  workflow:\n"
-            "    protocol: \"0.2\"\n    step:\n      role: analyst\n"
+            "    protocol: \"0.3\"\n    step:\n      role: analyst\n"
             "      output:\n        artifact: \"{run}/again.md\"\n```\n",
         )
         self.assert_problem("step `thing` declares 2 contract blocks")
@@ -1145,7 +1145,7 @@ metadata:
         self.write(
             "workflows/stages/demo.md",
             self.STAGE + "\n## Notes\n\nProse.\n\n"
-            "```yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n"
+            "```yaml\nmetadata:\n  workflow:\n    protocol: \"0.3\"\n"
             "    step:\n      role: analyst\n      output:\n"
             '        artifact: "{run}/stray.md"\n```\n',
         )
@@ -1196,7 +1196,7 @@ metadata:
             "workflows/stages/demo.md",
             self.STAGE
             + "\n### second\n\nProse.\n\n"
-            + "```yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n"
+            + "```yaml\nmetadata:\n  workflow:\n    protocol: \"0.3\"\n"
             + "    step:\n      role: analyst\n      output:\n"
             + "        artifact: \"{run}/second.md\"\n```\n",
         )
@@ -1305,7 +1305,7 @@ description: A later stage, whose members no pre-acceptance list may carry.
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     stage:
       sequence:
         - step: assemble
@@ -1318,7 +1318,7 @@ Prose.
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: implementer
       output:
@@ -1336,7 +1336,7 @@ description: A stage whose record order inverts its reading order.
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     stage:
       sequence:
         - step: make
@@ -1352,7 +1352,7 @@ Prose.
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: planner
       output:
@@ -1366,7 +1366,7 @@ Prose.
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: planner
       output:
@@ -1380,7 +1380,7 @@ Prose.
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: validator
       output:
@@ -1500,7 +1500,7 @@ metadata:
         """Same for a malformed `step` value under a valid heading — the role
         comparison must not read it before the schema error prints."""
         step_block = (
-            "```yaml\nmetadata:\n  workflow:\n    protocol: \"0.2\"\n"
+            "```yaml\nmetadata:\n  workflow:\n    protocol: \"0.3\"\n"
             "    step:\n      role: analyst\n      inputs:\n"
             '        - artifact: "{run}/a.md"\n          required: true\n'
             "      output:\n" '        artifact: "{run}/b.md"\n'
@@ -1512,7 +1512,7 @@ metadata:
             self.STAGE.replace(
                 step_block,
                 "```yaml\nmetadata:\n  workflow:\n"
-                '    protocol: "0.2"\n    step: malformed\n```',
+                '    protocol: "0.3"\n    step: malformed\n```',
             ),
         )
         code, output = self.run_main()
@@ -1545,7 +1545,7 @@ Prose.
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: planner
       inputs:
@@ -1558,7 +1558,7 @@ metadata:
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     stage:
       sequence:
         - step: phasedstep
@@ -1723,7 +1723,7 @@ Prose.
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: analyst
       inputs: []
@@ -1738,7 +1738,7 @@ Prose.
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: analyst
       inputs:
@@ -1751,7 +1751,7 @@ metadata:
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     stage:
       sequence:
         - step: maker
@@ -1864,7 +1864,7 @@ Prose.
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: planner
       inputs:
@@ -1877,7 +1877,7 @@ metadata:
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     stage:
       sequence:
         - step: twicestep
@@ -2155,7 +2155,7 @@ Prose.
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: planner
       inputs:
@@ -2172,7 +2172,7 @@ metadata:
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     stage:
       sequence:
         - step: phasedplanner
@@ -2194,7 +2194,7 @@ description: A stage that declares a gate.
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     stage:
       sequence:
         - gate: demo-approval

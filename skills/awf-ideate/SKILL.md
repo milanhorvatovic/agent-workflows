@@ -4,7 +4,7 @@ description: Explores the solution space a brief opens — three to five genuine
 license: MIT
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: planner
       inputs:

@@ -6,7 +6,7 @@
 # The same normalized run-relative shape binds inputs and outputs alike.
 # One fault, so this fixture proves the input side and
 # `step.invalid.output-alias.yaml` proves the output side (spec §8.1).
-protocol: "0.2"
+protocol: "0.3"
 step:
   role: analyst
   inputs:

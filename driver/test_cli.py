@@ -417,8 +417,8 @@ class CliTest(unittest.TestCase):
             state_path.read_text(encoding="utf-8")
             .replace("status: skipped", "status: done")
             .replace(
-                '  protocol: "0.2"\n',
-                '  protocol: "0.2"\n  risk: R1\n  risk_rationale: "small"\n',
+                '  protocol: "0.3"\n',
+                '  protocol: "0.3"\n  risk: R1\n  risk_rationale: "small"\n',
             )
             .replace(
                 "gates: []\n",
@@ -677,8 +677,8 @@ class CliTest(unittest.TestCase):
         )
         state_path = self.base / "runs" / "2026-08-17-x" / "workflow-state.yaml"
         original = state_path.read_text(encoding="utf-8").replace(
-            '  protocol: "0.2"\n',
-            '  protocol: "0.2"\n  risk: R1\n  risk_rationale: "small"\n',
+            '  protocol: "0.3"\n',
+            '  protocol: "0.3"\n  risk: R1\n  risk_rationale: "small"\n',
         )
         for name, document in {
             # The gate the class came from was never reached.
@@ -722,8 +722,8 @@ class CliTest(unittest.TestCase):
         state_path.write_text(
             state_path.read_text(encoding="utf-8")
             .replace(
-                '  protocol: "0.2"\n',
-                '  protocol: "0.2"\n  risk: R1\n  risk_rationale: "small"\n',
+                '  protocol: "0.3"\n',
+                '  protocol: "0.3"\n  risk: R1\n  risk_rationale: "small"\n',
             )
             .replace("  - id: make\n    status: pending", "  - id: make\n    status: done")
             .replace("  - id: check\n    status: skipped", "  - id: check\n    status: done")

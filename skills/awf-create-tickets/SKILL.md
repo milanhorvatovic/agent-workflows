@@ -4,7 +4,7 @@ description: Turns parsed work items into self-contained tickets in the project'
 license: MIT
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: planner
       inputs:

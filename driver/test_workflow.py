@@ -22,7 +22,7 @@ description: A stage.
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     stage:
       sequence:
         - step: make
@@ -39,7 +39,7 @@ Prose.
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: analyst
       inputs:
@@ -195,7 +195,7 @@ class SyntheticTreeTest(unittest.TestCase):
                 self.write(
                     "workflows/stages/intake.md",
                     STAGE + f"\n{heading}\n\n```yaml\nmetadata:\n  workflow:\n"
-                    '    protocol: "0.2"\n    step:\n      role: analyst\n'
+                    '    protocol: "0.3"\n    step:\n      role: analyst\n'
                     '      output:\n        artifact: "{run}/moved.md"\n```\n',
                 )
                 with self.assertRaises(WorkflowError) as caught:
@@ -208,7 +208,7 @@ class SyntheticTreeTest(unittest.TestCase):
         self.write(
             "workflows/stages/intake.md",
             STAGE + "\n```yaml\nmetadata:\n  workflow:\n"
-            '    protocol: "0.2"\n    step:\n      role: analyst\n      output:\n'
+            '    protocol: "0.3"\n    step:\n      role: analyst\n      output:\n'
             '        artifact: "{run}/moved.md"\n```\n',
         )
         with self.assertRaises(WorkflowError) as caught:
@@ -324,7 +324,7 @@ class SyntheticTreeTest(unittest.TestCase):
         extra = STAGE.replace(
             "## Gates",
             "### extra (analyst)\n\n```yaml\nmetadata:\n  workflow:\n"
-            '    protocol: "0.2"\n    step:\n      role: analyst\n      output:\n'
+            '    protocol: "0.3"\n    step:\n      role: analyst\n      output:\n'
             '        artifact: "{run}/x.md"\n```\n\n## Gates',
         )
         self.write("workflows/stages/intake.md", extra)
@@ -399,7 +399,7 @@ class SyntheticTreeTest(unittest.TestCase):
             "---\nname: other\ndescription: A stage of gates.\n---\n\n"
             "# Stage: other\n\n"
             "```yaml\nmetadata:\n  workflow:\n"
-            '    protocol: "0.2"\n    stage:\n      sequence:\n        - gate: sign\n'
+            '    protocol: "0.3"\n    stage:\n      sequence:\n        - gate: sign\n'
             "```\n\n## Gates\n\n- **sign** — a gate.\n"
         )
         self.compose_two_stages(gates_only)
@@ -497,7 +497,7 @@ class SyntheticTreeTest(unittest.TestCase):
             with self.subTest(case=name):
                 self.write(
                     "workflows/stages/intake.md",
-                    STAGE.replace('    protocol: "0.2"\n    stage:', replacement, 1),
+                    STAGE.replace('    protocol: "0.3"\n    stage:', replacement, 1),
                 )
                 with self.assertRaises(WorkflowError):
                     load_workflow(self.framework, "demo")
@@ -526,7 +526,7 @@ class SyntheticTreeTest(unittest.TestCase):
         for value in ("", ".", "0", "0.", ".2", "0.2.0", "x.y", " 0.2", "0.2\n"):
             with self.subTest(value=value):
                 self.assertFalse(implements(value))
-        self.assertTrue(implements("0.2"))
+        self.assertTrue(implements("0.3"))
 
     def test_a_version_is_compared_without_converting_it(self) -> None:
         """The schema puts no ceiling on a component's digits and Python
@@ -540,7 +540,7 @@ class SyntheticTreeTest(unittest.TestCase):
         self.assertTrue(implements("0.02"))
         self.write(
             "workflows/stages/intake.md",
-            STAGE.replace('protocol: "0.2"', 'protocol: "0.%s"' % ("1" * 5000), 1),
+            STAGE.replace('protocol: "0.3"', 'protocol: "0.%s"' % ("1" * 5000), 1),
         )
         with self.assertRaises(WorkflowError) as caught:
             load_workflow(self.framework, "demo")
@@ -551,7 +551,7 @@ class SyntheticTreeTest(unittest.TestCase):
         earlier minor is not that, and where its shapes differ the load
         fails on the declaration it is missing rather than on its version."""
         self.write(
-            "workflows/stages/intake.md", STAGE.replace('protocol: "0.2"', 'protocol: "0.1"')
+            "workflows/stages/intake.md", STAGE.replace('protocol: "0.3"', 'protocol: "0.1"')
         )
         self.assertEqual(load_workflow(self.framework, "demo").stages[0].name, "intake")
 
@@ -607,7 +607,7 @@ class SyntheticTreeTest(unittest.TestCase):
                 self.write(
                     "workflows/stages/intake.md",
                     STAGE + "\n```yaml\nmetadata:\n  workflow:\n"
-                    f'    protocol: "0.2"\n    {structure}: null\n```\n',
+                    f'    protocol: "0.3"\n    {structure}: null\n```\n',
                 )
                 with self.assertRaises(WorkflowError) as caught:
                     load_workflow(self.framework, "demo")
@@ -729,7 +729,7 @@ class SyntheticTreeTest(unittest.TestCase):
         declaration rather than the prose a narrower test would skip it as."""
         for spelling in (
             "metadata:\n  workflow: [one, two]\n",
-            "metadata: {workflow: {protocol: '0.2'}}\n",
+            "metadata: {workflow: {protocol: '0.3'}}\n",
             'metadata:\n  "workflow": [one, two]\n',
             # A quoted span followed by `:` is a key, and a key is
             # structure — blanking it with the quoted values would file a
@@ -880,7 +880,7 @@ class SyntheticTreeTest(unittest.TestCase):
             "workflows/stages/intake.md",
             STAGE
             + "\n````md\n```yaml\nmetadata:\n  workflow:\n"
-            '    protocol: "0.2"\n    step:\n      role: planner\n      output:\n'
+            '    protocol: "0.3"\n    step:\n      role: planner\n      output:\n'
             '        artifact: "{run}/x.md"\n```\n````\n',
         )
         workflow = load_workflow(self.framework, "demo")

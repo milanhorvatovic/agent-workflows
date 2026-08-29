@@ -4,7 +4,7 @@ description: Revises a phase plan against validation findings, human direction f
 license: MIT
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: planner
       inputs:

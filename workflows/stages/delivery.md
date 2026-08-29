@@ -12,7 +12,7 @@ The sequence (spec §9.4) declares the members in record order, which is reading
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     stage:
       sequence:
         - step: deliver-prepare
@@ -29,7 +29,7 @@ Synthesize the delivery artifact from the run's evidence — brief, implementati
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: analyst
       inputs:
@@ -62,7 +62,7 @@ Runs with fresh context in every mode (spec §4). The run's final validation: ar
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: validator
       inputs:

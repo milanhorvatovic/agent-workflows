@@ -4,7 +4,7 @@ description: Applies the review's resolved findings within the plan's declared f
 license: MIT
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: implementer
       inputs:

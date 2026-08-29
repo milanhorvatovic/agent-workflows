@@ -4,7 +4,7 @@ description: Executes an approved phase plan faithfully — step by step within 
 license: MIT
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: implementer
       inputs:

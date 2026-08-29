@@ -4,7 +4,7 @@ description: Analyzes the codebase areas a brief touches — structure, patterns
 license: MIT
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: analyst
       inputs:

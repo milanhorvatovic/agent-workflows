@@ -15,7 +15,7 @@ run:
   workflow: feature
   risk: R2
   risk_rationale: "single module, no security surface, one phase"
-  protocol: "0.2"
+  protocol: "0.3"
 steps:
   - id: brief-confirm # its output arrived by import
     status: skipped
