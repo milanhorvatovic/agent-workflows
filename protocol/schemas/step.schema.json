@@ -45,7 +45,7 @@
                 "type": "string",
                 "minLength": 1,
                 "pattern": "^\\{run\\}(?:/(?!\\.{1,2}(?:/|$))(?!(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Mm][1-9\u00b9\u00b2\u00b3]|[Ll][Pp][Tt][1-9\u00b9\u00b2\u00b3])(?:\\.|/|$))[^/\\\\:?*\"<>|\u0000-\u001f\u007f-\u009f\u2028\u2029]+(?<![. ]))+(?![\\s\\S])",
-                "description": "Artifact path addressed relative to the run directory, e.g. \"{run}/brief.md\" (spec section 8.1). Constrained to the same normalized run-relative shape a lineage record carries: anchored at `{run}/`, no `.` or `..` segments, no empty segments, no backslashes, no control characters or U+2028/U+2029 line separators, no reserved device basenames, no trailing dots or spaces, and no colon anywhere. The executor joins this string to the run directory, so a schema that left the shape open would accept a declaration naming a file outside the run, or a Windows alias of one inside it."
+                "description": "Artifact path addressed relative to the run directory, e.g. \"{run}/brief.md\" (spec section 8.1). Constrained to the same normalized run-relative shape a lineage record carries: anchored at `{run}/`, no `.` or `..` segments, no empty segments, no backslashes, no control characters or U+2028/U+2029 line separators, no reserved device basenames, no trailing dots or spaces, and none of the characters a Windows filename forbids (`:`, `?`, `*`, `\"`, `<`, `>`, `|`). The executor joins this string to the run directory, so a schema that left the shape open would accept a declaration naming a file outside the run, or a Windows alias of one inside it."
               },
               "required": {
                 "type": "boolean",
