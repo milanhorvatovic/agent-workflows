@@ -11,6 +11,11 @@ does not — Windows, through this library — the write is atomic and the
 file's own bytes are synced, and when the entry follows is the
 filesystem's to decide.
 
+Creation writes one thing besides: `{run}/request.md`, what the run was
+created from (§8.7). It is the one artifact no step produces — nothing
+precedes the first step to write it — so it lands here, ahead of the state
+that manifests it, rather than through an executor step that cannot exist.
+
 What lands here stops deliberately short of the rest. Creation bootstraps
 the intake records alone — §10 has the list complete only from the intake
 gate's acceptance, and §7 makes that acceptance the write that populates
@@ -33,7 +38,14 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import PROTOCOL, PROTOCOL_VERSION, implements
+from . import (
+    PROTOCOL,
+    PROTOCOL_VERSION,
+    REQUEST_ARTIFACT,
+    REQUEST_FILE,
+    implements,
+    names_request,
+)
 from .protocol_yaml import ProtocolYamlError, dumps, loads
 from .workflow import PHASE, PHASE_SET, RUN_RELATIVE, Workflow, family
 
@@ -156,14 +168,36 @@ def _is_run_id(value: object) -> bool:
 
 
 def create_run(
-    runs_dir: Path, run_id: str, workflow: Workflow, protocol: str
+    runs_dir: Path, run_id: str, workflow: Workflow, protocol: str, request: str
 ) -> tuple[Path, RunState]:
-    """Create `{artifacts}/runs/<run-id>/` and its bootstrap state: the entry
-    stage's records alone, conditional members `skipped`, the rest `pending`
-    (§10). The directory MUST NOT pre-exist — concurrent runs and re-runs
-    never share one (§8.1)."""
+    """Create `{artifacts}/runs/<run-id>/`, the request it was created with
+    (§8.7), and its bootstrap state: the entry stage's records alone,
+    conditional members `skipped`, the rest `pending` (§10). The directory
+    MUST NOT pre-exist — concurrent runs and re-runs never share one (§8.1).
+
+    An empty request is refused rather than written. §8.7 has every run hold
+    one and the entry step declare it required, so a run created around a file
+    with nothing in it is a run whose first step has nothing to restate — the
+    same dead run that not writing the file at all would leave, and worth no
+    more than the id it would spend.
+    """
     if not _is_run_id(run_id):
         raise StateError(f"not a run id: {run_id!r}")
+    if not request.strip():
+        raise StateError("the request is empty — a run is created from one (spec §8.7)")
+    # A request that UTF-8 cannot carry, refused here rather than at the write.
+    # POSIX decodes argv with `surrogateescape`, so a byte no encoding claims
+    # reaches `--request` as a lone surrogate: it clears the emptiness check,
+    # and `_write_request` then raises `UnicodeEncodeError` — a `ValueError`,
+    # which the command surface does not catch, so the run leaves as a
+    # traceback rather than an exit code. The run-id guard refuses surrogates
+    # for this reason already; a request is the other string a caller hands in.
+    try:
+        request.encode("utf-8")
+    except UnicodeEncodeError as error:
+        raise StateError(
+            f"the request is not text UTF-8 can carry: {error}"
+        ) from None
     # The version is written into the document and `load` holds every
     # document to it, so an unchecked one here creates a durable run this
     # same module refuses to read back — a directory and a state file that
@@ -188,6 +222,15 @@ def create_run(
                 os.mkdir(run_id, dir_fd=runs)
         except FileExistsError:
             raise StateError(f"run {run_id!r} already exists") from None
+        # Before the state that manifests it, so the manifest never names a
+        # file that is not there yet — the same order §8.6 gives imports, and
+        # for the same reason: the readers include the intake stage, and a
+        # manifest only grows.
+        try:
+            _write_request(run_dir, request, runs)
+        except BaseException:
+            _remove_run(run_dir, runs)
+            raise
         created = _bootstrap(run_dir, run_id, workflow, protocol, runs)
         # The state file's own durability says nothing about the directory
         # holding it: `_bootstrap` syncs the file and the run directory,
@@ -215,19 +258,20 @@ def create_run(
 def _remove_run(run_dir: Path, runs: int | None) -> None:
     """Undo a creation that failed, so its id stays usable.
 
-    The directory exists only to hold this run's state, and §8.1 makes a
+    The directory exists only to hold this run's own files, and §8.1 makes a
     pre-existing one a refusal — so leaving one behind would burn the id:
     the retry meets "already exists" and the run it names has no state to
-    resume. The state file goes with it, since a write can fail after the
-    rename has published it — the sync that follows says it did not reach
-    the device — and a directory holding that file is not empty for `rmdir`
-    to take. Nothing else has written here: the directory was made moments
-    ago by the call now rolling itself back, and the failure it is rolling
-    back from is what propagates.
+    resume. Both files creation writes go with it — the request (§8.7) and
+    the state — since either can be left behind by a failure after its own
+    write, and a directory holding one is not empty for `rmdir` to take.
+    Nothing else has written here: the directory was made moments ago by the
+    call now rolling itself back, and the failure it is rolling back from is
+    what propagates.
     """
     try:
         if runs is None:
-            (run_dir / STATE_FILE).unlink(missing_ok=True)
+            for name in (STATE_FILE, REQUEST_FILE):
+                (run_dir / name).unlink(missing_ok=True)
             run_dir.rmdir()
         else:
             # Bound to the directory rather than named through it. A path
@@ -242,13 +286,56 @@ def _remove_run(run_dir: Path, runs: int | None) -> None:
                 run_dir.name, os.O_RDONLY | os.O_DIRECTORY | _NOFOLLOW, dir_fd=runs
             )
             try:
-                with contextlib.suppress(FileNotFoundError):
-                    os.unlink(STATE_FILE, dir_fd=inside)
+                for name in (STATE_FILE, REQUEST_FILE):
+                    with contextlib.suppress(FileNotFoundError):
+                        os.unlink(name, dir_fd=inside)
             finally:
                 os.close(inside)
             os.rmdir(run_dir.name, dir_fd=runs)
     except OSError:
         pass
+
+
+def _write_request(run_dir: Path, request: str, runs: int | None) -> None:
+    """Write `{run}/request.md` — what the run was created from (§8.7).
+
+    Verbatim, and as bytes. The request is what the run was given rather than
+    something authored against a structure, so there is no template to scaffold
+    from and nothing to normalize; text mode would translate line endings and
+    hand the entry step something other than the words that started the run.
+
+    `O_EXCL` refuses a name already taken. Nothing of this run's can be there —
+    the directory was created moments ago by the call this runs inside — so
+    what it stops is something planted in the window between, a link included,
+    which `O_EXCL` reports as EEXIST as readily as a regular file. The file's
+    own bytes are synced here; the directory entry naming it is persisted by
+    the state save that follows, which fsyncs this same directory.
+
+    One direct write rather than the temp-and-replace the state file takes,
+    and the ordering is what makes that safe: nothing precedes this in a
+    directory created moments ago, and the document that would name a partial
+    copy is written afterwards — so a crash partway through leaves a run with
+    no state at all, which nothing resumes, rather than a manifest pointing at
+    half a request.
+    """
+    text = request.encode("utf-8")
+    with run_directory(run_dir, runs) as directory:
+        descriptor = os.open(
+            REQUEST_FILE if directory is not None else os.fspath(run_dir / REQUEST_FILE),
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | _NOFOLLOW,
+            0o666,
+            dir_fd=directory,
+        )
+        # `fdopen` takes ownership only once it returns a stream, so a failure
+        # there leaves the descriptor this function's to close.
+        try:
+            stream = os.fdopen(descriptor, "wb")
+        except BaseException:
+            os.close(descriptor)
+            raise
+        with stream:
+            stream.write(text)
+            _sync(stream)
 
 
 def _bootstrap(
@@ -264,7 +351,11 @@ def _bootstrap(
             for member in entry_stage.members
         ],
         gates=[],
-        artifacts=[],
+        # The request is in the manifest from the first write (§8.2, §8.7):
+        # `_write_request` has already landed it, and the entry step declares
+        # it required, so a bootstrap manifest without it would block the run
+        # at the step it was created to run.
+        artifacts=[REQUEST_ARTIFACT],
     )
     try:
         save(state, run_dir, runs)
@@ -1024,9 +1115,9 @@ def check_manifest(state: RunState, workflow: Workflow) -> None:
                 f"step {record.id!r} is done and {produced!r} is not in the "
                 f"manifest (spec §8.2)"
             )
-    # And the other direction. §8.2 makes the manifest the record of what
-    # the run produced or imported, so a path no composed step declares is
-    # neither — content nothing wrote, which a later input or phase-set
+    # And the other direction. §8.2 makes the manifest the record of what the
+    # run produced, imported, or was given at creation, so a path that is none
+    # of the three is content nothing wrote, which a later input or phase-set
     # resolution would read as an artifact the run holds. Matched against
     # the family a declaration names rather than the phase now executing: a
     # run that has passed through phases holds each phase's own artifact,
@@ -1037,6 +1128,12 @@ def check_manifest(state: RunState, workflow: Workflow) -> None:
         for declaration in stage.steps.values()
     ]
     for artifact in state.artifacts:
+        # The request is the third category, and the one entry no step
+        # declares: §8.7 has the executor land it at creation, so no `output`
+        # names it and matching it against the families would report the one
+        # artifact every run is obliged to hold as the one nothing wrote.
+        if artifact == REQUEST_ARTIFACT:
+            continue
         if not any(family.fullmatch(artifact) for family in families):
             raise StateError(
                 f"{artifact!r} is in the manifest and no composed step declares "
@@ -1543,6 +1640,14 @@ def _validate(data: object, path: Path) -> RunState:
         isinstance(x, str) and x for x in artifacts_data
     ):
         raise bad("artifacts is not a list of paths")
+    # Every run holds the request it was created from, and the manifest is
+    # where a reader finds it (§8.2, §8.7) — the `contains` the run-state
+    # schema carries, mirrored here because this driver reads state it did not
+    # write. A document without it describes a run whose entry step could never
+    # have been given what it restates, and `save` round-trips through this
+    # function, so it refuses writing such a document as readily as reading one.
+    if REQUEST_ARTIFACT not in artifacts_data:
+        raise bad(f"artifacts does not carry {REQUEST_ARTIFACT!r} (spec §8.7)")
 
     # §10's enrichment is a mapping or null, and this module is the one
     # writer of the file: a string or a list accepted here is a string or a
@@ -1598,6 +1703,19 @@ def _validate_imports(
         artifact, source, at = entry["artifact"], entry["from"], entry["at"]
         if not isinstance(artifact, str) or not IMPORT_PATH.match(artifact):
             raise bad(f"import artifact is not a {{run}}-relative path: {artifact!r}")
+        # The request is never imported (§8.7), which the schema excludes
+        # outright: an import adopts an artifact a step of the source run
+        # produced, and the request has no producing step. Checked ahead of the
+        # manifest, since it is in every manifest and would otherwise pass the
+        # test that catches an unmanifested lineage. Case folding aside: the copy
+        # lands at the path the record names, and `{run}/REQUEST.md` is that
+        # same file wherever the filesystem folds case, so an exact comparison
+        # would let a lineage record overwrite the request it cannot name.
+        if names_request(artifact):
+            raise bad(
+                f"import {artifact!r} names {REQUEST_ARTIFACT} — the request is "
+                f"never imported (spec §8.7)"
+            )
         if artifact not in manifest:
             raise bad(f"import {artifact!r} is not in the manifest (spec §8.6)")
         if not isinstance(source, str) or not PLAIN_NAME.match(source):

@@ -1,0 +1,21 @@
+# INVALID on purpose — schema validation MUST reject this fixture:
+# - imports[0].artifact is `{run}/request.md`, which is never imported. An
+#   import adopts an artifact some step of the source run produced, the request
+#   has no producing step for §8.6's derivation-closure rule to reach, and a run
+#   executing another run's plan is still a run somebody started for a reason of
+#   its own (spec §8.6, §8.7).
+# Manifested and sourced correctly otherwise, so the path itself is the fault.
+run:
+  id: 2026-08-16-feature-slug
+  workflow: feature
+  protocol: "0.2"
+steps:
+  - id: brief-confirm
+    status: skipped
+gates: []
+artifacts:
+  - "{run}/request.md"
+imports:
+  - artifact: "{run}/request.md"
+    from: 2026-08-12-plan-slug
+    at: "2026-08-16T09:00:00Z"

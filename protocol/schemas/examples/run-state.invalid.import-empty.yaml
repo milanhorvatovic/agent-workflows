@@ -11,5 +11,6 @@ steps:
     status: done
 gates: []
 artifacts:
+  - "{run}/request.md"
   - "{run}/brief.md"
 imports: []

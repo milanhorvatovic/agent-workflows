@@ -12,6 +12,7 @@ steps:
     status: skipped
 gates: []
 artifacts:
+  - "{run}/request.md"
   - "{run}/plan?.md"
 imports:
   - artifact: "{run}/plan?.md"

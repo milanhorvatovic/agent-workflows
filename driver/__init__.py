@@ -18,6 +18,46 @@ PROTOCOL = "0.2"
 # a `metadata.workflow` block and in a run's own state alike.
 PROTOCOL_VERSION = re.compile(r"^[0-9]+\.[0-9]+$")
 
+# The request the run was created from (§8.7). It is not a step's output —
+# nothing precedes the first step to produce it — so the executor lands it at
+# creation and manifests it, which is what lets the entry step declare what it
+# restates instead of reaching for something no surface carries (§9.1). The
+# path is the protocol's rather than any one module's: creation writes it,
+# the declaration reader refuses a step that claims it as an output, and the
+# state reader requires it in every manifest.
+REQUEST_FILE = "request.md"
+REQUEST_ARTIFACT = f"{{run}}/{REQUEST_FILE}"
+
+def names_request(artifact: str) -> bool:
+    """Whether a declared path names the run's request, case folding aside.
+
+    `{run}/REQUEST.md` is a different string and the same file wherever the
+    filesystem folds case — macOS and Windows by default — so a rule that
+    compared exactly would let a step declare the request as its output, or a
+    lineage record name it as an import, and overwrite the one artifact §8.7
+    says nothing in the run rewrites. §8.6 already settled that string equality
+    is the wrong test where platforms fold: it decides self-import by directory
+    identity for the same reason, and this is that reasoning applied to a name.
+
+    `casefold` reserves more than any one filesystem aliases, and that is the
+    choice rather than an accident. Three non-ASCII characters fold into this
+    path — every codepoint was enumerated — and they do not divide evenly.
+    `ſ` (U+017F) upper-cases to `S`, one code unit to one, which is what an
+    upcase table expresses: `{run}/requeſt.md` genuinely is the request on
+    NTFS, and an A–Z table would have missed it. `ﬅ` and `ﬆ` fold to `st`, one
+    character to two, which such a table cannot do — so those two stay distinct
+    on the filesystems this driver is known to run on, and refusing them
+    reserves a name nothing aliases.
+
+    Reserving them anyway, because the two errors are not the same size. A name
+    wrongly refused is a declaration that fails loudly and gets renamed; a name
+    wrongly allowed, on some filesystem that does fold wider than NTFS, silently
+    overwrites the request mid-run — which is the failure §8.7 exists to
+    prevent, and the one no reader would see. The approximation is static by
+    necessity: these are declarations, checked without a filesystem to ask.
+    """
+    return artifact.casefold() == REQUEST_ARTIFACT
+
 
 def implements(version: str) -> bool:
     """Whether this driver implements a well-formed declared version (§11).

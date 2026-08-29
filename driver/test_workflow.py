@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import itertools
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -921,6 +923,76 @@ class SyntheticTreeTest(unittest.TestCase):
             load_workflow(self.framework, "demo")
         self.assertIn("carries {P}", str(caught.exception))
 
+    def test_a_step_claiming_the_request_as_its_output_is_an_error(self) -> None:
+        """§8.7: the request is what the run was created from and no step
+        produces it. One declaring it as its output would overwrite mid-run the
+        words the entry step exists to restate, while the manifest went on
+        saying the request was there. The step schema refuses it, and this
+        reader holds the framework it was pointed at, which no conformance run
+        has necessarily seen."""
+        self.write(
+            "workflows/stages/intake.md",
+            STAGE.replace('artifact: "{run}/out.md"', 'artifact: "{run}/request.md"'),
+        )
+        with self.assertRaises(WorkflowError) as caught:
+            load_workflow(self.framework, "demo")
+        self.assertIn("no step produces it", str(caught.exception))
+
+    def test_a_case_variant_of_the_request_is_refused_as_an_output(self) -> None:
+        """`{run}/REQUEST.md` is a different declaration and the same file
+        wherever the filesystem folds case — macOS and Windows by default — so
+        an exact comparison would hand a step the one artifact §8.7 says
+        nothing in the run rewrites. §8.6 already settled that string equality
+        is the wrong test where platforms fold; this is that rule applied to a
+        name rather than a directory."""
+        for variant in (
+            "{run}/REQUEST.md",
+            "{run}/Request.md",
+            "{run}/request.MD",
+            # Folds no ASCII table reaches: `ſ` folds to `s`, and the `ﬅ`/`ﬆ`
+            # ligatures each fold to the `st` pair — one character standing for
+            # two, which a per-character class cannot express either.
+            "{run}/requeſt.md",
+            "{run}/requeﬆ.md",
+            "{run}/requeﬅ.MD",
+        ):
+            with self.subTest(artifact=variant):
+                self.write(
+                    "workflows/stages/intake.md",
+                    STAGE.replace('artifact: "{run}/out.md"', f'artifact: "{variant}"'),
+                )
+                with self.assertRaises(WorkflowError) as caught:
+                    load_workflow(self.framework, "demo")
+                self.assertIn("no step produces it", str(caught.exception))
+
+    def test_a_path_merely_resembling_the_request_is_allowed(self) -> None:
+        """The fold answers one name, not a family: `{run}/requests.md` and a
+        request under a subdirectory are different files on every filesystem,
+        and refusing them would take paths the protocol never reserved."""
+        for allowed in ("{run}/requests.md", "{run}/sub/request.md"):
+            with self.subTest(artifact=allowed):
+                self.write(
+                    "workflows/stages/intake.md",
+                    STAGE.replace('artifact: "{run}/out.md"', f'artifact: "{allowed}"'),
+                )
+                workflow = load_workflow(self.framework, "demo")
+                self.assertEqual(workflow.step("make").output_artifact, allowed)
+
+    def test_the_request_is_refused_only_as_an_output(self) -> None:
+        """Declaring it as an input is what the entry step does — the refusal
+        is about producing it, not about naming it."""
+        self.write(
+            "workflows/stages/intake.md",
+            STAGE.replace(
+                'artifact: "{run}/in.md"', 'artifact: "{run}/request.md"'
+            ),
+        )
+        workflow = load_workflow(self.framework, "demo")
+        self.assertIn(
+            "{run}/request.md",
+            [declared.artifact for declared in workflow.step("make").inputs],
+        )
+
     def test_an_artifact_outside_the_run_is_an_error(self) -> None:
         """§8.1 puts a run's artifacts under `{run}`, and a contract naming
         anything else is a path the completion manifests and a later
@@ -1033,6 +1105,92 @@ class SyntheticTreeTest(unittest.TestCase):
             MEMBER_ID.pattern,
             schema["$defs"]["member"]["properties"]["step"]["pattern"],
         )
+
+    def test_a_declared_artifact_takes_the_schema_path_shape(self) -> None:
+        """§8.1 addresses every input and output relative to `{run}`, and the
+        driver has always held declarations to that shape. The step schema left
+        it open, so a schema-only consumer accepted `/etc/passwd` as an output
+        and `{run}/request.md.` beside it — the trailing dot Windows strips,
+        which names the request without spelling it and which no fold reaches.
+        Three copies of one pattern now: the driver's, a lineage record's, and
+        a declaration's."""
+        import json
+
+        from driver.workflow import RUN_RELATIVE
+
+        schema = json.loads(
+            (REPO / "protocol" / "schemas" / "step.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        step = schema["properties"]["step"]["properties"]
+        self.assertEqual(
+            RUN_RELATIVE.pattern, step["output"]["properties"]["artifact"]["pattern"]
+        )
+        self.assertEqual(
+            RUN_RELATIVE.pattern,
+            step["inputs"]["items"]["properties"]["artifact"]["pattern"],
+        )
+
+    def test_the_refused_output_matches_the_schema(self) -> None:
+        """The step schema refuses `{run}/request.md` as an output and this
+        reader refuses it too, from either side of the same rule — so a rename
+        reaching one and not the other would leave the driver accepting a
+        declaration its own schema rejects. Pinned by agreement on what each
+        answers rather than by a shared string, since one is a pattern and the
+        other a fold: what has to match is the set of paths they refuse."""
+        import json
+
+        from driver import REQUEST_ARTIFACT, names_request
+
+        schema = json.loads(
+            (REPO / "protocol" / "schemas" / "step.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        patterns = [
+            re.compile(entry["pattern"])
+            for entry in schema["properties"]["step"]["properties"]["output"][
+                "properties"
+            ]["artifact"]["not"]["anyOf"]
+            if "pattern" in entry
+        ]
+
+        def schema_refuses(artifact: str) -> bool:
+            return any(pattern.search(artifact) for pattern in patterns)
+
+        # Every ASCII case of the path, every fold equivalent that reaches it —
+        # `ſ` for `s`, and the `ﬅ`/`ﬆ` ligatures for the `st` pair, which are the
+        # whole of what folds into this name — and neighbours that must stay
+        # legal. The pattern and the fold have to answer identically on all of
+        # them, or one surface refuses what the other accepts.
+        alternatives = {
+            "r": "rR", "e": "eE", "q": "qQ", "u": "uU",
+            "s": "sSſ", "t": "tT", "m": "mM", "d": "dD",
+        }
+        candidates = [
+            "{run}/" + "".join(combination)
+            for combination in itertools.product(
+                *(alternatives.get(character, character) for character in "request.md")
+            )
+        ]
+        candidates += [
+            f"{{run}}/{prefix}{ligature}{suffix}"
+            for ligature in ("ﬅ", "ﬆ")
+            for prefix in ("reque", "REQUE", "ReQuE")
+            for suffix in (".md", ".MD", ".Md")
+        ]
+        candidates += [
+            "{run}/requests.md",
+            "{run}/sub/request.md",
+            "{run}/brief.md",
+            "{run}/reques.md",
+            "{run}/request.md.bak",
+        ]
+        self.assertIn(REQUEST_ARTIFACT, candidates)
+        for artifact in candidates:
+            if names_request(artifact) != schema_refuses(artifact):
+                self.fail(f"schema and fold disagree on {artifact!r}")
 
     def test_unknown_keys_inside_a_declared_structure_are_errors(self) -> None:
         """§9.5: unknown keys inside a declared structure are authoring

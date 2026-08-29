@@ -102,8 +102,11 @@
       ]
     },
     "artifacts": {
-      "description": "The run manifest: artifacts the run has produced or imported, kept current by the executor (spec sections 8.2 and 8.6).",
+      "description": "The run manifest: artifacts the run has produced, imported, or was given at creation, kept current by the executor (spec sections 8.2, 8.6, and 8.7). `{run}/request.md` is always among them — the request is materialized when the run is created and before any step runs (spec section 8.7), so a manifest without it describes a run whose entry step could never have been given what it restates.",
       "type": "array",
+      "contains": {
+        "const": "{run}/request.md"
+      },
       "items": {
         "type": "string",
         "minLength": 1
@@ -168,7 +171,10 @@
         "artifact": {
           "type": "string",
           "pattern": "^\\{run\\}(?:/(?!\\.{1,2}(?:/|$))(?!(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Mm][1-9\u00b9\u00b2\u00b3]|[Ll][Pp][Tt][1-9\u00b9\u00b2\u00b3])(?:\\.|/|$))[^/\\\\:?*\"<>|\u0000-\u001f\u007f-\u009f\u2028\u2029]+(?<![. ]))+(?![\\s\\S])",
-          "description": "The `{run}`-relative path of the imported copy — the same relative path it had in the source run, normalized: anchored at `{run}/`, no `.` or `..` segments, no empty segments, no backslashes, no control characters or U+2028/U+2029 line separators, no trailing dots or spaces, and no colon anywhere — like a run id's, since on NTFS `name:stream` aliases an alternate data stream and `brief.md::$DATA` would overwrite brief.md while recording a different path (spec section 8.6). The pattern is the schema's half of path confinement; refusing link traversal is the executor's, being invisible to a document."
+          "not": {
+          "pattern": "^\\{run\\}/[Rr][Ee][Qq][Uu][Ee](?:[Ssſ][Tt]|[ﬅﬆ])\\.[Mm][Dd](?![\\s\\S])"
+        },
+        "description": "The `{run}`-relative path of the imported copy — the same relative path it had in the source run, normalized: anchored at `{run}/`, no `.` or `..` segments, no empty segments, no backslashes, no control characters or U+2028/U+2029 line separators, no trailing dots or spaces, and no colon anywhere — like a run id's, since on NTFS `name:stream` aliases an alternate data stream and `brief.md::$DATA` would overwrite brief.md while recording a different path (spec section 8.6). The pattern is the schema's half of path confinement; refusing link traversal is the executor's, being invisible to a document. `{run}/request.md` is excluded outright, and so is every spelling that case-folds to it — `{run}/REQUEST.md`, and `{run}/requeſt.md` where U+017F upper-cases to `S` one code unit to one, are different strings and the same file wherever a filesystem folds case; the reservation is deliberately wider than any single filesystem's table, since a path wrongly refused fails loudly where one wrongly allowed would overwrite the request in silence, so an exact exclusion would let a lineage record overwrite the request it cannot name. An import adopts an artifact some step of the source run produced, the request has no producing step for the derivation-closure rule to reach, and a run executing another run's plan is still a run somebody started for a reason of its own (spec section 8.7)."
         },
         "from": {
           "type": "string",

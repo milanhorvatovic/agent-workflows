@@ -18,9 +18,19 @@ import unittest.mock
 from pathlib import Path
 
 from driver import cli
+from driver.state import REQUEST_ARTIFACT, REQUEST_FILE
 from driver.test_assembler import ROLE, SKILL, STAGE_ONLY, TEMPLATE
 from driver.test_config import VALID
 from driver.test_workflow import STAGE, WORKFLOW
+
+# Every `run` here carries one: spec §8.7 has the command create the run from
+# a request, and argparse refuses the invocation without it.
+REQUEST = "make the thing work"
+# The manifest a bootstrap writes, which the tests that hand-edit a state file
+# append their own artifacts under. Built from the constant rather than spelled
+# out, so a change to either cannot leave the replacement silently matching
+# nothing and the edit silently doing nothing.
+MANIFEST = f'artifacts:\n  - "{REQUEST_ARTIFACT}"\n'
 
 
 class CliTest(unittest.TestCase):
@@ -77,7 +87,8 @@ class CliTest(unittest.TestCase):
     def test_run_creates_the_run_and_stops_at_invocation(self) -> None:
         self.write_framework()
         code, out, err = self.invoke(
-            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request", REQUEST, "--config", str(self.config_path)
         )
         self.assertEqual(code, 1)
         self.assertIn("created", out)
@@ -91,14 +102,18 @@ class CliTest(unittest.TestCase):
     def test_creating_a_run_scaffolds_nothing(self) -> None:
         """Assembly resolves what the step would read; the scaffold §8.3 asks
         for belongs to the invocation that fills it, so a command stopping
-        short of one leaves the run directory holding its state alone."""
+        short of one leaves the run directory holding what creation wrote and
+        nothing else — the state, and the request it was created from (§8.7).
+        The step's own output, `{run}/out.md`, is what must not be there."""
         self.write_framework()
         self.invoke(
-            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request", REQUEST, "--config", str(self.config_path)
         )
         run_dir = self.base / "runs" / "2026-08-17-x"
         self.assertEqual(
-            sorted(path.name for path in run_dir.iterdir()), ["workflow-state.yaml"]
+            sorted(path.name for path in run_dir.iterdir()),
+            [REQUEST_FILE, "workflow-state.yaml"],
         )
 
     def test_a_step_blocked_on_a_required_input_is_reported_as_a_position(self) -> None:
@@ -114,7 +129,8 @@ class CliTest(unittest.TestCase):
                 content.replace("required: false", "required: true"), encoding="utf-8"
             )
         code, out, err = self.invoke(
-            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request", REQUEST, "--config", str(self.config_path)
         )
         self.assertEqual(code, 1)
         self.assertIn("requires {run}/in.md", err)
@@ -129,20 +145,201 @@ class CliTest(unittest.TestCase):
             SKILL.replace("role: analyst", "role: planner"), encoding="utf-8"
         )
         code, _, err = self.invoke(
-            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request", REQUEST, "--config", str(self.config_path)
         )
         self.assertEqual(code, 2)
         self.assertIn("must agree", err)
 
     def test_run_without_a_workflow_is_a_usage_error(self) -> None:
+        # The request is supplied so the missing `--workflow` is the one fault.
         with contextlib.redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit) as caught:
-                cli.main(["run", "2026-08-17-x", "--config", str(self.config_path)])
+                cli.main(
+                    [
+                        "run",
+                        "2026-08-17-x",
+                        "--request",
+                        REQUEST,
+                        "--config",
+                        str(self.config_path),
+                    ]
+                )
         self.assertEqual(caught.exception.code, 2)
+
+    def test_run_without_a_request_is_a_usage_error(self) -> None:
+        """§8.7 has every run hold the request it was created from, so there is
+        no form of `run` that omits one — argparse refuses the invocation
+        rather than the driver creating a run to block at its first step."""
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as caught:
+                cli.main(
+                    [
+                        "run",
+                        "--workflow",
+                        "demo",
+                        "2026-08-17-x",
+                        "--config",
+                        str(self.config_path),
+                    ]
+                )
+        self.assertEqual(caught.exception.code, 2)
+
+    def test_run_refuses_both_forms_of_the_request(self) -> None:
+        """The two are one argument in two spellings, and a run has one
+        request: taking both would leave which one the run was created from to
+        an argument order nobody declared."""
+        path = self.base / "request.md"
+        path.write_text("from the file\n", encoding="utf-8")
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as caught:
+                cli.main(
+                    [
+                        "run",
+                        "--workflow",
+                        "demo",
+                        "2026-08-17-x",
+                        "--request",
+                        REQUEST,
+                        "--request-file",
+                        str(path),
+                        "--config",
+                        str(self.config_path),
+                    ]
+                )
+        self.assertEqual(caught.exception.code, 2)
+
+    def test_run_reads_the_request_from_a_file(self) -> None:
+        """A ticket export or a specification is what a shell argument mangles,
+        and the file's bytes are what the run is created from."""
+        self.write_framework()
+        path = self.base / "ticket.md"
+        path.write_text("# PROJ-14\n\nSessions must survive a restart.\n", encoding="utf-8")
+        code, _, _ = self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request-file", str(path), "--config", str(self.config_path)
+        )
+        self.assertEqual(code, 1)
+        self.assertEqual(
+            (self.base / "runs" / "2026-08-17-x" / REQUEST_FILE).read_text(
+                encoding="utf-8"
+            ),
+            "# PROJ-14\n\nSessions must survive a restart.\n",
+        )
+
+    def test_a_request_file_keeps_its_line_endings(self) -> None:
+        """`read_text` opens in text mode, so universal newlines would fold a
+        CRLF request to LF before the write ever saw it — the file this command
+        promises to keep verbatim would be the one file it rewrote. The bytes
+        are read and decoded instead, which keeps the endings and still drops
+        a leading mark, `utf-8-sig` being a codec rather than a mode."""
+        self.write_framework()
+        path = self.base / "crlf.md"
+        path.write_bytes(b"\xef\xbb\xbfline one\r\nline two\rline three\n")
+        code, _, _ = self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request-file", str(path), "--config", str(self.config_path)
+        )
+        self.assertEqual(code, 1)
+        self.assertEqual(
+            (self.base / "runs" / "2026-08-17-x" / REQUEST_FILE).read_bytes(),
+            b"line one\r\nline two\rline three\n",
+        )
+
+    def test_a_request_argv_cannot_carry_is_refused(self) -> None:
+        """POSIX decodes argv with `surrogateescape`, so a byte no encoding
+        claims reaches `--request` as a lone surrogate. It clears the emptiness
+        check, and the write would then raise `UnicodeEncodeError` — a
+        `ValueError`, which this command surface does not catch, so the run
+        would leave as a traceback rather than an exit code."""
+        self.write_framework()
+        code, _, err = self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request", "\udcff", "--config", str(self.config_path)
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("UTF-8 can carry", err)
+        self.assertFalse((self.base / "runs" / "2026-08-17-x").exists())
+
+    def test_a_request_file_opening_with_a_byte_order_mark_drops_it(self) -> None:
+        """U+FEFF marks a file's encoding rather than its content, and every
+        reader here drops a leading one — the YAML reader and the framework
+        reader already do. A Windows editor is what writes one, and keeping it
+        would open the words the entry step restates with a character the
+        requester never typed. Only the leading one: further along it is
+        content, and the request is written verbatim."""
+        self.write_framework()
+        path = self.base / "ticket.md"
+        path.write_bytes("﻿Sessions must survive.\n﻿ still text\n".encode("utf-8"))
+        code, _, _ = self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request-file", str(path), "--config", str(self.config_path)
+        )
+        self.assertEqual(code, 1)
+        self.assertEqual(
+            (self.base / "runs" / "2026-08-17-x" / REQUEST_FILE).read_text(
+                encoding="utf-8"
+            ),
+            "Sessions must survive.\n﻿ still text\n",
+        )
+
+    def test_a_request_file_holding_only_a_mark_is_an_empty_request(self) -> None:
+        """The mark is not content, so a file holding nothing else holds no
+        request — and the run that would be created around it exists only to
+        block at its first step. This is what says the mark is dropped before
+        the emptiness is judged rather than after: read as plain UTF-8 the
+        same file is a one-character request, and the run gets created."""
+        self.write_framework()
+        path = self.base / "empty.md"
+        path.write_bytes(b"\xef\xbb\xbf")
+        code, _, err = self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request-file", str(path), "--config", str(self.config_path)
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("request is empty", err)
+        self.assertFalse((self.base / "runs" / "2026-08-17-x").exists())
+
+    def test_run_on_an_unreadable_request_file_is_a_defect(self) -> None:
+        self.write_framework()
+        code, _, err = self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request-file", str(self.base / "absent.md"), "--config", str(self.config_path)
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("absent.md", err)
+        self.assertFalse((self.base / "runs" / "2026-08-17-x").exists())
+
+    def test_run_on_a_request_file_that_is_not_text_is_a_defect(self) -> None:
+        """The request becomes a markdown artifact a step is handed, so bytes
+        that are not text are reported rather than carried into a prompt."""
+        self.write_framework()
+        path = self.base / "binary.md"
+        path.write_bytes(b"\xff\xfe\x00not text")
+        code, _, err = self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request-file", str(path), "--config", str(self.config_path)
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("binary.md", err)
+        self.assertFalse((self.base / "runs" / "2026-08-17-x").exists())
+
+    def test_run_with_an_empty_request_creates_nothing(self) -> None:
+        """A run created around an empty request exists only to block at its
+        first step (§8.7), so the id it would have spent stays usable."""
+        self.write_framework()
+        code, _, err = self.invoke(
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request", "   ", "--config", str(self.config_path)
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("request is empty", err)
+        self.assertFalse((self.base / "runs" / "2026-08-17-x").exists())
 
     def test_run_on_a_missing_workflow_is_a_config_defect(self) -> None:
         code, _, err = self.invoke(
-            "run", "--workflow", "absent", "2026-08-17-x", "--config", str(self.config_path)
+            "run", "--workflow", "absent", "2026-08-17-x",
+            "--request", REQUEST, "--config", str(self.config_path)
         )
         self.assertEqual(code, 2)
         self.assertIn("cannot read workflow", err)
@@ -150,10 +347,12 @@ class CliTest(unittest.TestCase):
     def test_run_refuses_an_existing_run_id(self) -> None:
         self.write_framework()
         self.invoke(
-            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request", REQUEST, "--config", str(self.config_path)
         )
         code, _, err = self.invoke(
-            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request", REQUEST, "--config", str(self.config_path)
         )
         self.assertEqual(code, 2)
         self.assertIn("already exists", err)
@@ -161,7 +360,8 @@ class CliTest(unittest.TestCase):
     def test_resume_resolves_the_position_of_a_created_run(self) -> None:
         self.write_framework()
         self.invoke(
-            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request", REQUEST, "--config", str(self.config_path)
         )
         code, out, err = self.invoke(
             "resume", "2026-08-17-x", "--config", str(self.config_path)
@@ -189,7 +389,8 @@ class CliTest(unittest.TestCase):
     def test_resume_reports_a_finished_run_as_success(self) -> None:
         self.write_framework()
         self.invoke(
-            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request", REQUEST, "--config", str(self.config_path)
         )
         # A finished run is one whose done step also manifested what it
         # declared (§8.2) — marking the status alone builds the invalid
@@ -198,7 +399,7 @@ class CliTest(unittest.TestCase):
         state_path.write_text(
             state_path.read_text(encoding="utf-8")
             .replace("status: pending", "status: done")
-            .replace("artifacts: []", 'artifacts:\n  - "{run}/out.md"'),
+            .replace(MANIFEST, MANIFEST + '  - "{run}/out.md"\n'),
             encoding="utf-8",
         )
         code, out, err = self.invoke(
@@ -238,7 +439,8 @@ class CliTest(unittest.TestCase):
         same escape, or a link under runs/ reads state outside the root."""
         self.write_framework()
         self.invoke(
-            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request", REQUEST, "--config", str(self.config_path)
         )
         outside = self.base / "elsewhere"
         outside.mkdir()
@@ -253,7 +455,8 @@ class CliTest(unittest.TestCase):
     def test_resume_refuses_state_that_names_another_run(self) -> None:
         self.write_framework()
         self.invoke(
-            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request", REQUEST, "--config", str(self.config_path)
         )
         copied = self.base / "runs" / "2026-08-18-copy"
         copied.mkdir()
@@ -277,7 +480,8 @@ class CliTest(unittest.TestCase):
         a run the conformance suite rejects."""
         self.write_framework()
         self.invoke(
-            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request", REQUEST, "--config", str(self.config_path)
         )
         state_path = self.base / "runs" / "2026-08-17-x" / "workflow-state.yaml"
         state_path.write_text(
@@ -299,7 +503,8 @@ class CliTest(unittest.TestCase):
         where a resume lands with nothing to say it did."""
         self.write_framework()
         self.invoke(
-            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request", REQUEST, "--config", str(self.config_path)
         )
         state_path = self.base / "runs" / "2026-08-17-x" / "workflow-state.yaml"
         original = state_path.read_text(encoding="utf-8")
@@ -330,7 +535,8 @@ class CliTest(unittest.TestCase):
         reached its first step."""
         self.write_framework()
         self.invoke(
-            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request", REQUEST, "--config", str(self.config_path)
         )
         state_path = self.base / "runs" / "2026-08-17-x" / "workflow-state.yaml"
         original = state_path.read_text(encoding="utf-8")
@@ -357,14 +563,15 @@ class CliTest(unittest.TestCase):
         rather than from its status."""
         self.write_framework()
         self.invoke(
-            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request", REQUEST, "--config", str(self.config_path)
         )
         state_path = self.base / "runs" / "2026-08-17-x" / "workflow-state.yaml"
         state_path.write_text(
             state_path.read_text(encoding="utf-8")
             .replace("  - id: make\n    status: pending", "  - id: make\n    status: done")
             .replace("status: skipped", "status: blocked")
-            .replace("artifacts: []", 'artifacts:\n  - "{run}/out.md"'),
+            .replace(MANIFEST, MANIFEST + '  - "{run}/out.md"\n'),
             encoding="utf-8",
         )
         code, out, err = self.invoke(
@@ -381,14 +588,15 @@ class CliTest(unittest.TestCase):
         latest entry is the one that has to — never the best on file."""
         self.write_framework()
         self.invoke(
-            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request", REQUEST, "--config", str(self.config_path)
         )
         state_path = self.base / "runs" / "2026-08-17-x" / "workflow-state.yaml"
         finished = (
             state_path.read_text(encoding="utf-8")
             .replace("  - id: make\n    status: pending", "  - id: make\n    status: done")
             .replace("status: skipped", "status: done")
-            .replace("artifacts: []", 'artifacts:\n  - "{run}/out.md"')
+            .replace(MANIFEST, MANIFEST + '  - "{run}/out.md"\n')
         )
         for name, gates in {
             "no decision at all": "gates: []\n",
@@ -418,12 +626,13 @@ class CliTest(unittest.TestCase):
         stands for a phase of a stage that has none."""
         self.write_framework()
         self.invoke(
-            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request", REQUEST, "--config", str(self.config_path)
         )
         state_path = self.base / "runs" / "2026-08-17-x" / "workflow-state.yaml"
         original = state_path.read_text(encoding="utf-8").replace(
             "  - id: make\n    status: pending", "  - id: make\n    status: done"
-        ).replace("artifacts: []", 'artifacts:\n  - "{run}/out.md"')
+        ).replace(MANIFEST, MANIFEST + '  - "{run}/out.md"\n')
         for name, (status, gates) in {
             "the standing decision": (
                 "done",
@@ -463,7 +672,8 @@ class CliTest(unittest.TestCase):
         the post-intake shape as established."""
         self.write_framework()
         self.invoke(
-            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request", REQUEST, "--config", str(self.config_path)
         )
         state_path = self.base / "runs" / "2026-08-17-x" / "workflow-state.yaml"
         original = state_path.read_text(encoding="utf-8").replace(
@@ -505,7 +715,8 @@ class CliTest(unittest.TestCase):
         """
         self.write_framework()
         self.invoke(
-            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request", REQUEST, "--config", str(self.config_path)
         )
         state_path = self.base / "runs" / "2026-08-17-x" / "workflow-state.yaml"
         state_path.write_text(
@@ -516,7 +727,7 @@ class CliTest(unittest.TestCase):
             )
             .replace("  - id: make\n    status: pending", "  - id: make\n    status: done")
             .replace("  - id: check\n    status: skipped", "  - id: check\n    status: done")
-            .replace("artifacts: []", 'artifacts:\n  - "{run}/out.md"')
+            .replace(MANIFEST, MANIFEST + '  - "{run}/out.md"\n')
             .replace(
                 "gates: []\n",
                 "gates:\n  - gate: check\n    transport: blocking\n"
@@ -538,7 +749,8 @@ class CliTest(unittest.TestCase):
         phase rule every declared one is held to."""
         self.write_framework()
         self.invoke(
-            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request", REQUEST, "--config", str(self.config_path)
         )
         state_path = self.base / "runs" / "2026-08-17-x" / "workflow-state.yaml"
         state_path.write_text(
@@ -563,7 +775,8 @@ class CliTest(unittest.TestCase):
         advance, so a resume would land there and stop."""
         self.write_framework()
         self.invoke(
-            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request", REQUEST, "--config", str(self.config_path)
         )
         state_path = self.base / "runs" / "2026-08-17-x" / "workflow-state.yaml"
         original = state_path.read_text(encoding="utf-8")
@@ -738,7 +951,8 @@ class CliTest(unittest.TestCase):
     def test_run_with_a_broken_config_fails_on_the_config(self) -> None:
         self.config_path.write_text("{}", encoding="utf-8")
         code, _, err = self.invoke(
-            "run", "--workflow", "demo", "2026-08-17-x", "--config", str(self.config_path)
+            "run", "--workflow", "demo", "2026-08-17-x",
+            "--request", REQUEST, "--config", str(self.config_path)
         )
         self.assertEqual(code, 2)
         self.assertIn("backends must be a non-empty object", err)

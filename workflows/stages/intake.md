@@ -28,6 +28,8 @@ metadata:
 
 Parse the request and restate it as a brief: goal, constraints, acceptance criteria, and what is explicitly out of scope. If the request's ambiguity is above threshold — the brief cannot be restated with confidence — stop at the `clarifying-question` gate and ask exactly one question, then fold the answer into the brief. One cheap question here beats a full revision loop later.
 
+What the step restates is `{run}/request.md`, and it declares it required. The request is not a step's output — the executor materializes it when the run is created, before anything runs, and manifests it (spec §8.7) — which is what lets the first step of every workflow declare what its instructions depend on rather than reach for something no surface carries (spec §9.1). Required rather than optional, for the reason it is also not cacheable: a run holding no request of its own has nothing here to restate, and a brief restated from an earlier run's request would measure this run against work nobody asked for in it.
+
 Both intake gates return here on a `revise`, so the step declares its own output as an optional input — which is also where the human's direction is waiting, in the brief's **Gate direction** section (spec §7) rather than in a declaration of its own: a re-entry revises the brief it already wrote rather than re-drafting from the request, which is an instruction that depends on the artifact (spec §9.1). Optional on availability — on a first run nothing precedes the step that writes it, and the absence is what marks a first run — and never satisfied from the spec §8.4 cache, being this run's restatement of this run's request.
 
 ```yaml
@@ -37,6 +39,8 @@ metadata:
     step:
       role: analyst
       inputs:
+        - artifact: "{run}/request.md"
+          required: true
         - artifact: "{run}/brief.md"
           required: false
       output:

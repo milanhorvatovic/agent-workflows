@@ -68,6 +68,7 @@ gates:
     outcome: accept
     at: "2026-08-03T13:40:00Z"
 artifacts: # every output that has landed, in production order (spec §8.2)
+  - "{run}/request.md" # not an output: the run was created with it (spec §8.7)
   - "{run}/brief.md" # brief-confirm, then risk-route's Routing block
   - "{run}/grounding.md"
   - "{run}/ideation.md"

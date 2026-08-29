@@ -1,0 +1,14 @@
+# Deliberately broken: a step declaring `{run}/request.md` as its output.
+# The request is what the run was created from and no step produces it — one
+# claiming it would overwrite mid-run the words the entry step exists to
+# restate, while the manifest kept saying the request is there, which is what a
+# gate's revise depends on when it returns to a step that reads it again. One
+# fault, so this fixture proves that rule and nothing else (spec §8.7).
+protocol: "0.2"
+step:
+  role: analyst
+  inputs:
+    - artifact: "{run}/request.md"
+      required: true
+  output:
+    artifact: "{run}/request.md"

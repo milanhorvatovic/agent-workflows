@@ -71,7 +71,9 @@ gates:
     outcome: accept
     at: "2026-08-16T09:20:00Z"
 artifacts: # every import is manifested — the manifest is what readers resolve
-  - "{run}/brief.md" # against, imports or not (spec §8.2, §8.6)
+  # against, imports or not (spec §8.2, §8.6)
+  - "{run}/request.md" # never imported: this run's own, whoever's plan it runs (§8.7)
+  - "{run}/brief.md"
   - "{run}/grounding.md"
   - "{run}/ideation.md"
   - "{run}/ideation-validation.md"

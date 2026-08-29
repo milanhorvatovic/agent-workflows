@@ -12,6 +12,7 @@ steps:
     status: skipped
 gates: []
 artifacts:
+  - "{run}/request.md"
   - "{run}/../2026-08-12-plan-slug/brief.md"
 imports:
   - artifact: "{run}/../2026-08-12-plan-slug/brief.md"

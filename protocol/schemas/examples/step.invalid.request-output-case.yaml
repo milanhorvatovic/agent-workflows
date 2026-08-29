@@ -1,0 +1,16 @@
+# Deliberately broken: a step declaring the request as its output under a
+# different case. `{run}/REQUEST.md` is a different string and the same
+# file wherever the filesystem folds case — macOS and Windows by default — so
+# an exclusion that compared exactly would hand a step the one artifact §8.7
+# says nothing in the run rewrites. §8.6 settled the same point for run ids:
+# string equality is the wrong test where platforms fold. One fault, so this
+# fixture proves the case rule and `step.invalid.request-output.yaml` proves
+# the path itself (spec §8.7).
+protocol: "0.2"
+step:
+  role: analyst
+  inputs:
+    - artifact: "{run}/request.md"
+      required: true
+  output:
+    artifact: "{run}/REQUEST.md"

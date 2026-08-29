@@ -13,6 +13,7 @@ steps:
     status: skipped
 gates: []
 artifacts:
+  - "{run}/request.md"
   - "{run}/NUL.md"
 imports:
   - artifact: "{run}/NUL.md"

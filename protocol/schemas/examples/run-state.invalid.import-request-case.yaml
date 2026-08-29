@@ -1,0 +1,23 @@
+# INVALID on purpose — schema validation MUST reject this fixture:
+# - imports[0].artifact is `{run}/REQUEST.md`, which names the request under a
+#   different case. The copy lands at the path the record names, and that
+#   path is the run's own `request.md` wherever the filesystem folds case, so an
+#   exclusion comparing exactly would let a lineage record overwrite the one
+#   artifact §8.7 says nothing in the run rewrites (spec §8.6, §8.7).
+# Manifested and sourced correctly otherwise, so the case is the one fault;
+# `run-state.invalid.import-request.yaml` proves the exact path beside it.
+run:
+  id: 2026-08-16-feature-slug
+  workflow: feature
+  protocol: "0.2"
+steps:
+  - id: brief-confirm
+    status: skipped
+gates: []
+artifacts:
+  - "{run}/request.md"
+  - "{run}/REQUEST.md"
+imports:
+  - artifact: "{run}/REQUEST.md"
+    from: 2026-08-12-plan-slug
+    at: "2026-08-16T09:00:00Z"

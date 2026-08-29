@@ -12,6 +12,7 @@ steps:
     status: skipped
 gates: []
 artifacts:
+  - "{run}/request.md"
   - "{run}/COM\u00b9.md"
 imports:
   - artifact: "{run}/COM\u00b9.md"
