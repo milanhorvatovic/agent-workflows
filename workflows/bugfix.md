@@ -20,7 +20,7 @@ No `ideation` stage, so no dedicated grounding step: `plan-create`'s grounding i
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     trigger:
       kind: manual
 ```

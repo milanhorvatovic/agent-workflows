@@ -4,7 +4,7 @@ description: Adversarially validates a ticket set against the work items it was 
 license: MIT
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: validator
       inputs:

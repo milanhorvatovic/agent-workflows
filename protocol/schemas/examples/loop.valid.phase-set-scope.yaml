@@ -3,7 +3,7 @@
 # is bound to the union of what those plans declare — a loop contract has no
 # output and so no phase of its own, which is why {P} there excludes nothing
 # (spec §8.1, §9.2).
-protocol: "0.2"
+protocol: "0.3"
 loop:
   exit_criteria:
     - artifact: "{run}/review-validation.md"

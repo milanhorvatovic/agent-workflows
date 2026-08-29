@@ -6,7 +6,7 @@
 run:
   id: "2026-08-16-feature-slug."
   workflow: feature
-  protocol: "0.2"
+  protocol: "0.3"
 steps:
   - id: brief-confirm
     status: pending

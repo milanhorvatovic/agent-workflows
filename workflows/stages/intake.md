@@ -12,7 +12,7 @@ The sequence (spec §9.4) declares the members in record order — here it match
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     stage:
       sequence:
         - step: brief-confirm
@@ -35,7 +35,7 @@ Both intake gates return here on a `revise`, so the step declares its own output
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: analyst
       inputs:
@@ -56,7 +56,7 @@ Three of the six signals — blast radius, decomposability, novelty — are clai
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: analyst
       inputs:

@@ -14,7 +14,7 @@ The sequence (spec §9.4) declares the members in record order — the condition
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     stage:
       sequence:
         - step: review-code
@@ -36,7 +36,7 @@ Review the full change — the diff, against the plan — for correctness, error
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: reviewer
       inputs:
@@ -57,7 +57,7 @@ Security-focused pass: auth, crypto, input handling, dependency changes, data ex
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: reviewer
       inputs:
@@ -76,7 +76,7 @@ Independent verdict on the change in light of the findings: does it meet the bri
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: validator
       inputs:
@@ -101,7 +101,7 @@ Runs when the reviewer's findings and the validator's verdict disagree — a pas
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: arbiter
       inputs:
@@ -122,7 +122,7 @@ Runs when the loop has not exited: applies the resolved findings (the arbiter's 
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: implementer
       inputs:
@@ -147,7 +147,7 @@ Each iteration runs the steps above in composition order, skipping what its cond
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     loop:
       exit_criteria:
         - artifact: "{run}/review-validation.md"

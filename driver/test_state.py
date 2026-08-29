@@ -38,7 +38,7 @@ class StateTestCase(unittest.TestCase):
 
 class CreateRunTest(StateTestCase):
     def test_bootstraps_the_entry_stage_records_alone(self) -> None:
-        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST)
+        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.3", REQUEST)
         self.assertEqual(run_dir, self.runs / "2026-08-17-x")
         self.assertTrue((run_dir / state.STATE_FILE).is_file())
         self.assertEqual(
@@ -56,7 +56,7 @@ class CreateRunTest(StateTestCase):
         what lets the entry step declare it as the input it restates instead of
         reaching for something outside the run."""
         run_dir, created = state.create_run(
-            self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST
+            self.runs, "2026-08-17-x", self.workflow, "0.3", REQUEST
         )
         self.assertEqual(
             (run_dir / state.REQUEST_FILE).read_text(encoding="utf-8"), REQUEST
@@ -71,7 +71,7 @@ class CreateRunTest(StateTestCase):
         would have translated."""
         body = "line one\r\nline two"
         run_dir, _ = state.create_run(
-            self.runs, "2026-08-17-x", self.workflow, "0.2", body
+            self.runs, "2026-08-17-x", self.workflow, "0.3", body
         )
         self.assertEqual(
             (run_dir / state.REQUEST_FILE).read_bytes(), body.encode("utf-8")
@@ -90,7 +90,7 @@ class CreateRunTest(StateTestCase):
             with self.subTest(binds=binds):
                 with unittest.mock.patch.object(state, "_BINDS_TO_DIRECTORY", binds):
                     run_dir, created = state.create_run(
-                        self.runs, f"bound-{binds}", self.workflow, "0.2", REQUEST
+                        self.runs, f"bound-{binds}", self.workflow, "0.3", REQUEST
                     )
                 self.assertEqual(
                     (run_dir / state.REQUEST_FILE).read_text(encoding="utf-8"), REQUEST
@@ -106,7 +106,7 @@ class CreateRunTest(StateTestCase):
             with self.subTest(request=empty):
                 with self.assertRaises(state.StateError) as caught:
                     state.create_run(
-                        self.runs, "2026-08-17-x", self.workflow, "0.2", empty
+                        self.runs, "2026-08-17-x", self.workflow, "0.3", empty
                     )
                 self.assertIn("request is empty", str(caught.exception))
                 self.assertFalse((self.runs / "2026-08-17-x").exists())
@@ -123,23 +123,23 @@ class CreateRunTest(StateTestCase):
         ):
             with self.assertRaises(OSError):
                 state.create_run(
-                    self.runs, "2026-08-19-x", self.workflow, "0.2", REQUEST
+                    self.runs, "2026-08-19-x", self.workflow, "0.3", REQUEST
                 )
         self.assertFalse((self.runs / "2026-08-19-x").exists())
         run_dir, _ = state.create_run(
-            self.runs, "2026-08-19-x", self.workflow, "0.2", REQUEST
+            self.runs, "2026-08-19-x", self.workflow, "0.3", REQUEST
         )
         self.assertTrue((run_dir / state.REQUEST_FILE).is_file())
 
     def test_round_trips_through_load(self) -> None:
-        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST)
+        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.3", REQUEST)
         loaded = state.load(run_dir)
         self.assertEqual(loaded, created)
 
     def test_refuses_an_existing_run_directory(self) -> None:
-        state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST)
+        state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.3", REQUEST)
         with self.assertRaises(state.StateError) as caught:
-            state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST)
+            state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.3", REQUEST)
         self.assertIn("already exists", str(caught.exception))
 
     def test_a_failed_first_save_leaves_the_id_usable(self) -> None:
@@ -152,9 +152,9 @@ class CreateRunTest(StateTestCase):
 
         with unittest.mock.patch.object(state, "save", side_effect=OSError("no space")):
             with self.assertRaises(OSError):
-                state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.2", REQUEST)
+                state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.3", REQUEST)
         self.assertFalse((self.runs / "2026-08-19-x").exists())
-        run_dir, created = state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.2", REQUEST)
+        run_dir, created = state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.3", REQUEST)
         self.assertTrue((run_dir / state.STATE_FILE).is_file())
         self.assertEqual(created.run_id, "2026-08-19-x")
 
@@ -176,9 +176,9 @@ class CreateRunTest(StateTestCase):
 
         with unittest.mock.patch.object(os, "fsync", fsync):
             with self.assertRaises(OSError):
-                state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.2", REQUEST)
+                state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.3", REQUEST)
         self.assertFalse((self.runs / "2026-08-19-x").exists())
-        run_dir, created = state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.2", REQUEST)
+        run_dir, created = state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.3", REQUEST)
         self.assertTrue((run_dir / state.STATE_FILE).is_file())
 
     def test_a_sync_that_fails_after_the_bootstrap_leaves_the_id_usable(self) -> None:
@@ -214,9 +214,9 @@ class CreateRunTest(StateTestCase):
             state, _sync_descriptor=sync_descriptor, _sync_directory=sync_directory
         ):
             with self.assertRaises(OSError):
-                state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.2", REQUEST)
+                state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.3", REQUEST)
         self.assertFalse((self.runs / "2026-08-19-x").exists())
-        run_dir, _ = state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.2", REQUEST)
+        run_dir, _ = state.create_run(self.runs, "2026-08-19-x", self.workflow, "0.3", REQUEST)
         self.assertTrue((run_dir / state.STATE_FILE).is_file())
 
     def test_a_rollback_never_reaches_outside_the_runs_root(self) -> None:
@@ -245,7 +245,7 @@ class CreateRunTest(StateTestCase):
         handlers hold one and call this writer — so a field put wrong in
         memory was written out and refused at the next load, the run left
         holding a document its own driver rejects."""
-        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST)
+        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.3", REQUEST)
         before = (run_dir / state.STATE_FILE).read_text(encoding="utf-8")
         created.record("make").status = "underway"
         with self.assertRaises(state.StateError) as caught:
@@ -260,8 +260,8 @@ class CreateRunTest(StateTestCase):
         The write had no such rule, so a record carried to the wrong
         directory published a file that its own loader then refuses —
         corrupting the run it was written over."""
-        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST)
-        other, _ = state.create_run(self.runs, "2026-08-18-y", self.workflow, "0.2", REQUEST)
+        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.3", REQUEST)
+        other, _ = state.create_run(self.runs, "2026-08-18-y", self.workflow, "0.3", REQUEST)
         untouched = (other / state.STATE_FILE).read_text(encoding="utf-8")
         with self.assertRaises(state.StateError) as caught:
             state.save(created, other)
@@ -273,7 +273,7 @@ class CreateRunTest(StateTestCase):
         is what carries one to an exit code rather than a traceback. A
         value the YAML subset does not carry reached the writer and left it
         as whatever the writer raised."""
-        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST)
+        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.3", REQUEST)
         created.instrumentation = {"duration": 1.5}
         created.has_instrumentation = True
         with self.assertRaises(state.StateError) as caught:
@@ -302,7 +302,7 @@ class CreateRunTest(StateTestCase):
         break that the schema refuses and the next save would write out."""
         self.assertFalse(state._is_timestamp("2026-08-03T13:40:00Z\n"))
         with self.assertRaises(state.StateError) as caught:
-            state.create_run(self.runs, "trailing", self.workflow, "0.2\n", REQUEST)
+            state.create_run(self.runs, "trailing", self.workflow, "0.3\n", REQUEST)
         self.assertIn("this driver implements", str(caught.exception))
 
     def test_a_run_id_carrying_a_surrogate_is_refused(self) -> None:
@@ -311,7 +311,7 @@ class CreateRunTest(StateTestCase):
         pattern and raises inside `mkdir` or the write, which is the
         traceback these guards exist to prevent."""
         with self.assertRaises(state.StateError) as caught:
-            state.create_run(self.runs, "\ud800", self.workflow, "0.2", REQUEST)
+            state.create_run(self.runs, "\ud800", self.workflow, "0.3", REQUEST)
         self.assertIn("not a run id", str(caught.exception))
         with self.assertRaises(state.StateError):
             state.open_run(self.runs, "run\udfffid")
@@ -358,18 +358,18 @@ class CreateRunTest(StateTestCase):
         ):
             with self.subTest(run_id=run_id):
                 with self.assertRaises(state.StateError):
-                    state.create_run(self.runs, run_id, self.workflow, "0.2", REQUEST)
+                    state.create_run(self.runs, run_id, self.workflow, "0.3", REQUEST)
 
 
 class PositionTest(StateTestCase):
     def test_active_record_takes_precedence_over_position(self) -> None:
-        _, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST)
+        _, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.3", REQUEST)
         created.steps.append(state.StepRecord(id="later", status="pending"))
         created.record("later").status = "active"
         self.assertEqual(created.position().id, "later")
 
     def test_position_is_the_first_record_neither_done_nor_skipped(self) -> None:
-        _, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST)
+        _, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.3", REQUEST)
         self.assertEqual(created.position().id, "make")
         created.record("make").status = "done"
         self.assertIsNone(created.position())
@@ -377,7 +377,7 @@ class PositionTest(StateTestCase):
     def test_a_blocked_gate_is_the_position(self) -> None:
         """§7: a gate waiting on a human is `blocked`, and a resume returns
         to it rather than past it."""
-        _, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST)
+        _, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.3", REQUEST)
         created.record("make").status = "done"
         created.record("check").status = "blocked"
         self.assertEqual(created.position().id, "check")
@@ -387,7 +387,7 @@ class TransitionTest(StateTestCase):
     def setUp(self) -> None:
         super().setUp()
         self.run_dir, self.state = state.create_run(
-            self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST
+            self.runs, "2026-08-17-x", self.workflow, "0.3", REQUEST
         )
 
     def test_start_marks_the_record_active(self) -> None:
@@ -400,14 +400,14 @@ class TransitionTest(StateTestCase):
         ).replace(
             "## Gates",
             "### also (planner)\n\n```yaml\nmetadata:\n  workflow:\n"
-            '    protocol: "0.2"\n    step:\n      role: planner\n      output:\n'
+            '    protocol: "0.3"\n    step:\n      role: planner\n      output:\n'
             '        artifact: "{run}/also.md"\n```\n\n## Gates',
         )
         (self.base / "workflows" / "stages" / "intake.md").write_text(
             two_steps, encoding="utf-8"
         )
         workflow = load_workflow(self.base, "demo")
-        _, created = state.create_run(self.runs, "two-steps", workflow, "0.2", REQUEST)
+        _, created = state.create_run(self.runs, "two-steps", workflow, "0.3", REQUEST)
         state.start_step(created, workflow, "make")
         with self.assertRaises(state.StateError) as caught:
             state.start_step(created, workflow, "also")
@@ -522,15 +522,15 @@ class TransitionTest(StateTestCase):
         ).replace("        PASS: check\n", "        PASS: spare\n").replace(
             "## Gates",
             "### spare (planner)\n\nProse.\n\n```yaml\nmetadata:\n  workflow:\n"
-            '    protocol: "0.2"\n    step:\n      role: planner\n      output:\n'
+            '    protocol: "0.3"\n    step:\n      role: planner\n      output:\n'
             '        artifact: "{run}/spare.md"\n```\n\n'
             "### last (reviewer)\n\nProse.\n\n```yaml\nmetadata:\n  workflow:\n"
-            '    protocol: "0.2"\n    step:\n      role: reviewer\n      output:\n'
+            '    protocol: "0.3"\n    step:\n      role: reviewer\n      output:\n'
             '        artifact: "{run}/last.md"\n```\n\n## Gates',
         )
         (self.base / "workflows" / "stages" / "intake.md").write_text(three, encoding="utf-8")
         workflow = load_workflow(self.base, "demo")
-        _, created = state.create_run(self.runs, "overlay", workflow, "0.2", REQUEST)
+        _, created = state.create_run(self.runs, "overlay", workflow, "0.3", REQUEST)
         created.record("spare").status = "skipped"  # the class left it out
         self.complete(created, workflow, "make")
         self.assertEqual(
@@ -555,13 +555,13 @@ class TransitionTest(StateTestCase):
         ).replace(
             "## Gates",
             "### reads (validator)\n\n```yaml\nmetadata:\n  workflow:\n"
-            '    protocol: "0.2"\n    step:\n      role: validator\n'
+            '    protocol: "0.3"\n    step:\n      role: validator\n'
             '      inputs:\n        - artifact: "{run}/out.md"\n'
             '      output:\n        artifact: "{run}/verdict.md"\n'
             "      on:\n        PASS: check\n        FAIL: make\n```\n\n"
 
             "### apart (planner)\n\n```yaml\nmetadata:\n  workflow:\n"
-            '    protocol: "0.2"\n    step:\n      role: planner\n'
+            '    protocol: "0.3"\n    step:\n      role: planner\n'
             '      output:\n        artifact: "{run}/apart.md"\n```\n\n## Gates',
         )
         (self.base / "workflows" / "stages" / "intake.md").write_text(
@@ -576,7 +576,7 @@ class TransitionTest(StateTestCase):
         "resetting a fixed shape would both miss a dependent and run a step
         the overlay excludes"."""
         workflow = self.build_dependents()
-        _, created = state.create_run(self.runs, "dependents", workflow, "0.2", REQUEST)
+        _, created = state.create_run(self.runs, "dependents", workflow, "0.3", REQUEST)
         for step_id in ("make", "reads", "apart"):
             state.start_step(created, workflow, step_id)
             state.complete_step(created, workflow, step_id)
@@ -606,7 +606,7 @@ class TransitionTest(StateTestCase):
             for member in stage.members
         ]
         run = state.RunState(
-            run_id="planning-run", workflow="feature", protocol="0.2",
+            run_id="planning-run", workflow="feature", protocol="0.3",
             steps=records, gates=[], artifacts=[state.REQUEST_ARTIFACT],
         )
         invalidated = state._invalidated_by(run, workflow, "plan-revise")
@@ -684,7 +684,7 @@ class TransitionTest(StateTestCase):
             gate_first, encoding="utf-8"
         )
         workflow = load_workflow(self.base, "demo")
-        _, created = state.create_run(self.runs, "gate-first", workflow, "0.2", REQUEST)
+        _, created = state.create_run(self.runs, "gate-first", workflow, "0.3", REQUEST)
         self.assertEqual([s.id for s in created.steps], ["check", "make", "close"])
         # The gate is ahead of the step in the sequence, so the run reaches
         # it first and its decision stands before the step runs at all —
@@ -717,7 +717,7 @@ class TransitionTest(StateTestCase):
             encoding="utf-8",
         )
         workflow = load_workflow(self.base, "pair")
-        _, created = state.create_run(self.runs, "pair-run", workflow, "0.2", REQUEST)
+        _, created = state.create_run(self.runs, "pair-run", workflow, "0.3", REQUEST)
         # Creation bootstraps the entry stage alone (§10), so the targeted
         # stage's step has no record to resolve to yet.
         self.complete(created, workflow, "make")
@@ -752,7 +752,7 @@ class DurabilityTest(StateTestCase):
             seen.add(kwargs.get("dst_dir_fd"))
             return real_rename(source, target, **kwargs)
 
-        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST)
+        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.3", REQUEST)
         order.clear()
         with unittest.mock.patch.multiple(
             os, fsync=fsync, replace=replace, rename=rename
@@ -771,7 +771,7 @@ class DurabilityTest(StateTestCase):
         import errno
         import unittest.mock
 
-        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST)
+        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.3", REQUEST)
         real = os.fsync
 
         def failing(code):
@@ -803,7 +803,7 @@ class DurabilityTest(StateTestCase):
 
         if not state._SYNCS_DIRECTORIES:  # pragma: no cover
             self.skipTest("this platform does not sync directories")
-        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST)
+        run_dir, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.3", REQUEST)
         real = os.open
 
         def failing(path, flags, *args, **kwargs):
@@ -842,7 +842,7 @@ class DurabilityTest(StateTestCase):
 
         with unittest.mock.patch.object(os, "fsync", fsync):
             run_dir, _ = state.create_run(
-                self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST
+                self.runs, "2026-08-17-x", self.workflow, "0.3", REQUEST
             )
         runs = os.stat(self.runs)
         self.assertIn((runs.st_ino, runs.st_dev), synced)
@@ -867,7 +867,7 @@ class StartPositionTest(StateTestCase):
         ).replace(
             "## Gates",
             "### also (planner)\n\nProse.\n\n```yaml\nmetadata:\n  workflow:\n"
-            '    protocol: "0.2"\n    step:\n      role: planner\n      output:\n'
+            '    protocol: "0.3"\n    step:\n      role: planner\n      output:\n'
             '        artifact: "{run}/also.md"\n```\n\n## Gates',
         )
         (self.base / "workflows" / "stages" / "intake.md").write_text(two, encoding="utf-8")
@@ -880,7 +880,7 @@ class StartPositionTest(StateTestCase):
         checks that ran before this one report their own cases — a second
         active record, and a status a start would erase."""
         workflow = self.two_steps()
-        _, created = state.create_run(self.runs, "2026-08-17-x", workflow, "0.2", REQUEST)
+        _, created = state.create_run(self.runs, "2026-08-17-x", workflow, "0.3", REQUEST)
         with self.assertRaises(state.StateError) as caught:
             state.start_step(created, workflow, "also")
         self.assertIn("make", str(caught.exception))
@@ -899,7 +899,7 @@ class ImportInvalidationTest(StateTestCase):
         def reader(step_id: str, role: str, output: str) -> str:
             return (
                 f"### {step_id} ({role})\n\nProse.\n\n```yaml\nmetadata:\n"
-                '  workflow:\n    protocol: "0.2"\n    step:\n'
+                '  workflow:\n    protocol: "0.3"\n    step:\n'
                 f"      role: {role}\n      inputs:\n"
                 '        - artifact: "{run}/out.md"\n          required: true\n'
                 f'      output:\n        artifact: "{output}"\n```\n\n'
@@ -933,7 +933,7 @@ class ImportInvalidationTest(StateTestCase):
         state_obj = state.RunState(
             run_id="2026-08-17-x",
             workflow="demo",
-            protocol="0.2",
+            protocol="0.3",
             risk="R1",
             risk_rationale="small",
             steps=[
@@ -967,7 +967,7 @@ class ImportInvalidationTest(StateTestCase):
         state_obj = state.RunState(
             run_id="2026-08-17-x",
             workflow="demo",
-            protocol="0.2",
+            protocol="0.3",
             risk="R1",
             risk_rationale="small",
             steps=[
@@ -1001,7 +1001,7 @@ class ImportInvalidationTest(StateTestCase):
         state_obj = state.RunState(
             run_id="2026-08-17-x",
             workflow="demo",
-            protocol="0.2",
+            protocol="0.3",
             risk="R1",
             risk_rationale="small",
             steps=[
@@ -1038,7 +1038,7 @@ class ImportInvalidationTest(StateTestCase):
         state_obj = state.RunState(
             run_id="2026-08-17-x",
             workflow="demo",
-            protocol="0.2",
+            protocol="0.3",
             steps=[
                 state.StepRecord(id="make", status="skipped"),
                 state.StepRecord(id="check", status="skipped"),
@@ -1073,7 +1073,7 @@ class ImportInvalidationTest(StateTestCase):
                 state.RunState(
                     run_id="2026-08-17-x",
                     workflow="demo",
-                    protocol="0.2",
+                    protocol="0.3",
                     phase=phase,
                     steps=[
                         state.StepRecord(id="make", status="skipped"),
@@ -1133,7 +1133,7 @@ class CrossStageInvalidationTest(StateTestCase):
         state_obj = state.RunState(
             run_id="2026-08-17-x",
             workflow="demo",
-            protocol="0.2",
+            protocol="0.3",
             risk="R1",
             risk_rationale="small",
             steps=[state.StepRecord(id=member, status="done") for member in order],
@@ -1165,7 +1165,7 @@ class RejectedRunTest(StateTestCase):
             return state.RunState(
                 run_id="2026-08-17-x",
                 workflow="demo",
-                protocol="0.2",
+                protocol="0.3",
                 # A run rejected at its intake gate never accepted a class,
                 # so there is none to carry.
                 steps=[
@@ -1223,7 +1223,7 @@ class AcceptedClassTest(StateTestCase):
             return state.RunState(
                 run_id="2026-08-17-x",
                 workflow="demo",
-                protocol="0.2",
+                protocol="0.3",
                 risk="R1",
                 risk_rationale="small",
                 steps=[
@@ -1268,7 +1268,7 @@ class AcceptedClassTest(StateTestCase):
                 state_obj = state.RunState(
                     run_id="2026-08-17-x",
                     workflow="demo",
-                    protocol="0.2",
+                    protocol="0.3",
                     risk="R1",
                     risk_rationale="small",
                     steps=[
@@ -1301,7 +1301,7 @@ class TerminalHistoryTest(StateTestCase):
             return state.RunState(
                 run_id="2026-08-17-x",
                 workflow="demo",
-                protocol="0.2",
+                protocol="0.3",
                 steps=[
                     state.StepRecord(id="make", status="done"),
                     state.StepRecord(id="check", status="pending"),
@@ -1369,7 +1369,7 @@ class TerminalAcceptTest(StateTestCase):
         ).replace(
             "## Gates",
             "### after (reviewer)\n\nProse.\n\n```yaml\nmetadata:\n  workflow:\n"
-            '    protocol: "0.2"\n    step:\n      role: reviewer\n      output:\n'
+            '    protocol: "0.3"\n    step:\n      role: reviewer\n      output:\n'
             '        artifact: "{run}/after.md"\n```\n\n## Gates',
         )
         (self.base / "workflows" / "stages" / "second.md").write_text(
@@ -1396,7 +1396,7 @@ class TerminalAcceptTest(StateTestCase):
             return state.RunState(
                 run_id="2026-08-17-x",
                 workflow="demo",
-                protocol="0.2",
+                protocol="0.3",
                 risk="R1",
                 risk_rationale="small",
                 steps=[
@@ -1439,7 +1439,7 @@ class TerminalAcceptTest(StateTestCase):
         exhausted = state.RunState(
             run_id="2026-08-17-x",
             workflow="demo",
-            protocol="0.2",
+            protocol="0.3",
             risk="R0",
             risk_rationale="a note, no structured steps",
             steps=[
@@ -1472,7 +1472,7 @@ class TerminalAcceptTest(StateTestCase):
         return state.RunState(
             run_id="2026-08-17-x",
             workflow="demo",
-            protocol="0.2",
+            protocol="0.3",
             risk="R2",
             risk_rationale="a class that runs the rest",
             steps=[
@@ -1501,7 +1501,7 @@ class ManifestTest(StateTestCase):
         imported, and a path no composed step declares is neither — content
         nothing wrote, which a later input or phase-set resolution would
         then read as an artifact the run holds."""
-        _, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST)
+        _, created = state.create_run(self.runs, "2026-08-17-x", self.workflow, "0.3", REQUEST)
         created.artifacts.append("{run}/forged.md")
         with self.assertRaises(state.StateError) as caught:
             state.check_manifest(created, self.workflow)
@@ -1513,7 +1513,7 @@ class ManifestTest(StateTestCase):
         would report the one artifact every run must carry as the one nothing
         wrote, refusing every run at its first check."""
         _, created = state.create_run(
-            self.runs, "2026-08-17-x", self.workflow, "0.2", REQUEST
+            self.runs, "2026-08-17-x", self.workflow, "0.3", REQUEST
         )
         self.assertIn(state.REQUEST_ARTIFACT, created.artifacts)
         state.check_manifest(created, self.workflow)
@@ -1528,7 +1528,7 @@ class ManifestTest(StateTestCase):
         )
         (self.base / "workflows" / "stages" / "intake.md").write_text(twice, encoding="utf-8")
         workflow = load_workflow(self.base, "demo")
-        _, created = state.create_run(self.runs, "twice", workflow, "0.2", REQUEST)
+        _, created = state.create_run(self.runs, "twice", workflow, "0.3", REQUEST)
         created.artifacts.append("{run}/phase-1/report-1.md")
         state.check_manifest(created, workflow)
         for forged in ("{run}/phase-1/report-2.md", "{run}/phase-0/report-0.md"):
@@ -1547,7 +1547,7 @@ class ManifestTest(StateTestCase):
         )
         (self.base / "workflows" / "stages" / "intake.md").write_text(phased, encoding="utf-8")
         workflow = load_workflow(self.base, "demo")
-        _, created = state.create_run(self.runs, "phased", workflow, "0.2", REQUEST)
+        _, created = state.create_run(self.runs, "phased", workflow, "0.3", REQUEST)
         created.phase = 2
         created.artifacts.extend(["{run}/phase-1-out.md", "{run}/phase-2-out.md"])
         state.check_manifest(created, workflow)
@@ -1564,7 +1564,7 @@ class RoutedStateTest(StateTestCase):
         state_obj = state.RunState(
             run_id="2026-08-17-x",
             workflow="demo",
-            protocol="0.2",
+            protocol="0.3",
             risk="R1",
             risk_rationale="small",
             steps=[
@@ -1621,7 +1621,7 @@ class GatePhaseTest(StateTestCase):
         return state.RunState(
             run_id="2026-08-17-x",
             workflow="demo",
-            protocol="0.2",
+            protocol="0.3",
             phase=2,
             risk="R1",
             risk_rationale="small",
@@ -1677,7 +1677,7 @@ class LoadValidationTest(StateTestCase):
     # own fault rather than a manifest short of the request.
     MANIFEST = 'artifacts:\n  - "{run}/request.md"\n'
     BASE = (
-        "run:\n  id: demo-run\n  workflow: demo\n  protocol: \"0.2\"\n"
+        "run:\n  id: demo-run\n  workflow: demo\n  protocol: \"0.3\"\n"
         "steps:\n  - id: make\n    status: pending\n"
         "gates: []\n" + MANIFEST
     )
@@ -1962,7 +1962,7 @@ class LoadValidationTest(StateTestCase):
                 '    outcome: accept\n    at: "2026-08-16T09:00:00Z"\n',
             ),
             "protocol with a trailing newline": self.BASE.replace(
-                'protocol: "0.2"', 'protocol: "0.2\\n"'
+                'protocol: "0.3"', 'protocol: "0.3\\n"'
             ),
             "gate timestamp with a trailing newline": self.BASE.replace(
                 "gates: []\n",
@@ -1970,10 +1970,10 @@ class LoadValidationTest(StateTestCase):
                 '    outcome: accept\n    at: "2026-08-16T09:00:00Z\\n"\n',
             ),
             "newer minor protocol": self.BASE.replace(
-                'protocol: "0.2"', 'protocol: "0.9"'
+                'protocol: "0.3"', 'protocol: "0.9"'
             ),
             "other major protocol": self.BASE.replace(
-                'protocol: "0.2"', 'protocol: "1.0"'
+                'protocol: "0.3"', 'protocol: "1.0"'
             ),
             # A bool is an int in Python and is not one in the schema; left
             # accepted, `phase: true` would resolve a `{N}` path to `True`.
@@ -2038,7 +2038,7 @@ class LoadValidationTest(StateTestCase):
         self.runs.mkdir(parents=True)
         self.symlink(self.runs / "demo-run", outside)
         loaded = state.RunState(
-            run_id="demo-run", workflow="demo", protocol="0.2",
+            run_id="demo-run", workflow="demo", protocol="0.3",
             steps=[state.StepRecord(id="make", status="pending")],
             gates=[], artifacts=[state.REQUEST_ARTIFACT],
         )
@@ -2068,7 +2068,7 @@ class LoadValidationTest(StateTestCase):
             state.open_run(self.runs, "demo-run")
         self.assertIn("not the runs directory", str(caught.exception))
         with self.assertRaises(state.StateError) as caught:
-            state.create_run(self.runs, "2026-08-24-x", self.workflow, "0.2", REQUEST)
+            state.create_run(self.runs, "2026-08-24-x", self.workflow, "0.3", REQUEST)
         self.assertIn("not the runs directory", str(caught.exception))
         self.assertFalse((outside / "2026-08-24-x").exists())
 
@@ -2078,7 +2078,7 @@ class LoadValidationTest(StateTestCase):
         self.runs.parent.mkdir(parents=True, exist_ok=True)
         self.symlink(self.runs, self.base / "nowhere")
         with self.assertRaises(state.StateError) as caught:
-            state.create_run(self.runs, "2026-08-24-x", self.workflow, "0.2", REQUEST)
+            state.create_run(self.runs, "2026-08-24-x", self.workflow, "0.3", REQUEST)
         self.assertIn("not the runs directory", str(caught.exception))
         self.assertFalse((self.base / "nowhere").exists())
 
@@ -2094,7 +2094,7 @@ class LoadValidationTest(StateTestCase):
         self.runs.mkdir(parents=True)
         self.symlink(self.runs / "demo-run", outside)
         loaded = state.RunState(
-            run_id="demo-run", workflow="demo", protocol="0.2",
+            run_id="demo-run", workflow="demo", protocol="0.3",
             steps=[state.StepRecord(id="make", status="pending")],
             gates=[], artifacts=[state.REQUEST_ARTIFACT],
         )
@@ -2118,7 +2118,7 @@ class LoadValidationTest(StateTestCase):
         child it reaches being an ordinary directory inside the target."""
         import shutil
 
-        run_dir, _ = state.create_run(self.runs, "demo-run", self.workflow, "0.2", REQUEST)
+        run_dir, _ = state.create_run(self.runs, "demo-run", self.workflow, "0.3", REQUEST)
         _, loaded = state.open_run(self.runs, "demo-run")
         outside = self.base / "elsewhere"
         (outside / "demo-run").mkdir(parents=True)
@@ -2136,7 +2136,7 @@ class LoadValidationTest(StateTestCase):
         import shutil
         import unittest.mock
 
-        run_dir, _ = state.create_run(self.runs, "demo-run", self.workflow, "0.2", REQUEST)
+        run_dir, _ = state.create_run(self.runs, "demo-run", self.workflow, "0.3", REQUEST)
         _, loaded = state.open_run(self.runs, "demo-run")
         outside = self.base / "elsewhere"
         (outside / "demo-run").mkdir(parents=True)
@@ -2192,7 +2192,7 @@ class LoadValidationTest(StateTestCase):
         earlier minor is readable, and where its shapes differ the load
         fails on the field it is missing rather than on its version."""
         loaded = state.load(
-            self.write_state(self.BASE.replace('protocol: "0.2"', 'protocol: "0.1"'))
+            self.write_state(self.BASE.replace('protocol: "0.3"', 'protocol: "0.1"'))
         )
         self.assertEqual(loaded.protocol, "0.1")
 

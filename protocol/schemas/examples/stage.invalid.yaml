@@ -1,7 +1,7 @@
 # INVALID on purpose — schema validation MUST reject this fixture:
 # - sequence[0] names both a step and a gate: a member is exactly one of the
 #   two, and a record that is both has no single population rule (spec §9.4)
-protocol: "0.2"
+protocol: "0.3"
 stage:
   sequence:
     - step: plan-create

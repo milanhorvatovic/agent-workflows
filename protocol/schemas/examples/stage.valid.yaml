@@ -4,7 +4,7 @@
 # the revision and invalidates the validation in one write, and §10 obliges
 # the destination's record to precede what the write invalidates. The one
 # conditional member is populated `skipped` until a route reaches it.
-protocol: "0.2"
+protocol: "0.3"
 stage:
   sequence:
     - step: plan-create

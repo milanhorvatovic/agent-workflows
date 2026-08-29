@@ -4,7 +4,7 @@ description: Distills an existing grounding artifact into a polished, prioritize
 license: MIT
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: analyst
       inputs:

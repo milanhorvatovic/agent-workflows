@@ -18,7 +18,7 @@ Planning is the final stage, so `accept` at `plan-approval` completes the run. W
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     trigger:
       kind: manual
 ```

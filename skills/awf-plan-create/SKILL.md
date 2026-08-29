@@ -4,7 +4,7 @@ description: Creates the phase plan from the brief, grounding, ideation, and the
 license: MIT
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: planner
       inputs:

@@ -12,7 +12,7 @@ import re
 # declaration the driver reads is checked against it, since §11 forbids
 # silently interpreting structures from a version this one does not
 # implement.
-PROTOCOL = "0.2"
+PROTOCOL = "0.3"
 
 # `<major>.<minor>`, the shape §11 gives the field wherever it appears — in
 # a `metadata.workflow` block and in a run's own state alike.

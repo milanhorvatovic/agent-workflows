@@ -6,7 +6,7 @@
 # declared artifact to the normalized run-relative shape a lineage record
 # already carries, which refuses this and the NTFS stream form beside it.
 # One fault: the path is well-formed in every other respect (spec §8.1, §8.7).
-protocol: "0.2"
+protocol: "0.3"
 step:
   role: analyst
   inputs:

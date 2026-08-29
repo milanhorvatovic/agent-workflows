@@ -3,7 +3,7 @@
 # a step produces one artifact — a phase-set of outputs is a stage that repeats
 # rather than a step that fans out. One fault, so this fixture proves that rule
 # and nothing else (spec §8.1, §9.1).
-protocol: "0.2"
+protocol: "0.3"
 step:
   role: implementer
   inputs:

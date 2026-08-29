@@ -26,7 +26,7 @@ description: A step-bound skill.
 license: MIT
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: analyst
       inputs:
@@ -102,7 +102,7 @@ class TreeTest(unittest.TestCase):
         return RunState(
             run_id="demo-run",
             workflow="demo",
-            protocol="0.2",
+            protocol="0.3",
             steps=[StepRecord(id="make", status="pending")],
             gates=[],
             artifacts=list(artifacts or []),
@@ -307,7 +307,7 @@ class LoadSkillTest(TreeTest):
         self.assertIn("metadata.workflow", str(caught.exception))
 
     def test_a_declaration_without_a_protocol_version_is_refused(self) -> None:
-        self.write("skills/awf-make/SKILL.md", SKILL.replace('    protocol: "0.2"\n', ""))
+        self.write("skills/awf-make/SKILL.md", SKILL.replace('    protocol: "0.3"\n', ""))
         with self.assertRaises(assembler.AssemblyError) as caught:
             self.load()
         self.assertIn("protocol version", str(caught.exception))
@@ -316,7 +316,7 @@ class LoadSkillTest(TreeTest):
         """§11: a newer minor may carry breaking changes while the protocol is
         0.x, so the skill ships prose written against contracts this run does
         not execute."""
-        self.write("skills/awf-make/SKILL.md", SKILL.replace('protocol: "0.2"', 'protocol: "9.9"'))
+        self.write("skills/awf-make/SKILL.md", SKILL.replace('protocol: "0.3"', 'protocol: "9.9"'))
         with self.assertRaises(assembler.AssemblyError) as caught:
             self.load()
         self.assertIn("this driver implements", str(caught.exception))
@@ -325,7 +325,7 @@ class LoadSkillTest(TreeTest):
         self.write(
             "skills/awf-make/SKILL.md",
             "---\nname: awf-make\ndescription: A skill.\nmetadata:\n  workflow:\n"
-            '    protocol: "0.2"\n    step: null\n---\n\n# Skill\n',
+            '    protocol: "0.3"\n    step: null\n---\n\n# Skill\n',
         )
         with self.assertRaises(assembler.AssemblyError) as caught:
             self.load()
@@ -578,7 +578,7 @@ class AssembleTest(TreeTest):
         for artifact in held:
             (run_dir / artifact.removeprefix("{run}/")).write_text("body\n", encoding="utf-8")
         loaded = RunState(
-            run_id="r", workflow="feature", protocol="0.2", steps=[], gates=[],
+            run_id="r", workflow="feature", protocol="0.3", steps=[], gates=[],
             artifacts=list(held), risk="R2", risk_rationale="x",
         )
         for step_id in ("plan-validate", "plan-revise"):
@@ -603,7 +603,7 @@ class AssembleTest(TreeTest):
             "Sessions must survive a server restart.\n", encoding="utf-8"
         )
         return run_dir, RunState(
-            run_id="r", workflow="feature", protocol="0.2", steps=[], gates=[],
+            run_id="r", workflow="feature", protocol="0.3", steps=[], gates=[],
             artifacts=list(manifest),
         )
 
@@ -1165,7 +1165,7 @@ class RepositoryTest(unittest.TestCase):
         loaded = RunState(
             run_id="2026-08-26-x",
             workflow="feature",
-            protocol="0.2",
+            protocol="0.3",
             steps=[StepRecord(id="plan-create", status="pending")],
             gates=[],
             artifacts=["{run}/brief.md", "{run}/phase-1-impl-validation.md"],

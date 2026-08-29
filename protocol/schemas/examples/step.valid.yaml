@@ -2,7 +2,7 @@
 # Paste under `metadata:` → `workflow:` in the skill's frontmatter, then adjust.
 # Optional: mark an input `required: false` to allow the grounding cache (spec §8.4);
 # `output.template` names the template the artifact is scaffolded from (spec §8.3).
-protocol: "0.2"
+protocol: "0.3"
 step:
   role: planner
   inputs:

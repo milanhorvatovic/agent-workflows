@@ -4,7 +4,7 @@ description: Security-focused fresh-context pass over the implemented change —
 license: MIT
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: reviewer
       inputs:

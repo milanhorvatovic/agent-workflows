@@ -16,7 +16,7 @@ class LoadsTest(unittest.TestCase):
             "run:\n"
             "  id: 2026-08-03-feature-slug\n"
             "  workflow: feature\n"
-            '  protocol: "0.2"\n'
+            '  protocol: "0.3"\n'
             "steps:\n"
             "  - id: brief-confirm\n"
             "    status: done\n"
@@ -33,7 +33,7 @@ class LoadsTest(unittest.TestCase):
                 "run": {
                     "id": "2026-08-03-feature-slug",
                     "workflow": "feature",
-                    "protocol": "0.2",
+                    "protocol": "0.3",
                 },
                 "steps": [
                     {"id": "brief-confirm", "status": "done"},
@@ -434,7 +434,7 @@ class LoadsTest(unittest.TestCase):
 class DumpsTest(unittest.TestCase):
     def test_round_trips_a_run_state_shape(self) -> None:
         data = {
-            "run": {"id": "2026-08-03-x", "workflow": "feature", "protocol": "0.2"},
+            "run": {"id": "2026-08-03-x", "workflow": "feature", "protocol": "0.3"},
             "steps": [
                 {"id": "brief-confirm", "status": "done"},
                 {"id": "plan-validate", "status": "pending", "iterations": 2,
@@ -464,7 +464,7 @@ class DumpsTest(unittest.TestCase):
         self.assertIn('b: "42"', text)
 
     def test_quotes_every_string_core_would_resolve_away(self) -> None:
-        """The one that mattered: `protocol: "0.2"` emitted plain is a float
+        """The one that mattered: `protocol: "0.3"` emitted plain is a float
         to every conforming reader, so the state the driver writes says one
         thing to this module and another — schema-invalid — to everyone
         else. Quoting is what keeps the type the value was given."""

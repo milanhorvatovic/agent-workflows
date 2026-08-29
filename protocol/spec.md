@@ -1,6 +1,6 @@
 # Protocol Specification
 
-**Protocol version:** `0.2` (pre-release — see [Versioning](#11-versioning))
+**Protocol version:** `0.3` (pre-release — see [Versioning](#11-versioning))
 
 This document is the normative surface of the agent-workflows protocol. The JSON Schemas in [`schemas/`](schemas/) normatively define the structures described in sections 9 and 10; this prose defines their semantics. The two MUST NOT diverge — a divergence is a defect in one of them, to be fixed rather than resolved by precedence.
 
@@ -230,7 +230,7 @@ A step declares its role, its input contract, its output, and its state-machine 
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     step:
       role: planner
       inputs:
@@ -258,7 +258,7 @@ A looping step or stage declares when it is allowed to exit and what to do when 
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     loop:
       exit_criteria: # ALL must hold
         - artifact: "{run}/phase-{N}-plan-validation.md"
@@ -285,7 +285,7 @@ A workflow entry point declares how it starts:
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     trigger:
       kind: interval # manual (default) | interval | cron | event
       every: 5m # interval kind only
@@ -308,7 +308,7 @@ A stage declares its members — steps and gates — in record order:
 ```yaml
 metadata:
   workflow:
-    protocol: "0.2"
+    protocol: "0.3"
     stage:
       sequence:
         - step: plan-create
@@ -340,7 +340,7 @@ run:
   workflow: feature
   risk: R2
   risk_rationale: "single module, no security surface, one phase"
-  protocol: "0.2" # single-phase run, so no `phase` field
+  protocol: "0.3" # single-phase run, so no `phase` field
 steps: # one record per step and gate of the composed workflow; `intake-approval` populated them (§7)
   - id: brief-confirm
     status: done # pending | active | blocked | done | skipped
